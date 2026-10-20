@@ -6,7 +6,7 @@
 
 <p align="center">
   Nativer XDF-Editor für macOS: TunerPro-Definitionen öffnen, Kennfelder und Werte in der Bin bearbeiten.<br>
-  <sub>Native macOS editor for TunerPro XDF definitions and ECU/TCU binaries (UI in German).</sub>
+  <sub>Native macOS editor for TunerPro XDF definitions and ECU/TCU binaries — UI in 25 languages.</sub>
 </p>
 
 <p align="center">
