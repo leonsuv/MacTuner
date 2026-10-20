@@ -65,7 +65,7 @@ struct SidebarView: View {
             for c in item.categories.isEmpty ? [-1] : item.categories { byCat[c, default: []].append(item.id) }
         }
         return byCat.keys.sorted().map { c in
-            Group(id: c, name: def.categories[c] ?? "Ohne Kategorie", items: byCat[c]!)
+            Group(id: c, name: def.categories[c] ?? String(localized: "Ohne Kategorie"), items: byCat[c]!)
         }
     }
 

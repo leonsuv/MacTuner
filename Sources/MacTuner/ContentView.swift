@@ -68,7 +68,7 @@ struct StatusBar: View {
             entry("doc.text", "XDF", model.xdfURL?.lastPathComponent)
             entry("memorychip", "BIN", model.binURL.map { "\($0.lastPathComponent) (\(model.bin.count / 1024) KB)" })
             entry("arrow.left.arrow.right", "Vergleich",
-                  model.hasBin ? (model.compareURL?.lastPathComponent ?? "Stand beim Öffnen") : nil)
+                  model.hasBin ? (model.compareURL?.lastPathComponent ?? String(localized: "Stand beim Öffnen")) : nil)
             Spacer()
             if let def = model.definition, model.hasBin {
                 let n = def.items.filter(model.isChanged).count
@@ -84,9 +84,9 @@ struct StatusBar: View {
         .background(.bar)
     }
 
-    private func entry(_ icon: String, _ name: String, _ value: String?) -> some View {
+    private func entry(_ icon: String, _ name: LocalizedStringKey, _ value: String?) -> some View {
         Label {
-            Text("\(name): ").foregroundStyle(.secondary) + Text(value ?? "—")
+            Text(name).foregroundStyle(.secondary) + Text(verbatim: ": ").foregroundStyle(.secondary) + Text(value ?? "—")
         } icon: {
             Image(systemName: icon).foregroundStyle(.secondary)
         }

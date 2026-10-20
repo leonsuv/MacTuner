@@ -55,7 +55,7 @@ struct ItemDetailView: View {
                     .frame(maxWidth: 900, alignment: .leading)
                     .contentShape(Rectangle())
                     .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { descriptionExpanded.toggle() } }
-                    .help(descriptionExpanded ? "" : "Klicken für den ganzen Text")
+                    .help(descriptionExpanded ? "" : String(localized: "Klicken für den ganzen Text"))
             }
         }
     }
@@ -87,7 +87,7 @@ struct EditControls: View {
     var body: some View {
         HStack(spacing: 10) {
             HStack(spacing: 6) {
-                field(scaling.output == .hex ? "Hex" : "Wert", text: $input, width: 90)
+                field(scaling.output == .hex ? "Hex" : String(localized: "Wert"), text: $input, width: 90)
                     .onSubmit(setValue)
                 Button("Setzen", action: setValue)
                     .buttonStyle(.borderedProminent)
@@ -215,7 +215,7 @@ struct ConstantEditorView: View {
         .frame(maxWidth: 760, alignment: .leading)
     }
 
-    private func tile(_ title: String, _ value: String, highlight: Bool = false) -> some View {
+    private func tile(_ title: LocalizedStringKey, _ value: String, highlight: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.caption).foregroundStyle(.secondary)
             Text(value)

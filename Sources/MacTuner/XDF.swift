@@ -148,7 +148,7 @@ struct XDFDefinition {
 enum XDFError: LocalizedError {
     case invalid(String)
     var errorDescription: String? {
-        switch self { case .invalid(let s): return "Ungültige XDF: \(s)" }
+        switch self { case .invalid(let s): return String(localized: "Ungültige XDF: \(s)") }
     }
 }
 
@@ -180,7 +180,7 @@ enum XDFParser {
 
         var categories: [Int: String] = [:]
         for c in header.children("CATEGORY") {
-            if let i = int(c.attr("index")) { categories[i] = c.attr("name") ?? "Kategorie \(i)" }
+            if let i = int(c.attr("index")) { categories[i] = c.attr("name") ?? String(localized: "Kategorie \(i)") }
         }
 
         func layout(_ e: XMLElement?, rows: Int? = nil, cols: Int? = nil) -> DataLayout? {

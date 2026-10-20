@@ -92,7 +92,7 @@ struct TableEditorView: View {
                     Toggle(isOn: layoutToggle) {
                         Image(systemName: canWrap ? "text.justify.left" : "arrow.up.left.and.arrow.down.right")
                     }
-                    .help(canWrap ? "In Zeilen zu \(Self.wrapWidth) Werten umbrechen" : "Zeilen/Spalten tauschen")
+                    .help(canWrap ? String(localized: "In Zeilen zu \(Self.wrapWidth) Werten umbrechen") : String(localized: "Zeilen/Spalten tauschen"))
                     Toggle(isOn: $showChart) { Image(systemName: "chart.xyaxis.line") }
                         .help("Diagramm anzeigen")
                 }
@@ -209,7 +209,7 @@ struct TableEditorView: View {
             }
             .zIndex(selected ? 1 : 0)
             .contentShape(shape)
-            .help(changed ? "Vergleich: \(model.text(l, s, c, original: true))" : "")
+            .help(changed ? String(localized: "Vergleich: \(model.text(l, s, c, original: true))") : "")
             .onTapGesture { click(c) }
     }
 
@@ -222,9 +222,9 @@ struct TableEditorView: View {
 
     private var selectionText: String {
         switch selection.count {
-        case 0: return "Zelle wählen"
-        case 1: return "1 Zelle"
-        default: return "\(selection.count) Zellen"
+        case 0: return String(localized: "Zelle wählen")
+        case 1: return String(localized: "1 Zelle")
+        default: return String(localized: "\(selection.count) Zellen")
         }
     }
 
@@ -320,7 +320,7 @@ struct TableEditorView: View {
         let xv = model.axisValues(x, count: l.cols)
         var pts: [TableChart.Point] = []
         for r in 0..<l.rows {
-            let name = l.rows > 1 ? "Zeile \(ys[r])" : item.title
+            let name = l.rows > 1 ? String(localized: "Zeile \(ys[r])") : item.title
             var changedRow = false
             for c in 0..<l.cols {
                 if let v = values[r][c] {

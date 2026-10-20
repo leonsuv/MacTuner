@@ -50,9 +50,9 @@ struct MacTunerApp: App {
         }
     }
 
-    private func openXDF() { if let u = model.chooseFile("XDF öffnen", types: ["xdf"]) { model.loadXDF(u) } }
-    private func openBin() { if let u = model.chooseFile("BIN öffnen", types: ["bin"]) { model.openBin(u) } }
-    private func openCompare() { if let u = model.chooseFile("Vergleichs-BIN öffnen", types: ["bin"]) { model.loadCompare(u) } }
+    private func openXDF() { if let u = model.chooseFile(String(localized: "XDF öffnen"), types: ["xdf"]) { model.loadXDF(u) } }
+    private func openBin() { if let u = model.chooseFile(String(localized: "BIN öffnen"), types: ["bin"]) { model.openBin(u) } }
+    private func openCompare() { if let u = model.chooseFile(String(localized: "Vergleichs-BIN öffnen"), types: ["bin"]) { model.loadCompare(u) } }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {

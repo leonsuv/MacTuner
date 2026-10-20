@@ -106,7 +106,7 @@ final class AppModel {
 
     var windowTitle: String {
         guard let binURL else { return definition?.title ?? "MacTuner" }
-        return binURL.lastPathComponent + (dirty ? " — bearbeitet" : "")
+        return binURL.lastPathComponent + (dirty ? String(localized: " — bearbeitet") : "")
     }
 
     // MARK: Files
@@ -123,7 +123,7 @@ final class AppModel {
             UserDefaults.standard.set(url.path, forKey: "xdfPath")
             checkSize()
         } catch {
-            alert = "XDF konnte nicht geladen werden:\n\(error.localizedDescription)"
+            alert = String(localized: "XDF konnte nicht geladen werden:\n\(error.localizedDescription)")
         }
     }
 
@@ -144,7 +144,7 @@ final class AppModel {
             UserDefaults.standard.set(url.path, forKey: "binPath")
             checkSize()
         } catch {
-            alert = "BIN konnte nicht geladen werden:\n\(error.localizedDescription)"
+            alert = String(localized: "BIN konnte nicht geladen werden:\n\(error.localizedDescription)")
         }
     }
 
@@ -154,7 +154,7 @@ final class AppModel {
             compareURL = url
             UserDefaults.standard.set(url.path, forKey: "comparePath")
         } catch {
-            alert = "Vergleichs-BIN konnte nicht geladen werden:\n\(error.localizedDescription)"
+            alert = String(localized: "Vergleichs-BIN konnte nicht geladen werden:\n\(error.localizedDescription)")
         }
     }
 
@@ -166,7 +166,7 @@ final class AppModel {
 
     private func checkSize() {
         guard hasBin, let need = definition?.regionSize, bin.count < need else { return }
-        alert = "Die BIN ist \(bin.count) Bytes groß, die XDF erwartet \(need) Bytes. Passt die Datei zur Definition?"
+        alert = String(localized: "Die BIN ist \(bin.count) Bytes groß, die XDF erwartet \(need) Bytes. Passt die Datei zur Definition?")
     }
 
     func save() {
@@ -190,7 +190,7 @@ final class AppModel {
             try Data(bin).write(to: url, options: .atomic)
             dirty = false
         } catch {
-            alert = "Speichern fehlgeschlagen:\n\(error.localizedDescription)"
+            alert = String(localized: "Speichern fehlgeschlagen:\n\(error.localizedDescription)")
         }
     }
 
@@ -198,11 +198,11 @@ final class AppModel {
     func confirmDiscard() -> Bool {
         guard dirty else { return true }
         let a = NSAlert()
-        a.messageText = "Ungespeicherte Änderungen in \(binURL?.lastPathComponent ?? "der BIN")"
-        a.informativeText = "Sollen die Änderungen gespeichert werden?"
-        a.addButton(withTitle: "Speichern")
-        a.addButton(withTitle: "Verwerfen")
-        a.addButton(withTitle: "Abbrechen")
+        a.messageText = String(localized: "Ungespeicherte Änderungen in \(binURL?.lastPathComponent ?? "BIN")")
+        a.informativeText = String(localized: "Sollen die Änderungen gespeichert werden?")
+        a.addButton(withTitle: String(localized: "Speichern"))
+        a.addButton(withTitle: String(localized: "Verwerfen"))
+        a.addButton(withTitle: String(localized: "Abbrechen"))
         switch a.runModal() {
         case .alertFirstButtonReturn: save(); return !dirty
         case .alertSecondButtonReturn: return true

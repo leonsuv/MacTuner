@@ -14,6 +14,7 @@
   <img src="https://img.shields.io/badge/macOS-14%2B-blue" alt="macOS 14+">
   <img src="https://img.shields.io/badge/Apple%20Silicon%20%2B%20Intel-universal-lightgrey" alt="Universal">
   <img src="https://img.shields.io/badge/Swift-SwiftUI-orange" alt="SwiftUI">
+  <img src="https://img.shields.io/badge/Sprachen-25-purple" alt="25 Sprachen">
   <img src="https://img.shields.io/badge/Lizenz-MIT-green" alt="MIT">
 </p>
 
@@ -38,6 +39,17 @@ Sie liest dieselben XDF-Dateien und schreibt eine Bin, in der nur die Bytes der 
 | Konstante | Lange Tabelle (1 × 152) |
 |---|---|
 | ![Konstante](docs/constant.png) | ![Lange Tabelle](docs/long-table.png) |
+
+## Sprachen
+
+Die Oberfläche gibt es auf Deutsch, Englisch, Französisch, Spanisch, Italienisch, Portugiesisch, Niederländisch, Schwedisch,
+Polnisch, Tschechisch, Slowenisch, Kroatisch, Serbisch, Rumänisch, Ungarisch, Bulgarisch, Griechisch, Türkisch, Albanisch,
+Ukrainisch, Russisch, Chinesisch (vereinfacht und traditionell), Japanisch und Koreanisch.
+Sie folgt der Systemsprache. Unter **Systemeinstellungen → Allgemein → Sprache & Region → Apps** lässt sie sich auch nur für MacTuner umstellen.
+Namen, Beschreibungen und Kategorien der Kennfelder stammen aus der XDF und bleiben in deren Sprache.
+
+Alle Texte stehen in [`Localization/translations.py`](Localization/translations.py). Nach einer Änderung erzeugt
+`python3 Localization/translations.py Localization` die `.strings`-Dateien neu und prüft, ob alle Schlüssel und Platzhalter vorhanden sind.
 
 ## Installation
 
