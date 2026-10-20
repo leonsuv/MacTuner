@@ -23,13 +23,18 @@ struct SidebarView: View {
                             row(def.items[idx]).tag(idx as Int?)
                         }
                     } header: {
-                        HStack {
-                            Text(g.name)
-                            Spacer()
+                        // Whole header toggles; the count sits next to the name so it never covers the hover chevron.
+                        HStack(spacing: 6) {
+                            Text(g.name).lineLimit(1)
                             Text("\(g.items.count)")
                                 .monospacedDigit()
                                 .foregroundStyle(.tertiary)
-                                .padding(.trailing, 6)
+                            Spacer(minLength: 20)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            let open = expandedBinding(g.id)
+                            withAnimation(.easeOut(duration: 0.15)) { open.wrappedValue.toggle() }
                         }
                     }
                 }
