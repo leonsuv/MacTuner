@@ -17,24 +17,14 @@ struct SidebarView: View {
         if let def = model.definition {
             let groups = self.groups(def)
             List(selection: $model.selection) {
+                // Categories are plain rows, not Sections: a sidebar Section keeps its own collapse
+                // state (hover chevron) and does not show rows that are added to it later.
                 ForEach(groups) { g in
-                    Section(isExpanded: expandedBinding(g.id)) {
+                    let open = isOpen(g.id)
+                    categoryRow(g, open: open)
+                    if open {
                         ForEach(g.items, id: \.self) { idx in
                             row(def.items[idx]).tag(idx as Int?)
-                        }
-                    } header: {
-                        // Whole header toggles; the count sits next to the name so it never covers the hover chevron.
-                        HStack(spacing: 6) {
-                            Text(g.name).lineLimit(1)
-                            Text("\(g.items.count)")
-                                .monospacedDigit()
-                                .foregroundStyle(.tertiary)
-                            Spacer(minLength: 20)
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            let open = expandedBinding(g.id)
-                            withAnimation(.easeOut(duration: 0.15)) { open.wrappedValue.toggle() }
                         }
                     }
                 }
@@ -74,10 +64,35 @@ struct SidebarView: View {
         }
     }
 
-    private func expandedBinding(_ id: Int) -> Binding<Bool> {
-        Binding(
-            get: { !search.isEmpty || onlyChanged || expanded.contains(id) },
-            set: { if $0 { expanded.insert(id) } else { expanded.remove(id) } })
+    private func isOpen(_ id: Int) -> Bool {
+        !search.isEmpty || onlyChanged || expanded.contains(id)
+    }
+
+    private func toggle(_ id: Int) {
+        withAnimation(.easeOut(duration: 0.15)) {
+            if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
+        }
+    }
+
+    private func categoryRow(_ g: Group, open: Bool) -> some View {
+        Button { toggle(g.id) } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .rotationEffect(.degrees(open ? 90 : 0))
+                    .frame(width: 10)
+                Text(g.name).lineLimit(1)
+                Text("\(g.items.count)")
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func row(_ item: XDFItem) -> some View {
