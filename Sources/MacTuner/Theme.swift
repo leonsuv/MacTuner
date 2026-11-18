@@ -22,6 +22,14 @@ enum Theme {
         return (Color(red: r, green: g, blue: bl), luminance > 0.55 ? .black.opacity(0.85) : .white)
     }
 
+    /// Color for a signed change t in -1...1: blue = below, red = above the comparison.
+    static func diverging(_ t: Double) -> (bg: Color, fg: Color) {
+        let t = min(max(t, -1), 1)
+        let (r, g, b) = t < 0 ? (0.22, 0.45, 0.85) : (0.86, 0.30, 0.26)
+        let alpha = 0.3 + 0.7 * abs(t)
+        return (Color(red: r, green: g, blue: b).opacity(alpha), alpha > 0.6 ? .white : .primary)
+    }
+
     static let cardBackground = Color(nsColor: .controlBackgroundColor)
     static let changed = Color.orange
 }

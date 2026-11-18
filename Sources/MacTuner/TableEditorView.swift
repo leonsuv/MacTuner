@@ -1,5 +1,11 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
+
+/// What the cells show: the values, or their difference to the comparison.
+enum ValueMode: String {
+    case values, delta, percent
+}
 
 struct TableEditorView: View {
     @Environment(AppModel.self) private var model
@@ -12,6 +18,7 @@ struct TableEditorView: View {
     @State private var input = ""
     @State private var mode: Mode
     @State private var showChart: Bool
+    @AppStorage("valueMode") private var valueMode: ValueMode = .values
     @FocusState private var gridFocused: Bool
 
     init(item: XDFItem, x: Axis, y: Axis) {
@@ -32,6 +39,8 @@ struct TableEditorView: View {
     private var l: DataLayout { item.data }
     private var s: Scaling { item.scaling }
     private var canWrap: Bool { l.rows == 1 && l.cols > Self.wrapWidth }
+    /// Hex tables have no meaningful difference.
+    private var shownMode: ValueMode { s.output == .hex ? .values : valueMode }
 
     private var displayRows: Int {
         switch mode {
@@ -49,8 +58,9 @@ struct TableEditorView: View {
         }
     }
 
-    /// Data cell at display position, nil for the empty tail of a wrapped table.
+    /// Data cell at display position, nil outside the grid and for the empty tail of a wrapped table.
     private func cell(_ i: Int, _ j: Int) -> Cell? {
+        guard i >= 0, j >= 0, i < displayRows, j < displayCols else { return nil }
         switch mode {
         case .normal: return Cell(r: i, c: j)
         case .transposed: return Cell(r: j, c: i)
@@ -79,14 +89,35 @@ struct TableEditorView: View {
         let values = (0..<l.rows).map { r in (0..<l.cols).map { c in model.raw(l, Cell(r: r, c: c)).map(s.value(raw:)) } }
         let flat = values.flatMap { $0 }.compactMap { $0 }
         let lo = flat.min() ?? 0, hi = flat.max() ?? 0
+        let deltas = shownMode == .values ? [] : self.deltas(values)
+        let maxDelta = deltas.flatMap { $0 }.compactMap { $0 }.map(abs).max() ?? 0
 
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 EditControls(scaling: s, enabled: !selection.isEmpty,
                              canRestore: selection.contains { model.isChanged(l, $0) },
-                             input: $input, status: selectionText) { op in
-                    withAnimation(.easeOut(duration: 0.12)) { model.apply(op, item: item, cells: selection) }
-                    gridFocused = true
+                             input: $input, status: selectionText) { op in apply(op, cells: selection) }
+                actionsMenu
+            }
+
+            HStack(spacing: 10) {
+                Text(summary(values))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .textSelection(.enabled)
+                Spacer(minLength: 8)
+                if s.output != .hex {
+                    Picker("Anzeige", selection: $valueMode) {
+                        Text("Werte").tag(ValueMode.values)
+                        Text(verbatim: "Δ").tag(ValueMode.delta)
+                        Text(verbatim: "Δ %").tag(ValueMode.percent)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("Werte oder Differenz zum Vergleich anzeigen")
                 }
                 ControlGroup {
                     Toggle(isOn: layoutToggle) {
@@ -99,15 +130,18 @@ struct TableEditorView: View {
                 .toggleStyle(.button)
                 .fixedSize()
             }
+            .controlSize(.small)
 
             ScrollView([.horizontal, .vertical]) {
-                grid(xs: xs, ys: ys, values: values, lo: lo, hi: hi)
+                grid(xs: xs, ys: ys, values: values, deltas: deltas, lo: lo, hi: hi, maxDelta: maxDelta)
                     .padding(10)
             }
             .focusable()
             .focused($gridFocused)
             .focusEffectDisabled()
             .onKeyPress(phases: .down, action: handleKey)
+            .onCopyCommand { copyText().map { [NSItemProvider(object: $0 as NSString)] } ?? [] }
+            .onPasteCommand(of: [.plainText, .utf8PlainText, .tabSeparatedText]) { _ in pasteFromClipboard() }
             .help("⇧-Klick Bereich · ⌘-Klick einzeln · Achse klicken = ganze Zeile/Spalte · Zahl tippen + ↩ setzt · +/− Schritt")
             .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.separator.opacity(0.6)))
@@ -124,19 +158,152 @@ struct TableEditorView: View {
         .onAppear { gridFocused = true }
     }
 
+    private func apply(_ op: EditOp, cells: Set<Cell>) {
+        guard !cells.isEmpty else { return }
+        withAnimation(.easeOut(duration: 0.12)) { model.apply(op, item: item, cells: cells) }
+        gridFocused = true
+    }
+
+    // MARK: Actions
+
+    private var actionsMenu: some View {
+        let changed = changedCells
+        return Menu {
+            Button("Alles auswählen") { selectAll() }
+            Button("Geänderte Zellen auswählen") { selection = changed; anchor = changed.min { ($0.r, $0.c) < ($1.r, $1.c) } }
+                .disabled(changed.isEmpty)
+            Divider()
+            Section("Interpolieren") {
+                Button("Horizontal") { interpolate(.horizontal) }
+                Button("Vertikal") { interpolate(.vertical) }
+                Button("Flächig (aus den vier Ecken)") { interpolate(.bilinear) }
+            }
+            .disabled(selection.count < 3 || s.output == .hex)
+            Divider()
+            Button("Kopieren") { if let t = copyText() { setClipboard(t) } }
+                .disabled(selection.isEmpty)
+            Button("Kopieren mit Achsen") { setClipboard(copyTextWithAxes()) }
+            Button("Einfügen") { pasteFromClipboard() }
+                .disabled(selection.isEmpty)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Auswahl, Interpolieren, Kopieren und Einfügen (⌘C / ⌘V)")
+    }
+
+    private var changedCells: Set<Cell> {
+        Set((0..<l.rows).flatMap { r in (0..<l.cols).map { Cell(r: r, c: $0) } }.filter { model.isChanged(l, $0) })
+    }
+
+    private func interpolate(_ m: Interpolation) {
+        let xv = model.axisValues(x, count: l.cols), yv = model.axisValues(y, count: l.rows)
+        let disp = Set(selection.map { c -> Cell in let (i, j) = display(c); return Cell(r: i, c: j) })
+        let result = TableOps.interpolate(
+            disp, m,
+            value: { d in cell(d.r, d.c).flatMap { model.raw(l, $0) }.map(s.value(raw:)) },
+            hPos: { d in
+                guard let c = cell(d.r, d.c) else { return .nan }
+                return mode == .transposed ? yv[c.r] : xv[c.c]
+            },
+            vPos: { d in
+                guard let c = cell(d.r, d.c) else { return .nan }
+                switch mode {
+                case .normal: return yv[c.r]
+                case .transposed: return xv[c.c]
+                case .wrapped: return Double(c.c)
+                }
+            })
+        var values: [Cell: Double] = [:]
+        for (d, v) in result { if let c = cell(d.r, d.c) { values[c] = v } }
+        apply(.values(values), cells: Set(values.keys))
+    }
+
+    // MARK: Clipboard
+
+    private func setClipboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    /// The selection's bounding box as it is shown, tab-separated; unselected cells stay empty.
+    private func copyText() -> String? {
+        guard !selection.isEmpty else { return nil }
+        let d = selection.map(display)
+        let i0 = d.map(\.0).min()!, i1 = d.map(\.0).max()!, j0 = d.map(\.1).min()!, j1 = d.map(\.1).max()!
+        let rows = (i0...i1).map { i in
+            (j0...j1).map { j in cell(i, j).flatMap { selection.contains($0) ? model.text(l, s, $0) : nil } ?? "" }
+        }
+        return TableOps.tsv(rows)
+    }
+
+    /// The whole table in stored orientation with the axis labels as first row / column.
+    private func copyTextWithAxes() -> String {
+        let xs = model.axisLabels(x, count: l.cols), ys = model.axisLabels(y, count: l.rows)
+        var rows = [[""] + xs]
+        for r in 0..<l.rows { rows.append([ys[r]] + (0..<l.cols).map { model.text(l, s, Cell(r: r, c: $0)) }) }
+        if l.rows == 1 { rows = [xs, (0..<l.cols).map { model.text(l, s, Cell(r: 0, c: $0)) }] }
+        return TableOps.tsv(rows)
+    }
+
+    /// One value fills the whole selection; a block is pasted from the selection's top-left cell.
+    private func pasteFromClipboard() {
+        guard let text = NSPasteboard.general.string(forType: .string), !selection.isEmpty else { return }
+        let grid = TableOps.parseGrid(text)
+        guard !grid.isEmpty else { return }
+        var values: [Cell: Double] = [:]
+        if grid.count == 1, grid[0].count == 1 {
+            guard let v = s.parse(grid[0][0]) else { return }
+            for c in selection { values[c] = v }
+        } else {
+            let d = selection.map(display)
+            let i0 = d.map(\.0).min()!, j0 = d.map(\.1).min()!
+            for (di, row) in grid.enumerated() {
+                for (dj, t) in row.enumerated() {
+                    guard let c = cell(i0 + di, j0 + dj), let v = s.parse(t) else { continue }
+                    values[c] = v
+                }
+            }
+            selection = Set(values.keys)
+        }
+        apply(.values(values), cells: Set(values.keys))
+    }
+
     // MARK: Grid
 
-    private func grid(xs: [String], ys: [String], values: [[Double?]], lo: Double, hi: Double) -> some View {
+    /// Difference to the comparison per cell (physical units or percent), nil for unchanged cells.
+    private func deltas(_ values: [[Double?]]) -> [[Double?]] {
+        (0..<l.rows).map { r in
+            (0..<l.cols).map { c in
+                let cell = Cell(r: r, c: c)
+                guard model.isChanged(l, cell), let b = values[r][c],
+                      let a = model.raw(l, cell, original: true).map(s.value(raw:)) else { return nil }
+                if shownMode == .percent { return a != 0 ? (b - a) / abs(a) * 100 : nil }
+                return b - a
+            }
+        }
+    }
+
+    private func grid(xs: [String], ys: [String], values: [[Double?]], deltas: [[Double?]],
+                      lo: Double, hi: Double, maxDelta: Double) -> some View {
+        let xChanged = axisChanges(x, count: l.cols), yChanged = axisChanges(y, count: l.rows)
         let colLabels: [String], rowLabels: [String], colUnits: String, rowUnits: String
+        let colChanged: [Bool], rowChanged: [Bool]
         switch mode {
         case .normal:
             (colLabels, rowLabels, colUnits, rowUnits) = (xs, ys, x.scaling.units, y.scaling.units)
+            (colChanged, rowChanged) = (xChanged, yChanged)
         case .transposed:
             (colLabels, rowLabels, colUnits, rowUnits) = (ys, xs, y.scaling.units, x.scaling.units)
+            (colChanged, rowChanged) = (yChanged, xChanged)
         case .wrapped:
             colLabels = (0..<Self.wrapWidth).map { "+\($0)" }
             rowLabels = (0..<displayRows).map { String($0 * Self.wrapWidth) }
             (colUnits, rowUnits) = ("", "")
+            colChanged = Array(repeating: false, count: Self.wrapWidth)
+            rowChanged = Array(repeating: false, count: displayRows)
         }
         return Grid(horizontalSpacing: Self.gap, verticalSpacing: Self.gap) {
             GridRow {
@@ -147,17 +314,18 @@ struct TableEditorView: View {
                     .contentShape(Rectangle())
                     .onTapGesture { selectAll() }
                 ForEach(0..<displayCols, id: \.self) { j in
-                    header(colLabels[j])
+                    header(colLabels[j], changed: colChanged[j])
                         .onTapGesture { select((0..<displayRows).compactMap { cell($0, j) }) }
                 }
             }
             ForEach(0..<displayRows, id: \.self) { i in
                 GridRow {
-                    header(rowLabels[i])
+                    header(rowLabels[i], changed: rowChanged[i])
                         .onTapGesture { select((0..<displayCols).compactMap { cell(i, $0) }) }
                     ForEach(0..<displayCols, id: \.self) { j in
                         if let c = cell(i, j) {
-                            cellView(c, value: values[c.r][c.c], lo: lo, hi: hi)
+                            cellView(c, value: values[c.r][c.c], delta: deltas.isEmpty ? nil : deltas[c.r][c.c],
+                                     lo: lo, hi: hi, maxDelta: maxDelta)
                         } else {
                             Color.clear.frame(width: Self.cellWidth, height: Self.cellHeight)
                         }
@@ -167,33 +335,54 @@ struct TableEditorView: View {
         }
     }
 
+    private func axisChanges(_ a: Axis, count: Int) -> [Bool] {
+        guard let al = a.layout else { return Array(repeating: false, count: count) }
+        return (0..<count).map { $0 < al.cols && model.isChanged(al, Cell(r: 0, c: $0)) }
+    }
+
     private func cornerText(_ rowUnits: String, _ colUnits: String) -> String {
         if rowUnits.isEmpty && colUnits.isEmpty { return "" }
         return "\(rowUnits.isEmpty ? "–" : rowUnits) ↓ \(colUnits.isEmpty ? "–" : colUnits) →"
     }
 
-    private func header(_ text: String) -> some View {
+    private func header(_ text: String, changed: Bool) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold).monospacedDigit())
-            .foregroundStyle(.secondary)
+            .font(.system(size: 11, weight: changed ? .bold : .semibold).monospacedDigit())
+            .foregroundStyle(changed ? Theme.changed : .secondary)
             .padding(.horizontal, 6)
             .frame(minWidth: Self.cellWidth, minHeight: Self.cellHeight)
+            .background(changed ? Theme.changed.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             .contentShape(Rectangle())
+            .help(changed ? String(localized: "Achse geändert") : "")
     }
 
-    private func cellView(_ c: Cell, value: Double?, lo: Double, hi: Double) -> some View {
+    private func cellView(_ c: Cell, value: Double?, delta: Double?, lo: Double, hi: Double, maxDelta: Double) -> some View {
         let changed = model.isChanged(l, c)
         let selected = selection.contains(c)
-        let colors = heat(value, lo: lo, hi: hi)
+        let colors: (bg: Color, fg: Color)
+        let text: String
+        switch shownMode {
+        case .values:
+            colors = heat(value, lo: lo, hi: hi)
+            text = model.text(l, s, c)
+        case .delta, .percent:
+            if let delta {
+                colors = Theme.diverging(maxDelta > 0 ? delta / maxDelta : 0)
+                text = shownMode == .percent ? String(format: "%+.1f", delta) : signed(s.format(delta))
+            } else {
+                colors = (Color.secondary.opacity(0.08), .secondary)
+                text = changed ? "—" : "·"
+            }
+        }
         let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
-        return Text(model.text(l, s, c))
+        return Text(text)
             .font(.system(size: 12, weight: changed ? .bold : .medium).monospacedDigit())
             .foregroundStyle(colors.fg)
             .padding(.horizontal, 6)
             .frame(minWidth: Self.cellWidth, minHeight: Self.cellHeight)
             .background(colors.bg, in: shape)
             .overlay(alignment: .topTrailing) {
-                if changed {
+                if changed && shownMode == .values {
                     Circle()
                         .fill(Theme.changed)
                         .overlay(Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1))
@@ -218,6 +407,10 @@ struct TableEditorView: View {
         return Theme.heat(hi > lo ? (v - lo) / (hi - lo) : 0.5)
     }
 
+    private func signed(_ t: String) -> String {
+        t.hasPrefix("-") || Double(t) == 0 ? t : "+" + t
+    }
+
     // MARK: Selection
 
     private var selectionText: String {
@@ -226,6 +419,32 @@ struct TableEditorView: View {
         case 1: return String(localized: "1 Zelle")
         default: return String(localized: "\(selection.count) Zellen")
         }
+    }
+
+    /// One cell: value, comparison and difference. Several: min, max, average and how many are changed.
+    private func summary(_ values: [[Double?]]) -> String {
+        guard !selection.isEmpty else { return String(localized: "Mehrere Zellen: ⇧-Klick / ⌘-Klick · Werte kopieren und einfügen: ⌘C / ⌘V") }
+        let units = s.units.isEmpty ? "" : " \(s.units)"
+        if selection.count == 1, let c = selection.first {
+            var parts = [String(localized: "Wert \(model.text(l, s, c))") + units]
+            if model.isChanged(l, c) {
+                parts.append(String(localized: "Vergleich: \(model.text(l, s, c, original: true))"))
+                if s.output != .hex, let b = values[c.r][c.c], let a = model.raw(l, c, original: true).map(s.value(raw:)) {
+                    parts.append("Δ " + signed(s.format(b - a)) + (a != 0 ? " (\(Changes.percent((b - a) / abs(a) * 100)))" : ""))
+                }
+            }
+            return parts.joined(separator: " · ")
+        }
+        var parts: [String] = []
+        let vals = selection.compactMap { values[$0.r][$0.c] }
+        if s.output != .hex, let mn = vals.min(), let mx = vals.max() {
+            let avg = vals.reduce(0, +) / Double(vals.count)
+            parts += [String(localized: "Min. \(s.format(mn))"), String(localized: "Max. \(s.format(mx))"),
+                      String(localized: "Ø \(s.format(avg))") + units]
+        }
+        let n = selection.filter { model.isChanged(l, $0) }.count
+        if n > 0 { parts.append(String(localized: "\(n) geändert")) }
+        return parts.joined(separator: " · ")
     }
 
     private func click(_ c: Cell) {
@@ -255,10 +474,12 @@ struct TableEditorView: View {
         gridFocused = true
     }
 
+    /// Display rectangle between two cells (so ⇧-click follows transposed and wrapped layouts).
     private func rect(_ a: Cell, _ b: Cell) -> Set<Cell> {
+        let (ai, aj) = display(a), (bi, bj) = display(b)
         var out = Set<Cell>()
-        for r in min(a.r, b.r)...max(a.r, b.r) {
-            for c in min(a.c, b.c)...max(a.c, b.c) { out.insert(Cell(r: r, c: c)) }
+        for i in min(ai, bi)...max(ai, bi) {
+            for j in min(aj, bj)...max(aj, bj) { if let c = cell(i, j) { out.insert(c) } }
         }
         return out
     }

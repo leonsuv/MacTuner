@@ -35,12 +35,25 @@ struct ItemDetailView: View {
                 Text(item.title)
                     .font(.system(size: 22, weight: .bold))
                     .textSelection(.enabled)
-                if model.isChanged(item) {
-                    Label("geändert", systemImage: "pencil")
+                Button { model.toggleFavorite(item) } label: {
+                    Image(systemName: favorite ? "star.fill" : "star")
+                        .font(.title3)
+                        .foregroundStyle(favorite ? .yellow : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(favorite ? String(localized: "Aus Favoriten entfernen (⌘D)") : String(localized: "Zu Favoriten hinzufügen (⌘D)"))
+                if info.isChanged {
+                    Label(badge, systemImage: "pencil")
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Theme.changed.opacity(0.18), in: Capsule())
                         .foregroundStyle(Theme.changed)
+                    Spacer()
+                    Button { withAnimation(.snappy) { model.restore(item) } } label: {
+                        Label("Zurücksetzen", systemImage: "arrow.uturn.backward.circle")
+                    }
+                    .controlSize(.small)
+                    .help("Ganzes Kennfeld samt Achsen auf den Vergleich zurücksetzen")
                 }
             }
             HStack(spacing: 6) {
@@ -58,6 +71,17 @@ struct ItemDetailView: View {
                     .help(descriptionExpanded ? "" : String(localized: "Klicken für den ganzen Text"))
             }
         }
+    }
+
+    private var favorite: Bool { model.isFavorite(item) }
+    private var info: ChangeInfo { model.changeInfo(item) }
+
+    private var badge: String {
+        guard item.isTable else { return String(localized: "geändert") }
+        var parts: [String] = []
+        if info.cells > 0 { parts.append(String(localized: "\(info.cells) von \(item.data.count) Zellen geändert")) }
+        if info.axisCells > 0 { parts.append(String(localized: "Achse geändert")) }
+        return parts.joined(separator: " · ")
     }
 
     private var chips: [(String, String?)] {
@@ -202,7 +226,7 @@ struct ConstantEditorView: View {
             .card(padding: 18)
 
             HStack(spacing: 10) {
-                tile("Vergleich", model.text(l, s, cell, original: true), highlight: changed)
+                tile("Vergleich", model.text(l, s, cell, original: true) + delta(changed), highlight: changed)
                 tile("Rohwert", model.raw(l, cell).map { String(format: "%.0f", $0) } ?? "—")
                 tile("Schritt", s.format(s.rawStep) + (s.units.isEmpty ? "" : " \(s.units)"))
                 tile("Bereich", "\(s.format(s.value(raw: l.rawRange.lowerBound))) … \(s.format(s.value(raw: l.rawRange.upperBound)))")
@@ -213,6 +237,17 @@ struct ConstantEditorView: View {
             }
         }
         .frame(maxWidth: 760, alignment: .leading)
+    }
+
+    /// "  Δ +50 (+4,3 %)" for a changed constant.
+    private func delta(_ changed: Bool) -> String {
+        let l = item.data, s = item.scaling
+        guard changed, s.output != .hex,
+              let a = model.raw(l, cell, original: true).map(s.value(raw:)),
+              let b = model.raw(l, cell).map(s.value(raw:)) else { return "" }
+        let d = b - a
+        let pct = a != 0 ? " (\(Changes.percent(d / abs(a) * 100)))" : ""
+        return "   Δ \(d > 0 ? "+" : "")\(s.format(d))\(pct)"
     }
 
     private func tile(_ title: LocalizedStringKey, _ value: String, highlight: Bool = false) -> some View {

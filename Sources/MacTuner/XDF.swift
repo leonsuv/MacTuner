@@ -119,6 +119,12 @@ struct Axis {
     var source: Source
     var count: Int
     var scaling: Scaling
+
+    /// Axis values stored in the bin; nil for label or index axes.
+    var layout: DataLayout? {
+        if case .data(let l) = source { return l }
+        return nil
+    }
 }
 
 struct XDFItem: Identifiable {
@@ -135,6 +141,15 @@ struct XDFItem: Identifiable {
     var scaling: Scaling
 
     var isTable: Bool { if case .table = kind { return true } else { return false } }
+
+    /// Axis data stored in the bin (x first, then y).
+    var axisLayouts: [DataLayout] {
+        guard case .table(let x, let y) = kind else { return [] }
+        return [x.layout, y.layout].compactMap { $0 }
+    }
+
+    /// Everything of this item that lives in the bin: the values and the axes.
+    var layouts: [DataLayout] { [data] + axisLayouts }
 }
 
 struct XDFDefinition {

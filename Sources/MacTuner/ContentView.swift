@@ -3,19 +3,27 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @State private var search = ""
-    @State private var onlyChanged = false
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(search: search, onlyChanged: $onlyChanged)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 520)
+            SidebarView(search: search)
+                .navigationSplitViewColumnWidth(min: 240, ideal: 310, max: 520)
         } detail: {
             detail
         }
         .searchable(text: $search, placement: .sidebar, prompt: "Kennfeld suchen")
         .navigationTitle(model.windowTitle)
+        .navigationSubtitle(model.hasBin ? (model.definition?.title ?? "") : "")
         .toolbar {
             ToolbarItemGroup {
+                OpenMenu()
+                ControlGroup {
+                    Button { model.selectChange(-1) } label: { Label("Vorherige Änderung", systemImage: "chevron.up") }
+                        .help("Vorherige Änderung (⌥⌘↑)")
+                    Button { model.selectChange(1) } label: { Label("Nächste Änderung", systemImage: "chevron.down") }
+                        .help("Nächste Änderung (⌥⌘↓)")
+                }
+                .disabled(model.changedItems.isEmpty)
                 Button { model.undo() } label: { Label("Widerrufen", systemImage: "arrow.uturn.backward") }
                     .disabled(!model.canUndo)
                 Button { model.redo() } label: { Label("Wiederholen", systemImage: "arrow.uturn.forward") }
@@ -27,7 +35,9 @@ struct ContentView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { StatusBar() }
         .dropDestination(for: URL.self) { urls, _ in
-            urls.forEach(model.open)
+            // XDF first, so a dropped pair opens in the right order.
+            urls.sorted { ($0.pathExtension.lowercased() == "xdf") && !($1.pathExtension.lowercased() == "xdf") }
+                .forEach(model.open)
             return !urls.isEmpty
         }
         .alert("Hinweis", isPresented: Binding(get: { model.alert != nil }, set: { if !$0 { model.alert = nil } })) {
@@ -39,23 +49,19 @@ struct ContentView: View {
     }
 
     @ViewBuilder private var detail: some View {
-        if let def = model.definition, let idx = model.selection, idx < def.items.count {
+        if model.selection == AppModel.outsideSelection, model.hasBin, model.definition != nil {
+            OutsideChangesView()
+        } else if let item = model.selectedItem {
             if model.hasBin {
-                ItemDetailView(item: def.items[idx]).id(idx)
+                ItemDetailView(item: item).id(item.id)
             } else {
                 ContentUnavailableView("Keine BIN geladen", systemImage: "memorychip",
                                        description: Text("BIN öffnen (⇧⌘O) oder Datei ins Fenster ziehen."))
             }
+        } else if model.definition != nil && model.hasBin {
+            OverviewView()
         } else {
-            ContentUnavailableView {
-                Label(model.definition?.title ?? "MacTuner", systemImage: "tablecells")
-            } description: {
-                if model.definition == nil {
-                    Text("XDF öffnen (⌘O) und BIN öffnen (⇧⌘O) — oder beide Dateien ins Fenster ziehen.")
-                } else {
-                    Text("Links ein Kennfeld oder einen Wert auswählen.")
-                }
-            }
+            WelcomeView()
         }
     }
 }
@@ -67,12 +73,22 @@ struct StatusBar: View {
         HStack(spacing: 14) {
             entry("doc.text", "XDF", model.xdfURL?.lastPathComponent)
             entry("memorychip", "BIN", model.binURL.map { "\($0.lastPathComponent) (\(model.bin.count / 1024) KB)" })
-            entry("arrow.left.arrow.right", "Vergleich",
-                  model.hasBin ? (model.compareURL?.lastPathComponent ?? String(localized: "Stand beim Öffnen")) : nil)
+            if model.hasBin {
+                HStack(spacing: 4) {
+                    entry("arrow.left.arrow.right", "Vergleich", model.compareName)
+                    CompareMenu()
+                }
+            }
             Spacer()
-            if let def = model.definition, model.hasBin {
-                let n = def.items.filter(model.isChanged).count
-                if n > 0 { Text("\(n) geändert").foregroundStyle(.orange) }
+            if model.definition != nil, model.hasBin {
+                let n = model.changedItems.count
+                if n > 0 {
+                    Button { model.scope = .changed } label: {
+                        Text("\(n) geändert").foregroundStyle(Theme.changed)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Alle geänderten Kennfelder anzeigen (⌘2)")
+                }
             }
             Label("Prüfsumme wird nicht korrigiert", systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.secondary)
@@ -90,5 +106,65 @@ struct StatusBar: View {
         } icon: {
             Image(systemName: icon).foregroundStyle(.secondary)
         }
+    }
+}
+
+/// Toolbar menu: open files, recent files.
+struct OpenMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Menu {
+            Button("XDF öffnen …") { model.openXDFPanel() }
+            Button("BIN öffnen …") { model.openBinPanel() }
+            Button("Vergleichs-BIN öffnen …") { model.openComparePanel() }
+            RecentFilesSection()
+        } label: {
+            Label("Öffnen", systemImage: "folder")
+        }
+        .help("XDF, BIN oder Vergleich öffnen")
+    }
+}
+
+struct RecentFilesSection: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if !model.recentXDFs.isEmpty || !model.recentBins.isEmpty {
+            Divider()
+            Section("Zuletzt geöffnet") {
+                ForEach(model.recentXDFs + model.recentBins, id: \.self) { url in
+                    Button(url.lastPathComponent) { model.open(url) }
+                }
+            }
+        }
+    }
+}
+
+/// Small menu to choose what the bin is compared with.
+struct CompareMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Menu {
+            Button("Vergleichs-BIN öffnen …") { model.openComparePanel() }
+            Button("Vergleich: Stand beim Öffnen") { model.resetCompare() }
+                .disabled(model.compareURL == nil)
+            let others = model.recentBins.filter { $0 != model.binURL && $0 != model.compareURL }
+            if !others.isEmpty {
+                Divider()
+                Section("Zuletzt geöffnet") {
+                    ForEach(others, id: \.self) { url in
+                        Button(url.lastPathComponent) { model.loadCompare(url) }
+                    }
+                }
+            }
+        } label: {
+            Text("Ändern")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
+        .fixedSize()
+        .help("Vergleich wählen, z. B. die Original-BIN")
     }
 }

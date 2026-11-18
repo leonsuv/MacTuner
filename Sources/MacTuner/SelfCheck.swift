@@ -58,13 +58,6 @@ enum SelfCheck {
     }
 
     private static func axis(_ a: Axis, _ bin: [UInt8], _ n: Int) -> [String] {
-        switch a.source {
-        case .data(let l):
-            return (0..<n).map { c in BinCodec.raw(l, Cell(r: 0, c: c), in: bin).map { a.scaling.display(raw: $0, layout: l) } ?? "\(c)" }
-        case .labels(let ls):
-            return (0..<n).map { $0 < ls.count ? ls[$0] : "\($0)" }
-        case .none:
-            return (0..<n).map(String.init)
-        }
+        BinCodec.axisLabels(a, count: n, in: bin)
     }
 }

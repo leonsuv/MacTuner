@@ -26,14 +26,21 @@ It reads the same XDF files. When it saves the binary, only the bytes of the val
 
 - **Maps as heatmaps.** Axes are read from the binary or shown as labels. Long 1×N tables wrap into rows, and 2D maps can be transposed.
 - **Charts.** Every row is drawn as a line, with the comparison drawn dashed underneath.
-- **Comparison with a second binary**, such as the stock file. Without one, the app compares against the state when the file was opened. Changed cells get an orange dot, and the list can be filtered to *Changed only*.
+- **Comparison with a second binary**, such as the stock file. Without one, the app compares against the state when the file was opened.
+  - **Changed** tab in the sidebar: one flat list of every changed map and value, with how many cells changed and the largest deviation.
+    Changed axes count as changes, and bytes that changed outside the XDF (checksums, undefined maps) get their own entry.
+  - **Δ / Δ %** view: shows each cell's difference to the comparison instead of its value.
+  - Jump from change to change (⌥⌘↓ / ⌥⌘↑), reset a whole map to the comparison, or export the change list as text (⌘E).
 - **Spreadsheet-style editing:**
   - Select a range, type a number and press ↩ to set it.
   - **+ / −** changes the selection by the step size. You can also change it by a percentage or reset it to the original.
-  - Undo and redo.
+  - **Copy and paste** (⌘C / ⌘V) as tab-separated text, compatible with Excel, Numbers and TunerPro. One value fills the whole selection.
+  - **Interpolate** the selection horizontally, vertically or across the area from its four corners, using the axis values.
+  - Min, max and average of the selection. Undo and redo.
 - **Constants** with a large value display, raw value, step size and valid range.
-- **Search** across titles and descriptions. Categories come from the XDF.
-- Remembers the XDF, the binary and the selection between launches. Files can also be dropped onto the window.
+- **Search** across titles, descriptions and addresses. Categories come from the XDF.
+- **Favorites** (⌘D) for the maps you edit most, and an overview page with every change at a glance.
+- Remembers the XDF, the binary, the comparison and the selection between launches, with a list of recent files. Files can also be dropped onto the window.
 
 | Constant | Long table (1 × 152) |
 |---|---|
@@ -69,11 +76,17 @@ language has all keys and matching placeholders.
 | ⌘O / ⇧⌘O / ⌥⌘O | Open XDF / binary / comparison binary |
 | ⌘S / ⇧⌘S | Save / Save As |
 | ⌘Z / ⇧⌘Z | Undo / Redo |
+| ⌘1 / ⌘2 / ⌘3 | Sidebar: all / changed / favorites |
+| ⌥⌘↓ / ⌥⌘↑ | Next / previous change |
+| ⌘0 | Overview |
+| ⌘D | Add to / remove from favorites |
+| ⌘E / ⇧⌘C | Export / copy the change list |
 | Click, ⇧-click, ⌘-click | Select a cell, a range, individual cells |
 | Click an axis / the corner, ⌘A | Select a whole row or column / everything |
 | Arrow keys (with ⇧) | Move (extend) the selection |
 | Type a number + ↩ | Set the value |
 | + / − | Change by the step size |
+| ⌘C / ⌘V | Copy / paste cells |
 
 > [!WARNING]
 > **MacTuner does not correct checksums.** Let your flashing tool fix the checksum before you flash.
@@ -102,10 +115,10 @@ The macOS 27 SDK that ships with the Command Line Tools lacks the SwiftUI macro 
 
 ### Self-tests
 
-If you have an XDF and a matching binary, the build also runs two tests:
+If you have an XDF and a matching binary, the build also runs these tests (the third one only with `MACTUNER_CMP`):
 
 ```sh
-MACTUNER_XDF=def.xdf MACTUNER_BIN=stock.bin ./build_app.sh
+MACTUNER_XDF=def.xdf MACTUNER_BIN=stock.bin MACTUNER_CMP=tuned.bin ./build_app.sh
 ```
 
 - `--check <xdf> <bin>`
@@ -116,6 +129,10 @@ MACTUNER_XDF=def.xdf MACTUNER_BIN=stock.bin ./build_app.sh
   - edits a few values through the same code the app uses;
   - saves the file;
   - compares it byte by byte with the original. Only the intended bytes may differ.
+- `--changes <xdf> <bin> <compare>`
+  - prints the change list exactly as the app exports it;
+  - checks the changed maps, cells and bytes outside the XDF against a plain byte comparison;
+  - checks interpolation and the parsing of pasted text.
 
 ## License
 

@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Builds MacTuner.app into build/ (universal: arm64 + x86_64).
-# Optional self-test: MACTUNER_XDF=<xdf> MACTUNER_BIN=<bin> ./build_app.sh
+# Optional self-test: MACTUNER_XDF=<xdf> MACTUNER_BIN=<bin> [MACTUNER_CMP=<other bin>] ./build_app.sh
 # The macOS 27 SDK of the Command Line Tools lacks the SwiftUI macro plugin (only Xcode ships it),
 # so the newest SDK without that requirement is used when Xcode is not installed.
 set -euo pipefail
@@ -21,6 +21,8 @@ BIN=${MACTUNER_BIN:-}
 if [[ -f $XDF && -f $BIN ]]; then
   "$BIN_DIR/MacTuner" --check "$XDF" "$BIN" | head -2
   tmp=$(mktemp -t mactuner); "$BIN_DIR/MacTuner" --edit-test "$XDF" "$BIN" "$tmp" | tail -1; rm -f "$tmp"
+  CMP=${MACTUNER_CMP:-}
+  if [[ -f $CMP ]]; then "$BIN_DIR/MacTuner" --changes "$XDF" "$CMP" "$BIN" | tail -1; fi
 else
   echo "Selbsttest übersprungen (MACTUNER_XDF / MACTUNER_BIN setzen)"
 fi
