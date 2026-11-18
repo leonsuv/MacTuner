@@ -203,6 +203,10 @@ MACTUNER_XDF=def.xdf MACTUNER_BIN=stock.bin MACTUNER_CMP=tuned.bin ./build_app.s
   - checks the changed maps, cells and bytes outside the XDF against a plain byte comparison;
   - checks interpolation and the parsing of pasted text.
 
+## Contributing
+
+Issues and pull requests are welcome. The short version is in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
 [MIT](LICENSE). Not affiliated with TunerPro. No XDF or binary files are included.
