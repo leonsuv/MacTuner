@@ -108,6 +108,70 @@ MacTuner supports the parts of the TunerPro XDF 1.60 format that typical definit
 
 Flags/bitmasks (`XDFFLAG`), patches, checksum plugins and ADX/datalogging are not supported.
 
+## Roadmap
+
+Where MacTuner is heading: from an XDF viewer to the tuning workbench for the Mac. The list is not in a fixed order,
+and ideas and pull requests are welcome in [Issues](../../issues).
+
+### Comparing and tracking changes
+- [x] One list of every changed map and value, changed axes, bytes changed outside the XDF ([#1](../../issues/1))
+- [x] BIN / comparison / Δ / Δ % view per table, jump from change to change, change list export
+- [ ] Compare three or more files side by side (stock, stage 1, stage 2 …)
+- [ ] Whole-file hex diff with the XDF items drawn over it
+- [ ] Change history per map: every edit with time, old → new and a note, across sessions
+- [ ] Snapshots of a BIN with names ("before launch control"), restore or compare any two
+- [ ] Printable / PDF change report with charts, for customers and documentation
+
+### Editing
+- [x] Copy and paste as tab-separated text, interpolation, selection statistics
+- [ ] 3D surface view of 2D maps, rotatable, editable by dragging points
+- [ ] Smooth the selection, fill down / right, flatten to a value, set to the average
+- [ ] Edit the axes like values, with a check that they stay monotonic
+- [ ] Copy a whole map from another file or another map with the same layout
+- [ ] Lock maps that must not change, and warn when values leave a safe range
+- [ ] Unit conversion (°C/°F, Nm/lb-ft, bar/psi) per user preference
+- [ ] Command palette (⌘K) for every action and every map
+
+### Definitions
+- [ ] `XDFFLAG` bitmasks as switches, `XDFPATCH` patches with apply / revert
+- [ ] Built-in XDF editor: add and change maps, axes, formulas and categories, save the XDF
+- [ ] Create a map straight from a selected address range
+- [ ] Import A2L / DAMOS and WinOLS map packs (`.kp`), export them as XDF
+- [ ] Notes per map that are stored next to the XDF and survive XDF updates
+- [ ] Translate map names and descriptions of foreign-language XDFs on the fly
+
+### Finding maps
+- [ ] Map finder: detect tables and axes in unknown binaries by their structure, like WinOLS
+- [ ] Find the same maps in another software version and port a tune across versions
+- [ ] Apply a change list from one file to another (batch tuning)
+- [ ] Highlight maps that look wrong: non-monotonic axes, outliers, cut-off curves
+
+### Checksums and flashing
+- [ ] Checksum plugins per control unit family (Bosch ME7 / MED17 / EDC17, Siemens, Temic DQ250 …)
+- [ ] Check the checksum on open and before save, with a clear warning when it does not match
+- [ ] Hand-off to common flash tools, with the right file layout and name
+
+### Datalogging
+- [ ] Load logs (CSV, ADX) and trace the visited cells live in the heatmap
+- [ ] Hit-count overlay: which cells the engine actually uses, over a whole log
+- [ ] Log-based suggestions, e.g. for fuel or shift maps from measured values
+
+### Workflow and macOS
+- [x] Favorites, recent files, overview page, search by address
+- [ ] Projects: XDF, BIN, comparison, notes and snapshots in one file
+- [ ] Several files open at once in tabs or windows
+- [ ] Quick Look and Finder previews for `.xdf` and `.bin`
+- [ ] Shortcuts and AppleScript actions, plus a `mactuner` command line (diff, apply, export)
+- [ ] Plugins in JavaScript for custom checksums, importers and tools
+- [ ] iPad version for reviewing and small edits on the road
+
+### Quality and distribution
+- [x] 25 languages
+- [ ] Notarized builds and automatic updates
+- [ ] Homebrew cask (`brew install --cask mactuner`)
+- [ ] VoiceOver support and color-blind friendly heatmap palettes
+- [ ] Test suite with public sample definitions for every supported data type
+
 ## Building
 
 The Command Line Tools are enough; Xcode is not required.
