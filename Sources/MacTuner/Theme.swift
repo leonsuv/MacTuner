@@ -32,6 +32,8 @@ enum Theme {
 
     static let cardBackground = Color(nsColor: .controlBackgroundColor)
     static let changed = Color.orange
+    /// Marks the read-only comparison view.
+    static let compare = Color.teal
 }
 
 struct Card: ViewModifier {

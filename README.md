@@ -29,7 +29,9 @@ It reads the same XDF files. When it saves the binary, only the bytes of the val
 - **Comparison with a second binary**, such as the stock file. Without one, the app compares against the state when the file was opened.
   - **Changed** tab in the sidebar: one flat list of every changed map and value, with how many cells changed and the largest deviation.
     Changed axes count as changes, and bytes that changed outside the XDF (checksums, undefined maps) get their own entry.
-  - **Δ / Δ %** view: shows each cell's difference to the comparison instead of its value.
+  - Switch a table between **BIN · Comparison · Δ · Δ %**, or flip between BIN and comparison with Tab.
+    The comparison view is read-only and framed in teal; Δ shows each cell's difference to the comparison.
+  - Swap BIN and comparison to edit the other file.
   - Jump from change to change (⌥⌘↓ / ⌥⌘↑), reset a whole map to the comparison, or export the change list as text (⌘E).
 - **Spreadsheet-style editing:**
   - Select a range, type a number and press ↩ to set it.
@@ -87,6 +89,7 @@ language has all keys and matching placeholders.
 | Type a number + ↩ | Set the value |
 | + / − | Change by the step size |
 | ⌘C / ⌘V | Copy / paste cells |
+| Tab | Table: BIN ⇄ comparison |
 
 > [!WARNING]
 > **MacTuner does not correct checksums.** Let your flashing tool fix the checksum before you flash.

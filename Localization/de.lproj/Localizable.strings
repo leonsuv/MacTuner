@@ -132,8 +132,11 @@
 "Keine Favoriten" = "Keine Favoriten";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D).";
 "Namen kopieren" = "Namen kopieren";
-"Werte" = "Werte";
-"Werte oder Differenz zum Vergleich anzeigen" = "Werte oder Differenz zum Vergleich anzeigen";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "Vergleich – nur Ansicht (Tab: zurück zur BIN)";
+"BIN gestrichelt" = "BIN gestrichelt";
+"BIN und Vergleich tauschen" = "BIN und Vergleich tauschen";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "Den Vergleich bearbeiten und die BIN als Vergleich nehmen";
 "Alles auswählen" = "Alles auswählen";
 "Geänderte Zellen auswählen" = "Geänderte Zellen auswählen";
 "Interpolieren" = "Interpolieren";

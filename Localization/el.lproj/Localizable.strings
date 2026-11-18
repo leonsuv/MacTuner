@@ -132,8 +132,11 @@
 "Keine Favoriten" = "Κανένα αγαπημένο";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "Σημειώστε χάρτες με το αστέρι ή με δεξί κλικ (⌘D).";
 "Namen kopieren" = "Αντιγραφή ονόματος";
-"Werte" = "Τιμές";
-"Werte oder Differenz zum Vergleich anzeigen" = "Εμφάνιση τιμών ή της διαφοράς από τη σύγκριση";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "Εμφάνιση του BIN, της σύγκρισης ή της διαφοράς (Tab: BIN ⇄ σύγκριση)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "Σύγκριση – μόνο προβολή (Tab: πίσω στο BIN)";
+"BIN gestrichelt" = "BIN διακεκομμένο";
+"BIN und Vergleich tauschen" = "Εναλλαγή BIN και σύγκρισης";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "Επεξεργασία της σύγκρισης και χρήση του BIN ως σύγκριση";
 "Alles auswählen" = "Επιλογή όλων";
 "Geänderte Zellen auswählen" = "Επιλογή αλλαγμένων κελιών";
 "Interpolieren" = "Παρεμβολή";

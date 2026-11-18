@@ -132,8 +132,11 @@
 "Keine Favoriten" = "Favori yok";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "Haritaları yıldızla veya sağ tıklayarak işaretleyin (⌘D).";
 "Namen kopieren" = "Adı Kopyala";
-"Werte" = "Değerler";
-"Werte oder Differenz zum Vergleich anzeigen" = "Değerleri veya karşılaştırmaya göre farkı göster";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "BIN'i, karşılaştırmayı veya farkı göster (Tab: BIN ⇄ karşılaştırma)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "Karşılaştırma – yalnızca görüntüleme (Tab: BIN'e dön)";
+"BIN gestrichelt" = "BIN kesikli";
+"BIN und Vergleich tauschen" = "BIN ile Karşılaştırmayı Değiştir";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "Karşılaştırmayı düzenle ve BIN'i karşılaştırma olarak kullan";
 "Alles auswählen" = "Tümünü Seç";
 "Geänderte Zellen auswählen" = "Değişen Hücreleri Seç";
 "Interpolieren" = "Enterpolasyon";

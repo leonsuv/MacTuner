@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// What the cells show: the values, or their difference to the comparison.
+/// What the cells show: the bin, the comparison, or the difference between them.
 enum ValueMode: String {
-    case values, delta, percent
+    case values, compare, delta, percent
 }
 
 struct TableEditorView: View {
@@ -41,6 +41,8 @@ struct TableEditorView: View {
     private var canWrap: Bool { l.rows == 1 && l.cols > Self.wrapWidth }
     /// Hex tables have no meaningful difference.
     private var shownMode: ValueMode { s.output == .hex ? .values : valueMode }
+    /// The comparison is only shown, never edited.
+    private var isCompareView: Bool { shownMode == .compare }
 
     private var displayRows: Int {
         switch mode {
@@ -86,22 +88,31 @@ struct TableEditorView: View {
     var body: some View {
         let xs = model.axisLabels(x, count: l.cols)
         let ys = model.axisLabels(y, count: l.rows)
-        let values = (0..<l.rows).map { r in (0..<l.cols).map { c in model.raw(l, Cell(r: r, c: c)).map(s.value(raw:)) } }
-        let flat = values.flatMap { $0 }.compactMap { $0 }
+        let values = grid(original: false)
+        let shown = isCompareView ? grid(original: true) : values
+        let flat = shown.flatMap { $0 }.compactMap { $0 }
         let lo = flat.min() ?? 0, hi = flat.max() ?? 0
-        let deltas = shownMode == .values ? [] : self.deltas(values)
+        let deltas = shownMode == .delta || shownMode == .percent ? self.deltas(values) : []
         let maxDelta = deltas.flatMap { $0 }.compactMap { $0 }.map(abs).max() ?? 0
 
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                EditControls(scaling: s, enabled: !selection.isEmpty,
+                EditControls(scaling: s, enabled: !selection.isEmpty && !isCompareView,
                              canRestore: selection.contains { model.isChanged(l, $0) },
                              input: $input, status: selectionText) { op in apply(op, cells: selection) }
                 actionsMenu
             }
 
             HStack(spacing: 10) {
-                Text(summary(values))
+                if isCompareView {
+                    Label("Vergleich – nur Ansicht (Tab: zurück zur BIN)", systemImage: "eye")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.compare)
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(Theme.compare.opacity(0.15), in: Capsule())
+                        .fixedSize()
+                }
+                Text(summary(shown))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -110,14 +121,15 @@ struct TableEditorView: View {
                 Spacer(minLength: 8)
                 if s.output != .hex {
                     Picker("Anzeige", selection: $valueMode) {
-                        Text("Werte").tag(ValueMode.values)
+                        Text(verbatim: "BIN").tag(ValueMode.values)
+                        Text("Vergleich").tag(ValueMode.compare)
                         Text(verbatim: "Δ").tag(ValueMode.delta)
                         Text(verbatim: "Δ %").tag(ValueMode.percent)
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .fixedSize()
-                    .help("Werte oder Differenz zum Vergleich anzeigen")
+                    .help("BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)")
                 }
                 ControlGroup {
                     Toggle(isOn: layoutToggle) {
@@ -133,7 +145,7 @@ struct TableEditorView: View {
             .controlSize(.small)
 
             ScrollView([.horizontal, .vertical]) {
-                grid(xs: xs, ys: ys, values: values, deltas: deltas, lo: lo, hi: hi, maxDelta: maxDelta)
+                grid(xs: xs, ys: ys, values: shown, deltas: deltas, lo: lo, hi: hi, maxDelta: maxDelta)
                     .padding(10)
             }
             .focusable()
@@ -144,12 +156,14 @@ struct TableEditorView: View {
             .onPasteCommand(of: [.plainText, .utf8PlainText, .tabSeparatedText]) { _ in pasteFromClipboard() }
             .help("⇧-Klick Bereich · ⌘-Klick einzeln · Achse klicken = ganze Zeile/Spalte · Zahl tippen + ↩ setzt · +/− Schritt")
             .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.separator.opacity(0.6)))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isCompareView ? AnyShapeStyle(Theme.compare) : AnyShapeStyle(.separator.opacity(0.6)),
+                              lineWidth: isCompareView ? 2 : 1))
             .frame(maxHeight: CGFloat(displayRows + 1) * (Self.cellHeight + Self.gap) + 22)
             .layoutPriority(1)
 
             if showChart {
-                TableChart(points: chartPoints(values: values, ys: ys), seriesCount: l.rows,
+                TableChart(points: chartPoints(values: shown, ys: ys), seriesCount: l.rows, dashedIsBin: isCompareView,
                            units: s.units, xUnits: mode == .wrapped || x.scaling.units.isEmpty ? "" : x.scaling.units)
                     .frame(minHeight: 200, maxHeight: 380)
             }
@@ -159,7 +173,7 @@ struct TableEditorView: View {
     }
 
     private func apply(_ op: EditOp, cells: Set<Cell>) {
-        guard !cells.isEmpty else { return }
+        guard !cells.isEmpty, !isCompareView else { return }
         withAnimation(.easeOut(duration: 0.12)) { model.apply(op, item: item, cells: cells) }
         gridFocused = true
     }
@@ -178,13 +192,13 @@ struct TableEditorView: View {
                 Button("Vertikal") { interpolate(.vertical) }
                 Button("Flächig (aus den vier Ecken)") { interpolate(.bilinear) }
             }
-            .disabled(selection.count < 3 || s.output == .hex)
+            .disabled(selection.count < 3 || s.output == .hex || isCompareView)
             Divider()
             Button("Kopieren") { if let t = copyText() { setClipboard(t) } }
                 .disabled(selection.isEmpty)
             Button("Kopieren mit Achsen") { setClipboard(copyTextWithAxes()) }
             Button("Einfügen") { pasteFromClipboard() }
-                .disabled(selection.isEmpty)
+                .disabled(selection.isEmpty || isCompareView)
         } label: {
             Image(systemName: "ellipsis.circle")
         }
@@ -234,7 +248,7 @@ struct TableEditorView: View {
         let d = selection.map(display)
         let i0 = d.map(\.0).min()!, i1 = d.map(\.0).max()!, j0 = d.map(\.1).min()!, j1 = d.map(\.1).max()!
         let rows = (i0...i1).map { i in
-            (j0...j1).map { j in cell(i, j).flatMap { selection.contains($0) ? model.text(l, s, $0) : nil } ?? "" }
+            (j0...j1).map { j in cell(i, j).flatMap { selection.contains($0) ? model.text(l, s, $0, original: isCompareView) : nil } ?? "" }
         }
         return TableOps.tsv(rows)
     }
@@ -250,7 +264,7 @@ struct TableEditorView: View {
 
     /// One value fills the whole selection; a block is pasted from the selection's top-left cell.
     private func pasteFromClipboard() {
-        guard let text = NSPasteboard.general.string(forType: .string), !selection.isEmpty else { return }
+        guard !isCompareView, let text = NSPasteboard.general.string(forType: .string), !selection.isEmpty else { return }
         let grid = TableOps.parseGrid(text)
         guard !grid.isEmpty else { return }
         var values: [Cell: Double] = [:]
@@ -272,6 +286,11 @@ struct TableEditorView: View {
     }
 
     // MARK: Grid
+
+    /// Physical values of the bin or of the comparison, [row][col].
+    private func grid(original: Bool) -> [[Double?]] {
+        (0..<l.rows).map { r in (0..<l.cols).map { c in model.raw(l, Cell(r: r, c: c), original: original).map(s.value(raw:)) } }
+    }
 
     /// Difference to the comparison per cell (physical units or percent), nil for unchanged cells.
     private func deltas(_ values: [[Double?]]) -> [[Double?]] {
@@ -362,9 +381,9 @@ struct TableEditorView: View {
         let colors: (bg: Color, fg: Color)
         let text: String
         switch shownMode {
-        case .values:
+        case .values, .compare:
             colors = heat(value, lo: lo, hi: hi)
-            text = model.text(l, s, c)
+            text = model.text(l, s, c, original: isCompareView)
         case .delta, .percent:
             if let delta {
                 colors = Theme.diverging(maxDelta > 0 ? delta / maxDelta : 0)
@@ -382,7 +401,7 @@ struct TableEditorView: View {
             .frame(minWidth: Self.cellWidth, minHeight: Self.cellHeight)
             .background(colors.bg, in: shape)
             .overlay(alignment: .topTrailing) {
-                if changed && shownMode == .values {
+                if changed && (shownMode == .values || isCompareView) {
                     Circle()
                         .fill(Theme.changed)
                         .overlay(Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1))
@@ -398,7 +417,7 @@ struct TableEditorView: View {
             }
             .zIndex(selected ? 1 : 0)
             .contentShape(shape)
-            .help(changed ? String(localized: "Vergleich: \(model.text(l, s, c, original: true))") : "")
+            .help(changed ? (isCompareView ? "BIN: \(model.text(l, s, c))" : String(localized: "Vergleich: \(model.text(l, s, c, original: true))")) : "")
             .onTapGesture { click(c) }
     }
 
@@ -426,10 +445,11 @@ struct TableEditorView: View {
         guard !selection.isEmpty else { return String(localized: "Mehrere Zellen: ⇧-Klick / ⌘-Klick · Werte kopieren und einfügen: ⌘C / ⌘V") }
         let units = s.units.isEmpty ? "" : " \(s.units)"
         if selection.count == 1, let c = selection.first {
-            var parts = [String(localized: "Wert \(model.text(l, s, c))") + units]
+            let bin = model.text(l, s, c), cmp = model.text(l, s, c, original: true)
+            var parts = [isCompareView ? String(localized: "Vergleich: \(cmp)") + units : String(localized: "Wert \(bin)") + units]
             if model.isChanged(l, c) {
-                parts.append(String(localized: "Vergleich: \(model.text(l, s, c, original: true))"))
-                if s.output != .hex, let b = values[c.r][c.c], let a = model.raw(l, c, original: true).map(s.value(raw:)) {
+                parts.append(isCompareView ? "BIN: \(bin)" : String(localized: "Vergleich: \(cmp)"))
+                if s.output != .hex, let b = model.raw(l, c).map(s.value(raw:)), let a = model.raw(l, c, original: true).map(s.value(raw:)) {
                     parts.append("Δ " + signed(s.format(b - a)) + (a != 0 ? " (\(Changes.percent((b - a) / abs(a) * 100)))" : ""))
                 }
             }
@@ -494,8 +514,13 @@ struct TableEditorView: View {
         case .downArrow: move(1, 0, extend: press.modifiers.contains(.shift)); return .handled
         case .leftArrow: move(0, -1, extend: press.modifiers.contains(.shift)); return .handled
         case .rightArrow: move(0, 1, extend: press.modifiers.contains(.shift)); return .handled
+        case .tab:
+            guard s.output != .hex else { return .ignored }
+            valueMode = isCompareView ? .values : .compare
+            input = ""
+            return .handled
         case .return:
-            if let v = s.parse(input), !selection.isEmpty { model.apply(.set(v), item: item, cells: selection) }
+            if !isCompareView, let v = s.parse(input), !selection.isEmpty { model.apply(.set(v), item: item, cells: selection) }
             input = ""
             return .handled
         case .escape:
@@ -508,7 +533,7 @@ struct TableEditorView: View {
             break
         }
         let ch = press.characters
-        guard ch.count == 1, !selection.isEmpty else { return .ignored }
+        guard ch.count == 1, !selection.isEmpty, !isCompareView else { return .ignored }
         if (ch == "+" || ch == "-") && input.isEmpty {
             model.apply(.add(ch == "+" ? s.rawStep : -s.rawStep), item: item, cells: selection)
             return .handled
@@ -551,7 +576,7 @@ struct TableEditorView: View {
             }
             if changedRow {
                 for c in 0..<l.cols {
-                    if let v = model.raw(l, Cell(r: r, c: c), original: true).map(s.value(raw:)) {
+                    if let v = model.raw(l, Cell(r: r, c: c), original: !isCompareView).map(s.value(raw:)) {
                         pts.append(.init(id: pts.count, series: name, x: xv[c], y: v, original: true))
                     }
                 }

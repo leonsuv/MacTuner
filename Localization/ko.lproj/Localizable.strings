@@ -132,8 +132,11 @@
 "Keine Favoriten" = "즐겨찾기 없음";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "별표나 오른쪽 클릭으로 맵을 즐겨찾기에 추가하십시오 (⌘D).";
 "Namen kopieren" = "이름 복사";
-"Werte" = "값";
-"Werte oder Differenz zum Vergleich anzeigen" = "값 또는 비교와의 차이 보기";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "BIN, 비교 또는 차이 보기 (Tab: BIN ⇄ 비교)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "비교 — 보기 전용 (Tab: BIN으로 돌아가기)";
+"BIN gestrichelt" = "BIN은 점선";
+"BIN und Vergleich tauschen" = "BIN과 비교 바꾸기";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "비교를 편집하고 BIN을 비교로 사용";
 "Alles auswählen" = "모두 선택";
 "Geänderte Zellen auswählen" = "변경된 셀 선택";
 "Interpolieren" = "보간";

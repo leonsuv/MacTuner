@@ -132,8 +132,11 @@
 "Keine Favoriten" = "Nincsenek kedvencek";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "Jelölje meg a térképeket a csillaggal vagy jobb kattintással (⌘D).";
 "Namen kopieren" = "Név másolása";
-"Werte" = "Értékek";
-"Werte oder Differenz zum Vergleich anzeigen" = "Értékek vagy az összehasonlítástól való eltérés megjelenítése";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "A BIN, az összehasonlítás vagy az eltérés megjelenítése (Tab: BIN ⇄ összehasonlítás)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "Összehasonlítás – csak megtekintés (Tab: vissza a BIN-hez)";
+"BIN gestrichelt" = "BIN szaggatottan";
+"BIN und Vergleich tauschen" = "BIN és összehasonlítás felcserélése";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "Az összehasonlítás szerkesztése, a BIN lesz az összehasonlítás";
 "Alles auswählen" = "Összes kijelölése";
 "Geänderte Zellen auswählen" = "Módosított cellák kijelölése";
 "Interpolieren" = "Interpolálás";

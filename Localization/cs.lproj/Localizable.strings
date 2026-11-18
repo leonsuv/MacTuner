@@ -132,8 +132,11 @@
 "Keine Favoriten" = "Žádné oblíbené";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "Označte mapy hvězdičkou nebo pravým kliknutím (⌘D).";
 "Namen kopieren" = "Kopírovat název";
-"Werte" = "Hodnoty";
-"Werte oder Differenz zum Vergleich anzeigen" = "Zobrazit hodnoty nebo rozdíl oproti srovnání";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "Zobrazit BIN, srovnání nebo rozdíl (Tab: BIN ⇄ srovnání)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "Srovnání – pouze zobrazení (Tab: zpět na BIN)";
+"BIN gestrichelt" = "BIN čárkovaně";
+"BIN und Vergleich tauschen" = "Prohodit BIN a srovnání";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "Upravovat srovnání a BIN použít jako srovnání";
 "Alles auswählen" = "Vybrat vše";
 "Geänderte Zellen auswählen" = "Vybrat změněné buňky";
 "Interpolieren" = "Interpolovat";

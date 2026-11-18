@@ -217,6 +217,13 @@ final class AppModel {
         }
     }
 
+    /// The comparison becomes the edited file and the bin becomes the comparison.
+    func swapWithCompare() {
+        guard let compareURL, let binURL, confirmDiscard() else { return }
+        loadBin(compareURL)
+        loadCompare(binURL)
+    }
+
     func resetCompare() {
         compare = hasBin ? openedSnapshot : nil
         compareURL = nil

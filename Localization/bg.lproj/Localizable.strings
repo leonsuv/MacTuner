@@ -132,8 +132,11 @@
 "Keine Favoriten" = "Няма любими";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "Отбележете карти със звездата или с щракване с десния бутон (⌘D).";
 "Namen kopieren" = "Копирай името";
-"Werte" = "Стойности";
-"Werte oder Differenz zum Vergleich anzeigen" = "Покажи стойностите или разликата спрямо сравнението";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "Покажи BIN, сравнението или разликата (Tab: BIN ⇄ сравнение)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "Сравнение – само преглед (Tab: обратно към BIN)";
+"BIN gestrichelt" = "BIN с пунктир";
+"BIN und Vergleich tauschen" = "Размени BIN и сравнението";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "Редактирай сравнението и използвай BIN като сравнение";
 "Alles auswählen" = "Избери всички";
 "Geänderte Zellen auswählen" = "Избери променените клетки";
 "Interpolieren" = "Интерполирай";

@@ -132,8 +132,11 @@
 "Keine Favoriten" = "Inga favoriter";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "Spara kartor med stjärnan eller genom att högerklicka (⌘D).";
 "Namen kopieren" = "Kopiera namn";
-"Werte" = "Värden";
-"Werte oder Differenz zum Vergleich anzeigen" = "Visa värden eller skillnaden mot jämförelsen";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "Visa BIN, jämförelsen eller skillnaden (Tab: BIN ⇄ jämförelse)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "Jämförelse – endast visning (Tab: tillbaka till BIN)";
+"BIN gestrichelt" = "BIN streckad";
+"BIN und Vergleich tauschen" = "Byt plats på BIN och jämförelse";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "Redigera jämförelsen och använd BIN som jämförelse";
 "Alles auswählen" = "Markera allt";
 "Geänderte Zellen auswählen" = "Markera ändrade celler";
 "Interpolieren" = "Interpolera";

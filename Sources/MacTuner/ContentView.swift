@@ -150,6 +150,9 @@ struct CompareMenu: View {
             Button("Vergleichs-BIN öffnen …") { model.openComparePanel() }
             Button("Vergleich: Stand beim Öffnen") { model.resetCompare() }
                 .disabled(model.compareURL == nil)
+            Button("BIN und Vergleich tauschen") { model.swapWithCompare() }
+                .disabled(model.compareURL == nil)
+                .help("Den Vergleich bearbeiten und die BIN als Vergleich nehmen")
             let others = model.recentBins.filter { $0 != model.binURL && $0 != model.compareURL }
             if !others.isEmpty {
                 Divider()

@@ -277,6 +277,8 @@ struct TableChart: View {
 
     let points: [Point]
     let seriesCount: Int
+    /// In the comparison view the bin is the dashed line.
+    var dashedIsBin = false
     let units: String
     let xUnits: String
 
@@ -287,8 +289,14 @@ struct TableChart: View {
                 if !xUnits.isEmpty { Text("über \(xUnits)").font(.caption).foregroundStyle(.secondary) }
                 Spacer()
                 if points.contains(where: \.original) {
-                    Label("Vergleich gestrichelt", systemImage: "line.diagonal")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Group {
+                        if dashedIsBin {
+                            Label("BIN gestrichelt", systemImage: "line.diagonal")
+                        } else {
+                            Label("Vergleich gestrichelt", systemImage: "line.diagonal")
+                        }
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
                 }
             }
             Chart(points) { p in

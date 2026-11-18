@@ -132,8 +132,11 @@
 "Keine Favoriten" = "お気に入りなし";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "星印または右クリックでマップをお気に入りに追加できます (⌘D)。";
 "Namen kopieren" = "名前をコピー";
-"Werte" = "値";
-"Werte oder Differenz zum Vergleich anzeigen" = "値または比較との差分を表示";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "BIN、比較、差分を表示 (Tab: BIN ⇄ 比較)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "比較 — 表示のみ (Tab: BIN に戻る)";
+"BIN gestrichelt" = "BIN は破線";
+"BIN und Vergleich tauschen" = "BIN と比較を入れ替え";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "比較を編集し、BIN を比較として使用";
 "Alles auswählen" = "すべてを選択";
 "Geänderte Zellen auswählen" = "変更されたセルを選択";
 "Interpolieren" = "補間";

@@ -132,8 +132,11 @@
 "Keine Favoriten" = "Nuk ka të preferuara";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "Shënoni hartat me yllin ose me klik të djathtë (⌘D).";
 "Namen kopieren" = "Kopjo emrin";
-"Werte" = "Vlerat";
-"Werte oder Differenz zum Vergleich anzeigen" = "Shfaq vlerat ose diferencën ndaj krahasimit";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "Shfaq BIN-in, krahasimin ose diferencën (Tab: BIN ⇄ krahasim)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "Krahasimi – vetëm shikim (Tab: kthehu te BIN)";
+"BIN gestrichelt" = "BIN me vija";
+"BIN und Vergleich tauschen" = "Ndërro BIN-in dhe krahasimin";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "Ndrysho krahasimin dhe përdor BIN-in si krahasim";
 "Alles auswählen" = "Përzgjidh të gjitha";
 "Geänderte Zellen auswählen" = "Përzgjidh qelizat e ndryshuara";
 "Interpolieren" = "Interpolo";

@@ -132,8 +132,11 @@
 "Keine Favoriten" = "Aucun favori";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "Ajoutez des cartographies avec l’étoile ou par clic droit (⌘D).";
 "Namen kopieren" = "Copier le nom";
-"Werte" = "Valeurs";
-"Werte oder Differenz zum Vergleich anzeigen" = "Afficher les valeurs ou la différence avec la comparaison";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "Afficher le BIN, la comparaison ou la différence (Tab : BIN ⇄ comparaison)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "Comparaison — lecture seule (Tab : retour au BIN)";
+"BIN gestrichelt" = "BIN en pointillés";
+"BIN und Vergleich tauschen" = "Permuter BIN et comparaison";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "Modifier la comparaison et utiliser le BIN comme comparaison";
 "Alles auswählen" = "Tout sélectionner";
 "Geänderte Zellen auswählen" = "Sélectionner les cellules modifiées";
 "Interpolieren" = "Interpoler";

@@ -132,8 +132,11 @@
 "Keine Favoriten" = "Nema favorita";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "Označite mape zvjezdicom ili desnim klikom (⌘D).";
 "Namen kopieren" = "Kopiraj naziv";
-"Werte" = "Vrijednosti";
-"Werte oder Differenz zum Vergleich anzeigen" = "Prikaži vrijednosti ili razliku u odnosu na usporedbu";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "Prikaži BIN, usporedbu ili razliku (Tab: BIN ⇄ usporedba)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "Usporedba – samo prikaz (Tab: natrag na BIN)";
+"BIN gestrichelt" = "BIN isprekidano";
+"BIN und Vergleich tauschen" = "Zamijeni BIN i usporedbu";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "Uređuj usporedbu, a BIN koristi kao usporedbu";
 "Alles auswählen" = "Odaberi sve";
 "Geänderte Zellen auswählen" = "Odaberi promijenjene ćelije";
 "Interpolieren" = "Interpoliraj";

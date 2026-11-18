@@ -132,8 +132,11 @@
 "Keine Favoriten" = "Geen favorieten";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "Bewaar kenvelden met de ster of via rechtsklik (⌘D).";
 "Namen kopieren" = "Kopieer naam";
-"Werte" = "Waarden";
-"Werte oder Differenz zum Vergleich anzeigen" = "Waarden of het verschil met de vergelijking tonen";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "De BIN, de vergelijking of het verschil tonen (Tab: BIN ⇄ vergelijking)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "Vergelijking – alleen weergave (Tab: terug naar de BIN)";
+"BIN gestrichelt" = "BIN gestreept";
+"BIN und Vergleich tauschen" = "BIN en vergelijking omwisselen";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "De vergelijking bewerken en de BIN als vergelijking gebruiken";
 "Alles auswählen" = "Selecteer alles";
 "Geänderte Zellen auswählen" = "Selecteer gewijzigde cellen";
 "Interpolieren" = "Interpoleer";

@@ -132,8 +132,11 @@
 "Keine Favoriten" = "无收藏";
 "Kennfelder mit dem Stern oder per Rechtsklick merken (⌘D)." = "点按星标或右键点按即可收藏图谱 (⌘D)。";
 "Namen kopieren" = "拷贝名称";
-"Werte" = "数值";
-"Werte oder Differenz zum Vergleich anzeigen" = "显示数值或与对比的差值";
+"BIN, Vergleich oder Differenz anzeigen (Tab: BIN ⇄ Vergleich)" = "显示 BIN、对比或差值 (Tab: BIN ⇄ 对比)";
+"Vergleich – nur Ansicht (Tab: zurück zur BIN)" = "对比 — 仅查看 (Tab: 返回 BIN)";
+"BIN gestrichelt" = "BIN 为虚线";
+"BIN und Vergleich tauschen" = "交换 BIN 和对比";
+"Den Vergleich bearbeiten und die BIN als Vergleich nehmen" = "编辑对比，并将 BIN 用作对比";
 "Alles auswählen" = "全选";
 "Geänderte Zellen auswählen" = "选择已更改的单元格";
 "Interpolieren" = "插值";
