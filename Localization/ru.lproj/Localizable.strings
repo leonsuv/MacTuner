@@ -85,7 +85,7 @@
 "Achse geändert" = "Ось изменена";
 " – Änderungen" = " – изменения";
 "MacTuner — Änderungsliste" = "MacTuner — Список изменений";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "Изменено карт/значений: %lld, байт вне XDF: %lld";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "Изменено карт/значений: %lld, байт вне XDF: %lld";
 "Achse %@" = "Ось %@";
 "Außerhalb der XDF" = "Вне XDF";
 "Änderungsliste exportieren …" = "Экспортировать список изменений…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Сохранить список изменений как текстовый файл (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Сравнение идёт с состоянием при открытии. Чтобы увидеть все изменения относительно оригинала, откройте оригинальный BIN для сравнения.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Все карты совпадают со сравнением.";
-"%lld Bytes in %lld Bereichen" = "Байт: %lld, диапазонов: %lld";
+"Bytes: %lld · Bereiche: %lld" = "Байт: %lld, диапазонов: %lld";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Эти байты отличаются от сравнения, но не относятся ни к одной карте или оси XDF — например, контрольные суммы, неопределённые карты или сравнение с другой версией ПО.";
-"%lld Bytes" = "Байт: %lld";
-"%lld Bereiche" = "Диапазонов: %lld";
+"Bytes: %lld" = "Байт: %lld";
+"Bereiche: %lld" = "Диапазонов: %lld";
 "Alle auf Vergleich zurücksetzen" = "Вернуть всё к сравнению";
 "Adresse" = "Адрес";
 "Länge" = "Длина";

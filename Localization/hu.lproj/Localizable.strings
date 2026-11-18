@@ -85,7 +85,7 @@
 "Achse geändert" = "Tengely módosítva";
 " – Änderungen" = " – módosítások";
 "MacTuner — Änderungsliste" = "MacTuner — Módosítások listája";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "%lld térkép/érték módosítva, %lld bájt az XDF-en kívül";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "%lld térkép/érték módosítva, %lld bájt az XDF-en kívül";
 "Achse %@" = "%@ tengely";
 "Außerhalb der XDF" = "Az XDF-en kívül";
 "Änderungsliste exportieren …" = "Módosítások listájának exportálása…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "A módosítások listájának mentése szövegfájlként (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Az összehasonlítás a megnyitáskori állapottal történik. Az eredetihez képesti összes módosításhoz nyissa meg az eredeti BIN-t összehasonlításként.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Minden térkép egyezik az összehasonlítással.";
-"%lld Bytes in %lld Bereichen" = "%lld bájt %lld tartományban";
+"Bytes: %lld · Bereiche: %lld" = "%lld bájt %lld tartományban";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Ezek a bájtok eltérnek az összehasonlítástól, de nem tartoznak az XDF egyik térképéhez vagy tengelyéhez sem — például ellenőrzőösszegek, nem definiált térképek vagy egy másik szoftververzióval való összehasonlítás.";
-"%lld Bytes" = "%lld bájt";
-"%lld Bereiche" = "%lld tartomány";
+"Bytes: %lld" = "%lld bájt";
+"Bereiche: %lld" = "%lld tartomány";
 "Alle auf Vergleich zurücksetzen" = "Összes visszaállítása az összehasonlításra";
 "Adresse" = "Cím";
 "Länge" = "Hossz";

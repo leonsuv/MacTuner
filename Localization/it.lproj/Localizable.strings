@@ -85,7 +85,7 @@
 "Achse geändert" = "Asse modificato";
 " – Änderungen" = " – modifiche";
 "MacTuner — Änderungsliste" = "MacTuner — Elenco modifiche";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "%lld mappe/valori modificati, %lld byte fuori dall’XDF";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "Mappe/valori modificati: %lld, byte fuori dall’XDF: %lld";
 "Achse %@" = "Asse %@";
 "Außerhalb der XDF" = "Fuori dall’XDF";
 "Änderungsliste exportieren …" = "Esporta elenco modifiche…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Salva l’elenco modifiche come file di testo (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Il confronto è con lo stato all’apertura. Per vedere tutte le modifiche rispetto all’originale, apri il BIN originale come confronto.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Tutte le mappe corrispondono al confronto.";
-"%lld Bytes in %lld Bereichen" = "%lld byte in %lld intervalli";
+"Bytes: %lld · Bereiche: %lld" = "Byte: %lld · intervalli: %lld";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Questi byte differiscono dal confronto, ma non appartengono ad alcuna mappa né ad alcun asse dell’XDF — ad esempio checksum, mappe non definite o un confronto con un’altra versione software.";
-"%lld Bytes" = "%lld byte";
-"%lld Bereiche" = "%lld intervalli";
+"Bytes: %lld" = "Byte: %lld";
+"Bereiche: %lld" = "Intervalli: %lld";
 "Alle auf Vergleich zurücksetzen" = "Ripristina tutto al confronto";
 "Adresse" = "Indirizzo";
 "Länge" = "Lunghezza";

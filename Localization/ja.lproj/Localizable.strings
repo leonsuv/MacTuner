@@ -85,7 +85,7 @@
 "Achse geändert" = "軸変更あり";
 " – Änderungen" = " – 変更点";
 "MacTuner — Änderungsliste" = "MacTuner — 変更リスト";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "%lld 件のマップ/値を変更、XDF 外 %lld バイト";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "%lld 件のマップ/値を変更、XDF 外 %lld バイト";
 "Achse %@" = "軸 %@";
 "Außerhalb der XDF" = "XDF 外";
 "Änderungsliste exportieren …" = "変更リストを書き出す…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "変更リストをテキストファイルとして保存 (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "開いた時点の状態と比較しています。オリジナルに対するすべての変更を表示するには、オリジナル BIN を比較用として開いてください。";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "すべてのマップが比較と一致しています。";
-"%lld Bytes in %lld Bereichen" = "%lld バイト（%lld 範囲）";
+"Bytes: %lld · Bereiche: %lld" = "%lld バイト（%lld 範囲）";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "これらのバイトは比較と異なりますが、XDF のどのマップや軸にも属していません。たとえばチェックサム、未定義のマップ、または別のソフトウェアバージョンとの比較などが考えられます。";
-"%lld Bytes" = "%lld バイト";
-"%lld Bereiche" = "%lld 範囲";
+"Bytes: %lld" = "%lld バイト";
+"Bereiche: %lld" = "%lld 範囲";
 "Alle auf Vergleich zurücksetzen" = "すべて比較値に戻す";
 "Adresse" = "アドレス";
 "Länge" = "長さ";

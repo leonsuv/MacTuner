@@ -85,7 +85,7 @@
 "Achse geändert" = "Ο άξονας άλλαξε";
 " – Änderungen" = " – αλλαγές";
 "MacTuner — Änderungsliste" = "MacTuner — Λίστα αλλαγών";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "%lld χάρτες/τιμές άλλαξαν, %lld byte εκτός του XDF";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "Χάρτες/τιμές που άλλαξαν: %lld, byte εκτός του XDF: %lld";
 "Achse %@" = "Άξονας %@";
 "Außerhalb der XDF" = "Εκτός του XDF";
 "Änderungsliste exportieren …" = "Εξαγωγή λίστας αλλαγών…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Αποθήκευση της λίστας αλλαγών ως αρχείο κειμένου (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Η σύγκριση γίνεται με την κατάσταση κατά το άνοιγμα. Για όλες τις αλλαγές σε σχέση με το αρχικό, ανοίξτε το αρχικό BIN ως σύγκριση.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Όλοι οι χάρτες ταιριάζουν με τη σύγκριση.";
-"%lld Bytes in %lld Bereichen" = "%lld byte σε %lld περιοχές";
+"Bytes: %lld · Bereiche: %lld" = "Byte: %lld · περιοχές: %lld";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Αυτά τα byte διαφέρουν από τη σύγκριση, αλλά δεν ανήκουν σε κανέναν χάρτη ή άξονα του XDF — για παράδειγμα checksum, μη ορισμένοι χάρτες ή σύγκριση με διαφορετική έκδοση λογισμικού.";
-"%lld Bytes" = "%lld byte";
-"%lld Bereiche" = "%lld περιοχές";
+"Bytes: %lld" = "Byte: %lld";
+"Bereiche: %lld" = "Περιοχές: %lld";
 "Alle auf Vergleich zurücksetzen" = "Επαναφορά όλων στη σύγκριση";
 "Adresse" = "Διεύθυνση";
 "Länge" = "Μήκος";

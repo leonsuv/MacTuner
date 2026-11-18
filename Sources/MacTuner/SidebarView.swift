@@ -234,7 +234,7 @@ struct SidebarView: View {
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Außerhalb der XDF").lineLimit(1)
-                Text("\(model.outsideByteCount) Bytes in \(model.outsideChanges.count) Bereichen")
+                Text("Bytes: \(model.outsideByteCount) · Bereiche: \(model.outsideChanges.count)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

@@ -175,7 +175,7 @@ struct OverviewView: View {
                                 Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.changed).frame(width: 16)
                                 Text("Außerhalb der XDF")
                                 Spacer()
-                                Text("\(outside) Bytes in \(model.outsideChanges.count) Bereichen")
+                                Text("Bytes: \(outside) · Bereiche: \(model.outsideChanges.count)")
                                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                             }
@@ -241,8 +241,8 @@ struct OutsideChangesView: View {
                 .font(.callout).foregroundStyle(.secondary)
                 .frame(maxWidth: 900, alignment: .leading)
             HStack(spacing: 6) {
-                Chip(text: String(localized: "\(model.outsideByteCount) Bytes"), icon: "memorychip")
-                Chip(text: String(localized: "\(ranges.count) Bereiche"), icon: "square.split.1x2")
+                Chip(text: String(localized: "Bytes: \(model.outsideByteCount)"), icon: "memorychip")
+                Chip(text: String(localized: "Bereiche: \(ranges.count)"), icon: "square.split.1x2")
                 Spacer()
                 Button { model.restoreOutside() } label: {
                     Label("Alle auf Vergleich zurücksetzen", systemImage: "arrow.uturn.backward")

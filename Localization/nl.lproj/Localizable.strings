@@ -85,7 +85,7 @@
 "Achse geändert" = "As gewijzigd";
 " – Änderungen" = " – wijzigingen";
 "MacTuner — Änderungsliste" = "MacTuner — Wijzigingslijst";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "%lld kenvelden/waarden gewijzigd, %lld bytes buiten de XDF";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "Gewijzigde kenvelden/waarden: %lld, bytes buiten de XDF: %lld";
 "Achse %@" = "As %@";
 "Außerhalb der XDF" = "Buiten de XDF";
 "Änderungsliste exportieren …" = "Exporteer wijzigingslijst…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Wijzigingslijst als tekstbestand bewaren (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Er wordt vergeleken met de toestand bij openen. Open de originele BIN als vergelijking om alle wijzigingen ten opzichte van het origineel te zien.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Alle kenvelden komen overeen met de vergelijking.";
-"%lld Bytes in %lld Bereichen" = "%lld bytes in %lld bereiken";
+"Bytes: %lld · Bereiche: %lld" = "Bytes: %lld · bereiken: %lld";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Deze bytes wijken af van de vergelijking, maar horen bij geen enkel kenveld en geen enkele as van de XDF — bijvoorbeeld checksums, niet-gedefinieerde kenvelden of een vergelijking met een andere softwareversie.";
-"%lld Bytes" = "%lld bytes";
-"%lld Bereiche" = "%lld bereiken";
+"Bytes: %lld" = "Bytes: %lld";
+"Bereiche: %lld" = "Bereiken: %lld";
 "Alle auf Vergleich zurücksetzen" = "Zet alles terug op vergelijking";
 "Adresse" = "Adres";
 "Länge" = "Lengte";

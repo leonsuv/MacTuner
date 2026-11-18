@@ -85,7 +85,7 @@
 "Achse geändert" = "Boshti u ndryshua";
 " – Änderungen" = " – ndryshimet";
 "MacTuner — Änderungsliste" = "MacTuner — Lista e ndryshimeve";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "Harta/vlera të ndryshuara: %lld, bajte jashtë XDF-it: %lld";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "Harta/vlera të ndryshuara: %lld, bajte jashtë XDF-it: %lld";
 "Achse %@" = "Boshti %@";
 "Außerhalb der XDF" = "Jashtë XDF-it";
 "Änderungsliste exportieren …" = "Eksporto listën e ndryshimeve…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Ruaj listën e ndryshimeve si skedar teksti (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Krahasimi bëhet me gjendjen në hapje. Për të gjitha ndryshimet ndaj origjinalit, hapni BIN-in origjinal si krahasim.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Të gjitha hartat përputhen me krahasimin.";
-"%lld Bytes in %lld Bereichen" = "%lld bajte në %lld diapazone";
+"Bytes: %lld · Bereiche: %lld" = "Bajte: %lld · diapazone: %lld";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Këto bajte ndryshojnë nga krahasimi, por nuk i përkasin asnjë harte dhe asnjë boshti të XDF-it — për shembull shuma kontrolli, harta të papërcaktuara ose krahasim me një version tjetër softueri.";
-"%lld Bytes" = "%lld bajte";
-"%lld Bereiche" = "%lld diapazone";
+"Bytes: %lld" = "Bajte: %lld";
+"Bereiche: %lld" = "Diapazone: %lld";
 "Alle auf Vergleich zurücksetzen" = "Rivendos të gjitha sipas krahasimit";
 "Adresse" = "Adresa";
 "Länge" = "Gjatësia";

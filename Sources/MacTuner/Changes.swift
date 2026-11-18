@@ -104,7 +104,7 @@ enum Changes {
             "XDF: \(xdfName)",
             "BIN: \(binName)",
             String(localized: "Vergleich: \(compareName)"),
-            String(localized: "\(changed.count) Kennfelder/Werte geändert, \(outsideBytes) Bytes außerhalb der XDF"),
+            String(localized: "Geänderte Kennfelder/Werte: \(changed.count), Bytes außerhalb der XDF: \(outsideBytes)"),
         ]
 
         for item in changed {

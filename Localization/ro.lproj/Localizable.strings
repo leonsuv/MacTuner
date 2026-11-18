@@ -85,7 +85,7 @@
 "Achse geändert" = "Axă modificată";
 " – Änderungen" = " – modificări";
 "MacTuner — Änderungsliste" = "MacTuner — Lista modificărilor";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "Hărți/valori modificate: %lld, octeți în afara XDF-ului: %lld";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "Hărți/valori modificate: %lld, octeți în afara XDF-ului: %lld";
 "Achse %@" = "Axa %@";
 "Außerhalb der XDF" = "În afara XDF-ului";
 "Änderungsliste exportieren …" = "Exportă lista modificărilor…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Salvează lista modificărilor ca fișier text (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Se compară cu starea de la deschidere. Pentru toate modificările față de original, deschideți BIN-ul original ca comparație.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Toate hărțile corespund comparației.";
-"%lld Bytes in %lld Bereichen" = "%lld octeți în %lld intervale";
+"Bytes: %lld · Bereiche: %lld" = "Octeți: %lld · intervale: %lld";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Acești octeți diferă de comparație, dar nu aparțin niciunei hărți și niciunei axe din XDF — de exemplu sume de control, hărți nedefinite sau o comparație cu altă versiune de software.";
-"%lld Bytes" = "%lld octeți";
-"%lld Bereiche" = "%lld intervale";
+"Bytes: %lld" = "Octeți: %lld";
+"Bereiche: %lld" = "Intervale: %lld";
 "Alle auf Vergleich zurücksetzen" = "Readu tot la comparație";
 "Adresse" = "Adresă";
 "Länge" = "Lungime";

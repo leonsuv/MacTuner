@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
 </p>
 
-![Map with heatmap, changed cells and chart](docs/table.png)
+![Changed tab: every changed map in one list, next to a map with heatmap and chart](docs/v1.2-changed.png)
 
 TunerPro only runs on Windows. MacTuner is a native SwiftUI app that runs without Wine, a VM or any dependencies.
 It reads the same XDF files. When it saves the binary, only the bytes of the values you edited change.
@@ -44,9 +44,11 @@ It reads the same XDF files. When it saves the binary, only the bytes of the val
 - **Favorites** (⌘D) for the maps you edit most, and an overview page with every change at a glance.
 - Remembers the XDF, the binary, the comparison and the selection between launches, with a list of recent files. Files can also be dropped onto the window.
 
-| Constant | Long table (1 × 152) |
+| Overview of all changes | Difference to the comparison (Δ) |
 |---|---|
-| ![Constant](docs/constant.png) | ![Long table](docs/long-table.png) |
+| ![Overview](docs/v1.2-overview.png) | ![Difference view](docs/v1.2-delta.png) |
+| **Comparison view (read-only, Tab)** | **Constant** |
+| ![Comparison view](docs/v1.2-compare.png) | ![Constant](docs/v1.2-constant.png) |
 
 ## Languages
 

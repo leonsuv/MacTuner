@@ -85,7 +85,7 @@
 "Achse geändert" = "Osa změněna";
 " – Änderungen" = " – změny";
 "MacTuner — Änderungsliste" = "MacTuner — Seznam změn";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "Změněné mapy/hodnoty: %lld, mimo XDF: %lld B";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "Změněné mapy/hodnoty: %lld, mimo XDF: %lld B";
 "Achse %@" = "Osa %@";
 "Außerhalb der XDF" = "Mimo XDF";
 "Änderungsliste exportieren …" = "Exportovat seznam změn…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Uložit seznam změn jako textový soubor (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Srovnává se se stavem při otevření. Chcete-li vidět všechny změny oproti originálu, otevřete originální BIN jako srovnání.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Všechny mapy odpovídají srovnání.";
-"%lld Bytes in %lld Bereichen" = "%lld B, rozsahy: %lld";
+"Bytes: %lld · Bereiche: %lld" = "%lld B, rozsahy: %lld";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Tyto bajty se liší od srovnání, ale nepatří k žádné mapě ani ose XDF — například kontrolní součty, nedefinované mapy nebo srovnání s jinou verzí softwaru.";
-"%lld Bytes" = "%lld B";
-"%lld Bereiche" = "Rozsahy: %lld";
+"Bytes: %lld" = "%lld B";
+"Bereiche: %lld" = "Rozsahy: %lld";
 "Alle auf Vergleich zurücksetzen" = "Vrátit vše na srovnání";
 "Adresse" = "Adresa";
 "Länge" = "Délka";

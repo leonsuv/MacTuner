@@ -85,7 +85,7 @@
 "Achse geändert" = "Axel ändrad";
 " – Änderungen" = " – ändringar";
 "MacTuner — Änderungsliste" = "MacTuner — Ändringslista";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "%lld kartor/värden ändrade, %lld byte utanför XDF";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "Ändrade kartor/värden: %lld, byte utanför XDF: %lld";
 "Achse %@" = "Axel %@";
 "Außerhalb der XDF" = "Utanför XDF";
 "Änderungsliste exportieren …" = "Exportera ändringslista…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Spara ändringslistan som textfil (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Jämförelsen görs mot läget vid öppning. Öppna original-BIN som jämförelse för att se alla ändringar mot originalet.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Alla kartor stämmer med jämförelsen.";
-"%lld Bytes in %lld Bereichen" = "%lld byte i %lld intervall";
+"Bytes: %lld · Bereiche: %lld" = "%lld byte i %lld intervall";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Dessa byte skiljer sig från jämförelsen men hör inte till någon karta eller axel i XDF — till exempel kontrollsummor, odefinierade kartor eller en jämförelse med en annan programvaruversion.";
-"%lld Bytes" = "%lld byte";
-"%lld Bereiche" = "%lld intervall";
+"Bytes: %lld" = "%lld byte";
+"Bereiche: %lld" = "%lld intervall";
 "Alle auf Vergleich zurücksetzen" = "Återställ alla till jämförelse";
 "Adresse" = "Adress";
 "Länge" = "Längd";

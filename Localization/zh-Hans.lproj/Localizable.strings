@@ -85,7 +85,7 @@
 "Achse geändert" = "坐标轴已更改";
 " – Änderungen" = " – 更改";
 "MacTuner — Änderungsliste" = "MacTuner — 更改列表";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "已更改 %lld 个图谱/数值，XDF 范围外 %lld 字节";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "已更改 %lld 个图谱/数值，XDF 范围外 %lld 字节";
 "Achse %@" = "坐标轴 %@";
 "Außerhalb der XDF" = "XDF 范围外";
 "Änderungsliste exportieren …" = "导出更改列表…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "将更改列表存储为文本文件 (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "当前与打开时的状态进行对比。要查看相对于原始文件的所有更改，请将原始 BIN 作为对比打开。";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "所有图谱均与对比一致。";
-"%lld Bytes in %lld Bereichen" = "%lld 字节，位于 %lld 个范围";
+"Bytes: %lld · Bereiche: %lld" = "%lld 字节，位于 %lld 个范围";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "这些字节与对比不同，但不属于 XDF 中的任何图谱或坐标轴——例如校验和、未定义的图谱，或与其他软件版本进行的对比。";
-"%lld Bytes" = "%lld 字节";
-"%lld Bereiche" = "%lld 个范围";
+"Bytes: %lld" = "%lld 字节";
+"Bereiche: %lld" = "%lld 个范围";
 "Alle auf Vergleich zurücksetzen" = "全部恢复为对比值";
 "Adresse" = "地址";
 "Länge" = "长度";

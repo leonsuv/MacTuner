@@ -85,7 +85,7 @@
 "Achse geändert" = "Оса измењена";
 " – Änderungen" = " – измене";
 "MacTuner — Änderungsliste" = "MacTuner — листа измена";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "Измењено мапа/вредности: %lld, бајтова ван XDF-а: %lld";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "Измењено мапа/вредности: %lld, бајтова ван XDF-а: %lld";
 "Achse %@" = "Оса %@";
 "Außerhalb der XDF" = "Ван XDF-а";
 "Änderungsliste exportieren …" = "Извези листу измена…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Сачувај листу измена као текстуалну датотеку (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Пореди се са стањем при отварању. За све измене у односу на оригинал отворите оригинални BIN као поређење.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Све мапе се поклапају са поређењем.";
-"%lld Bytes in %lld Bereichen" = "%lld бајтова у %lld опсега";
+"Bytes: %lld · Bereiche: %lld" = "Бајтови: %lld · опсези: %lld";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Ови бајтови се разликују од поређења, али не припадају ниједној мапи ни оси XDF-а — на пример контролни збирови, недефинисане мапе или поређење са другом верзијом софтвера.";
-"%lld Bytes" = "%lld бајтова";
-"%lld Bereiche" = "%lld опсега";
+"Bytes: %lld" = "Бајтови: %lld";
+"Bereiche: %lld" = "Опсези: %lld";
 "Alle auf Vergleich zurücksetzen" = "Врати све на поређење";
 "Adresse" = "Адреса";
 "Länge" = "Дужина";

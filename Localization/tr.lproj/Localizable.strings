@@ -85,7 +85,7 @@
 "Achse geändert" = "Eksen değişti";
 " – Änderungen" = " – değişiklikler";
 "MacTuner — Änderungsliste" = "MacTuner — Değişiklik listesi";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "%lld harita/değer değişti, XDF dışında %lld bayt";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "%lld harita/değer değişti, XDF dışında %lld bayt";
 "Achse %@" = "Eksen %@";
 "Außerhalb der XDF" = "XDF dışında";
 "Änderungsliste exportieren …" = "Değişiklik Listesini Dışa Aktar…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Değişiklik listesini metin dosyası olarak kaydet (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Dosyanın açıldığı andaki durumla karşılaştırılıyor. Orijinale göre tüm değişiklikleri görmek için orijinal BIN'i karşılaştırma olarak açın.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Tüm haritalar karşılaştırmayla eşleşiyor.";
-"%lld Bytes in %lld Bereichen" = "%2$lld aralıkta %1$lld bayt";
+"Bytes: %lld · Bereiche: %lld" = "%2$lld aralıkta %1$lld bayt";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Bu baytlar karşılaştırmadan farklıdır ancak XDF'nin hiçbir haritasına veya eksenine ait değildir — örneğin sağlama toplamları, tanımlanmamış haritalar veya farklı bir yazılım sürümüyle karşılaştırma.";
-"%lld Bytes" = "%lld bayt";
-"%lld Bereiche" = "%lld aralık";
+"Bytes: %lld" = "%lld bayt";
+"Bereiche: %lld" = "%lld aralık";
 "Alle auf Vergleich zurücksetzen" = "Tümünü Karşılaştırmaya Sıfırla";
 "Adresse" = "Adres";
 "Länge" = "Uzunluk";

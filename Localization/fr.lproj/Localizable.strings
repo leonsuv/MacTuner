@@ -85,7 +85,7 @@
 "Achse geändert" = "Axe modifié";
 " – Änderungen" = " – modifications";
 "MacTuner — Änderungsliste" = "MacTuner — Liste des modifications";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "%lld cartographies/valeurs modifiées, %lld octets hors du XDF";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "Cartographies/valeurs modifiées : %lld, octets hors du XDF : %lld";
 "Achse %@" = "Axe %@";
 "Außerhalb der XDF" = "Hors du XDF";
 "Änderungsliste exportieren …" = "Exporter la liste des modifications…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Enregistrer la liste des modifications comme fichier texte (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "La comparaison porte sur l’état à l’ouverture. Pour voir toutes les modifications par rapport à l’origine, ouvrez le BIN d’origine comme comparaison.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Toutes les cartographies correspondent à la comparaison.";
-"%lld Bytes in %lld Bereichen" = "%lld octets dans %lld plages";
+"Bytes: %lld · Bereiche: %lld" = "Octets : %lld · plages : %lld";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Ces octets diffèrent de la comparaison, mais n’appartiennent à aucune cartographie ni à aucun axe du XDF — par exemple des sommes de contrôle, des cartographies non définies ou une comparaison avec une autre version logicielle.";
-"%lld Bytes" = "%lld octets";
-"%lld Bereiche" = "%lld plages";
+"Bytes: %lld" = "Octets : %lld";
+"Bereiche: %lld" = "Plages : %lld";
 "Alle auf Vergleich zurücksetzen" = "Tout rétablir à la comparaison";
 "Adresse" = "Adresse";
 "Länge" = "Longueur";

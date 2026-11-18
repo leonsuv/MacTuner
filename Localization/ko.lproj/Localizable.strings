@@ -85,7 +85,7 @@
 "Achse geändert" = "축 변경됨";
 " – Änderungen" = " – 변경 사항";
 "MacTuner — Änderungsliste" = "MacTuner — 변경 목록";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "맵/값 %lld개 변경됨, XDF 외부 %lld바이트";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "맵/값 %lld개 변경됨, XDF 외부 %lld바이트";
 "Achse %@" = "축 %@";
 "Außerhalb der XDF" = "XDF 외부";
 "Änderungsliste exportieren …" = "변경 목록 내보내기…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "변경 목록을 텍스트 파일로 저장 (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "열었을 때의 상태와 비교하고 있습니다. 원본 대비 모든 변경 사항을 보려면 원본 BIN을 비교 파일로 여십시오.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "모든 맵이 비교와 일치합니다.";
-"%lld Bytes in %lld Bereichen" = "%lld바이트, %lld개 범위";
+"Bytes: %lld · Bereiche: %lld" = "%lld바이트, %lld개 범위";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "이 바이트는 비교와 다르지만 XDF의 어떤 맵이나 축에도 속하지 않습니다. 예를 들어 체크섬, 정의되지 않은 맵 또는 다른 소프트웨어 버전과의 비교일 수 있습니다.";
-"%lld Bytes" = "%lld바이트";
-"%lld Bereiche" = "%lld개 범위";
+"Bytes: %lld" = "%lld바이트";
+"Bereiche: %lld" = "%lld개 범위";
 "Alle auf Vergleich zurücksetzen" = "모두 비교 값으로 되돌리기";
 "Adresse" = "주소";
 "Länge" = "길이";

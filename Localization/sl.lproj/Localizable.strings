@@ -85,7 +85,7 @@
 "Achse geändert" = "Os spremenjena";
 " – Änderungen" = " – spremembe";
 "MacTuner — Änderungsliste" = "MacTuner — Seznam sprememb";
-"%lld Kennfelder/Werte geändert, %lld Bytes außerhalb der XDF" = "Spremenjene mape/vrednosti: %lld, zunaj XDF: %lld B";
+"Geänderte Kennfelder/Werte: %lld, Bytes außerhalb der XDF: %lld" = "Spremenjene mape/vrednosti: %lld, zunaj XDF: %lld B";
 "Achse %@" = "Os %@";
 "Außerhalb der XDF" = "Zunaj XDF";
 "Änderungsliste exportieren …" = "Izvozi seznam sprememb…";
@@ -116,10 +116,10 @@
 "Änderungsliste als Textdatei sichern (⌘E)" = "Shrani seznam sprememb kot besedilno datoteko (⌘E)";
 "Verglichen wird mit dem Stand beim Öffnen. Für alle Änderungen gegenüber dem Original die Original-BIN als Vergleich öffnen." = "Primerja se s stanjem ob odprtju. Če želite videti vse spremembe glede na izvirnik, odprite izvirni BIN kot primerjavo.";
 "Alle Kennfelder stimmen mit dem Vergleich überein." = "Vse mape se ujemajo s primerjavo.";
-"%lld Bytes in %lld Bereichen" = "%lld B, obsegi: %lld";
+"Bytes: %lld · Bereiche: %lld" = "%lld B, obsegi: %lld";
 "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version." = "Ti bajti se razlikujejo od primerjave, vendar ne pripadajo nobeni mapi in nobeni osi XDF — na primer kontrolne vsote, nedefinirane mape ali primerjava z drugo različico programske opreme.";
-"%lld Bytes" = "%lld B";
-"%lld Bereiche" = "Obsegi: %lld";
+"Bytes: %lld" = "%lld B";
+"Bereiche: %lld" = "Obsegi: %lld";
 "Alle auf Vergleich zurücksetzen" = "Ponastavi vse na primerjavo";
 "Adresse" = "Naslov";
 "Länge" = "Dolžina";
