@@ -200,10 +200,15 @@ struct HexDiffView: View {
     @State private var lastClickOffset: Int?
     @State private var lastWaveClickTime: Date = .distantPast
     @State private var lastWaveClickItemID: Int?
-    @State private var hexHover: HexHoverInfo?
-    @State private var waveHover: WaveHoverInfo?
+    @State private var hoverState = HexHoverState()
 
-    private struct HexHoverInfo: Equatable {
+    @Observable
+    final class HexHoverState {
+        var hex: HexHoverInfo?
+        var wave: WaveHoverInfo?
+    }
+
+    struct HexHoverInfo: Equatable {
         let point: CGPoint
         let address: Int?
         let spans: [XDFAddressIndex.Span]
@@ -211,8 +216,8 @@ struct HexDiffView: View {
         let isXDFColumn: Bool
     }
 
-    private struct WaveHoverInfo: Equatable {
-        let point: CGPoint
+    struct WaveHoverInfo: Equatable {
+        let crosshairX: CGFloat
         let address: Int
         let valueText: String
         let cmpText: String?
@@ -718,22 +723,24 @@ struct HexDiffView: View {
                 .onContinuousHover(coordinateSpace: .local) { phase in
                     switch phase {
                     case .ended:
-                        hexHover = nil
+                        if hoverState.hex != nil { hoverState.hex = nil }
                     case .active(let pt):
                         let headerH: CGFloat = 22
                         let r = Int((pt.y - headerH) / rowHeight)
                         guard pt.y >= headerH, r >= 0, r < visibleRows else {
-                            hexHover = nil
+                            if hoverState.hex != nil { hoverState.hex = nil }
                             return
                         }
                         let rowBase = startAddr + r * rowStride
-                        guard rowBase < bin.count else { hexHover = nil; return }
+                        guard rowBase < bin.count else {
+                            if hoverState.hex != nil { hoverState.hex = nil }
+                            return
+                        }
                         let xdfStartX = geo.size.width - xdfW
+                        var next: HexHoverInfo?
                         if pt.x >= xdfStartX {
                             let unique = uniqueRowSpans(cachedIndex.spansOverlapping(rowBase, min(bin.count, rowBase + rowStride)))
-                            if unique.isEmpty {
-                                hexHover = nil
-                            } else {
+                            if !unique.isEmpty {
                                 let visibleCount = min(unique.count, 2)
                                 let badgeW: CGFloat = unique.count > 2 ? 30 : 0
                                 let availW = max(40, xdfW - 10 - badgeW)
@@ -742,31 +749,33 @@ struct HexDiffView: View {
                                 let activeID: Int? = relX <= availW
                                     ? unique[min(visibleCount - 1, max(0, Int(relX / slotW)))].itemID
                                     : nil
-                                hexHover = HexHoverInfo(point: pt, address: nil, spans: unique,
-                                                        activeItemID: activeID, isXDFColumn: true)
+                                let anchor = CGPoint(x: xdfStartX, y: headerH + CGFloat(r) * rowHeight)
+                                next = HexHoverInfo(point: anchor, address: nil, spans: unique,
+                                                    activeItemID: activeID, isXDFColumn: true)
                             }
                         } else if pt.x >= addrWidth && pt.x < addrWidth + dataAreaWidth {
                             let c = Int((pt.x - addrWidth) / cellW)
-                            guard c >= 0, c < columns else { hexHover = nil; return }
-                            let off = rowBase + c * elemBytes
-                            guard off + elemBytes <= bin.count else { hexHover = nil; return }
-                            if let span = cachedIndex.span(at: off) {
-                                hexHover = HexHoverInfo(point: pt, address: off, spans: [span],
+                            if c >= 0, c < columns {
+                                let off = rowBase + c * elemBytes
+                                if off + elemBytes <= bin.count, let span = cachedIndex.span(at: off) {
+                                    let anchor = CGPoint(x: addrWidth + CGFloat(c + 1) * cellW,
+                                                         y: headerH + CGFloat(r + 1) * rowHeight)
+                                    next = HexHoverInfo(point: anchor, address: off, spans: [span],
                                                         activeItemID: span.itemID, isXDFColumn: false)
-                            } else {
-                                hexHover = nil
+                                }
                             }
-                        } else {
-                            hexHover = nil
+                        }
+                        if hoverState.hex != next {
+                            hoverState.hex = next
                         }
                     }
                 }
 
-                // Floating hover HUD for Hex cells & XDF column
-                if let info = hexHover {
+                // Isolated hover HUD (observes hoverState.hex without re-rendering Hex Canvas)
+                HexHoverHUDContainer(hoverState: hoverState, bounds: geo.size) { info in
                     hexHoverHUD(info, in: geo.size)
-                        .allowsHitTesting(false)
                 }
+                .allowsHitTesting(false)
 
                 // Draggable resize handle for XDF column width (strictly 8pt wide, never blocks hex cells)
                 Rectangle()
@@ -901,18 +910,16 @@ struct HexDiffView: View {
     @ViewBuilder
     private func waveHoverHUD(_ info: WaveHoverInfo, in bounds: CGSize) -> some View {
         let estW: CGFloat = info.span != nil ? 245 : 165
-        let estH: CGFloat = info.span != nil ? 46 : 28
-        let x = (info.point.x + estW + 18 > bounds.width)
-            ? max(8, info.point.x - estW - 12)
-            : min(bounds.width - estW - 8, info.point.x + 12)
-        let y = max(6, min(bounds.height - estH - 18, info.point.y - estH * 0.5))
+        let x = (info.crosshairX + estW + 18 > bounds.width)
+            ? max(8, info.crosshairX - estW - 10)
+            : min(bounds.width - estW - 8, info.crosshairX + 10)
 
         ZStack(alignment: .topLeading) {
             // Subtle vertical crosshair
             Rectangle()
                 .fill(Color.white.opacity(0.35))
                 .frame(width: 1, height: max(0, bounds.height - 20))
-                .offset(x: info.point.x, y: 6)
+                .offset(x: info.crosshairX, y: 6)
 
             VStack(alignment: .leading, spacing: 3) {
                 if let span = info.span {
@@ -944,7 +951,7 @@ struct HexDiffView: View {
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 7))
             .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.primary.opacity(0.16), lineWidth: 0.75))
             .shadow(color: .black.opacity(0.32), radius: 8, y: 3)
-            .offset(x: x, y: y)
+            .offset(x: x, y: 8)
         }
     }
 
@@ -1240,19 +1247,25 @@ struct HexDiffView: View {
                     .onContinuousHover(coordinateSpace: .local) { phase in
                         switch phase {
                         case .ended:
-                            waveHover = nil
+                            if hoverState.wave != nil { hoverState.wave = nil }
                         case .active(let pt):
                             let plotMinX: CGFloat = 44
                             let plotW = max(40, geo.size.width - 52)
                             guard pt.x >= plotMinX, pt.x <= plotMinX + plotW else {
-                                waveHover = nil
+                                if hoverState.wave != nil { hoverState.wave = nil }
                                 return
                             }
                             let elemCount = min(waveWindowElements, max(1, (bin.count - startAddr) / elemBytes))
                             let t = min(max((pt.x - plotMinX) / plotW, 0), 1)
                             let el = Int(t * CGFloat(elemCount - 1))
                             let addr = min(bin.count - elemBytes, startAddr + el * elemBytes)
-                            guard addr >= 0, addr + elemBytes <= bin.count else { waveHover = nil; return }
+                            guard addr >= 0, addr + elemBytes <= bin.count else {
+                                if hoverState.wave != nil { hoverState.wave = nil }
+                                return
+                            }
+                            // Only update when snapped element address changes (zero vertical-move CPU!)
+                            if hoverState.wave?.address == addr { return }
+                            let snappedX = plotMinX + CGFloat(el) / CGFloat(max(1, elemCount - 1)) * plotW
                             let valStr = formatElement(bin, at: addr)
                             let cmpAddr = addr + compareSyncOffset
                             var cmpStr: String? = nil
@@ -1260,15 +1273,15 @@ struct HexDiffView: View {
                                bin[addr ..< (addr + elemBytes)] != cmp[cmpAddr ..< (cmpAddr + elemBytes)] {
                                 cmpStr = formatElement(cmp, at: cmpAddr)
                             }
-                            waveHover = WaveHoverInfo(point: pt, address: addr, valueText: valStr,
-                                                      cmpText: cmpStr, span: cachedIndex.span(at: addr))
+                            hoverState.wave = WaveHoverInfo(crosshairX: snappedX, address: addr, valueText: valStr,
+                                                            cmpText: cmpStr, span: cachedIndex.span(at: addr))
                         }
                     }
                     .overlay(alignment: .topLeading) {
-                        if let info = waveHover {
+                        WaveHoverHUDContainer(hoverState: hoverState) { info in
                             waveHoverHUD(info, in: geo.size)
-                                .allowsHitTesting(false)
                         }
+                        .allowsHitTesting(false)
                     }
                 }
                 .background(
@@ -1669,5 +1682,30 @@ struct HexDiffView: View {
         viewportOffset = max(0, target - rowStride * 2)
         selectedStart = target
         selectedEnd = target
+    }
+}
+
+/// Isolated observer for Hex hover HUD so mouse movement NEVER triggers Hex/2D/Minimap Canvas redraws.
+private struct HexHoverHUDContainer<Content: View>: View {
+    let hoverState: HexDiffView.HexHoverState
+    let bounds: CGSize
+    let content: (HexDiffView.HexHoverInfo) -> Content
+
+    var body: some View {
+        if let info = hoverState.hex {
+            content(info)
+        }
+    }
+}
+
+/// Isolated observer for 2D Waveform hover HUD so mouse movement NEVER triggers Canvas redraws.
+private struct WaveHoverHUDContainer<Content: View>: View {
+    let hoverState: HexDiffView.HexHoverState
+    let content: (HexDiffView.WaveHoverInfo) -> Content
+
+    var body: some View {
+        if let info = hoverState.wave {
+            content(info)
+        }
     }
 }
