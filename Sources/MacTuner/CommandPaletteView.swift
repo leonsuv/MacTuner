@@ -167,13 +167,17 @@ struct CommandPaletteView: View {
             Entry(id: "act.unit.orig", title: "Einheiten: Original (XDF)", subtitle: "Keine Einheitenumrechnung", icon: "ruler", shortcut: nil) { model.unitSystem = .original },
             Entry(id: "act.unit.metric", title: "Einheiten: Metrisch (°C, Nm, bar)", subtitle: "Metrische Anzeige aktivieren", icon: "ruler", shortcut: nil) { model.unitSystem = .metric },
             Entry(id: "act.unit.imp", title: "Einheiten: Imperial (°F, lb-ft, psi)", subtitle: "Imperiale Anzeige aktivieren", icon: "ruler", shortcut: nil) { model.unitSystem = .imperial },
-        ]
+        ].map { e in
+            Entry(id: e.id, title: Bundle.main.localizedString(forKey: e.title, value: nil, table: nil),
+                  subtitle: Bundle.main.localizedString(forKey: e.subtitle, value: nil, table: nil),
+                  icon: e.icon, shortcut: e.shortcut, action: e.action)
+        }
 
         if let item = model.selectedItem {
             all.insert(Entry(
                 id: "act.lock",
-                title: model.isLocked(item) ? "Kennfeld entsperren: \(item.title)" : "Kennfeld sperren: \(item.title)",
-                subtitle: "Schreibschutz umschalten",
+                title: model.isLocked(item) ? String(localized: "Kennfeld entsperren: \(item.title)") : String(localized: "Kennfeld sperren: \(item.title)"),
+                subtitle: String(localized: "Schreibschutz umschalten"),
                 icon: model.isLocked(item) ? "lock.open" : "lock",
                 shortcut: "⌘L"
             ) { model.toggleLock(item) }, at: 0)

@@ -100,7 +100,7 @@ struct ItemDetailView: View {
                         noteText = model.note(for: item)
                         showNotes.toggle()
                     } label: {
-                        Label(hasNote ? "Notiz" : "Notiz", systemImage: hasNote ? "note.text" : "note.text.badge.plus")
+                        Label(hasNote ? "Notiz" as LocalizedStringKey : "Notiz", systemImage: hasNote ? "note.text" : "note.text.badge.plus")
                             .foregroundStyle(hasNote ? Color.accentColor : Color.primary)
                     }
                     .popover(isPresented: $showNotes) {
@@ -125,17 +125,17 @@ struct ItemDetailView: View {
                     }
 
                     Button { showHistory.toggle() } label: {
-                        Label(historyCount > 0 ? "Verlauf (\(historyCount))" : "Verlauf", systemImage: "clock")
+                        Label(historyCount > 0 ? "Verlauf (\(historyCount))" as LocalizedStringKey : "Verlauf", systemImage: "clock")
                     }
                     .popover(isPresented: $showHistory) {
                         ItemHistoryPopover(item: item)
                     }
 
                     Button { model.toggleLock(item) } label: {
-                        Label(locked ? "Gesperrt" : "Sperren", systemImage: locked ? "lock.fill" : "lock.open")
+                        Label(locked ? "Gesperrt" as LocalizedStringKey : "Sperren", systemImage: locked ? "lock.fill" : "lock.open")
                             .foregroundStyle(locked ? Color.red : Color.primary)
                     }
-                    .help(locked ? "Kennfeld entsperren (⌘L)" : "Kennfeld gegen Änderungen sperren (⌘L)")
+                    .help(locked ? "Kennfeld entsperren (⌘L)" as LocalizedStringKey : "Kennfeld gegen Änderungen sperren (⌘L)")
 
                     if info.isChanged {
                         Button { withAnimation(.snappy) { model.restore(item) } } label: {
@@ -152,7 +152,7 @@ struct ItemDetailView: View {
                                 safeMaxText = sr.max.map(item.scaling.format) ?? ""
                                 showSafeRange = true
                             } label: {
-                                Label(sr.isEmpty ? "Sicherheitsbereich festlegen …" : "Sicherheitsbereich bearbeiten …", systemImage: "shield")
+                                Label(sr.isEmpty ? "Sicherheitsbereich festlegen …" as LocalizedStringKey : "Sicherheitsbereich bearbeiten …", systemImage: "shield")
                             }
                         }
                         copyFromSubmenu
@@ -543,7 +543,7 @@ struct FlagEditorView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 16) {
                 Toggle(isOn: Binding(get: { on }, set: { model.setFlag($0, item: item) })) {
-                    Text(on ? "Aktiviert (EIN)" : "Deaktiviert (AUS)")
+                    Text(on ? "Aktiviert (EIN)" as LocalizedStringKey : "Deaktiviert (AUS)")
                         .font(.title2.bold())
                         .foregroundStyle(changed ? Theme.changed : .primary)
                 }
@@ -594,7 +594,7 @@ struct PatchEditorView: View {
 
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                Label(applied ? "Patch angewendet" : "Patch nicht angewendet",
+                Label(applied ? "Patch angewendet" as LocalizedStringKey : "Patch nicht angewendet",
                       systemImage: applied ? "checkmark.circle.fill" : "circle.dashed")
                     .font(.title3.bold())
                     .foregroundStyle(applied ? Color.green : Color.secondary)

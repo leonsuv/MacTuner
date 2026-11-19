@@ -1512,6 +1512,13 @@ for _lang, _tr in T_12_VIEW.items():
 for _lang, _tr in T_12.items():
     T[_lang].update(_tr)
 
+# 2.x: strings are keyed by their German text, see translations_v2.py.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from translations_v2 import KEYS_V2, T_V2
+KEYS.update({k: k for k in KEYS_V2})
+for _lang, _tr in T_V2.items():
+    T[_lang].update(_tr)
+
 
 def esc(s):
     return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')

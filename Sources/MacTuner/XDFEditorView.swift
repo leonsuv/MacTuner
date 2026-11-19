@@ -118,7 +118,7 @@ struct XDFItemEditorSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(existingID == nil ? "Neues XDF-Element" : "XDF-Element bearbeiten")
+                Text(existingID == nil ? "Neues XDF-Element" as LocalizedStringKey : "XDF-Element bearbeiten")
                     .font(.title3.bold())
                 Spacer()
                 if existingID != nil {

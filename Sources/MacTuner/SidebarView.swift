@@ -315,7 +315,7 @@ struct ItemContextMenu: View {
         } else {
             Button("Zu Favoriten hinzufügen") { model.toggleFavorite(item) }
         }
-        Button(model.isLocked(item) ? "Entsperren" : "Sperren") { model.toggleLock(item) }
+        Button(model.isLocked(item) ? "Entsperren" as LocalizedStringKey : "Sperren") { model.toggleLock(item) }
         Button("Auf Vergleich zurücksetzen") { model.restore(item) }
             .disabled(!model.isChanged(item) || model.isLocked(item))
         Divider()

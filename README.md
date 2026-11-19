@@ -46,7 +46,7 @@ MacTuner follows the system language and falls back to English. To use a differe
 **System Settings → General → Language &amp; Region → Applications**. Map names, descriptions and categories come from
 the XDF and can optionally be translated on the fly via the built-in ECU glossary.
 
-All UI strings live in [`Localization/translations.py`](Localization/translations.py). After editing it, run
+All UI strings live in [`Localization/translations.py`](Localization/translations.py) and, for 2.x, [`translations_v2.py`](Localization/translations_v2.py). After editing them, run
 `python3 Localization/translations.py Localization`.
 
 ## Installation

@@ -183,7 +183,7 @@ struct MacTunerApp: App {
                         .disabled(model.selectedItem == nil)
                 }
                 if let item = model.selectedItem {
-                    Button(model.isLocked(item) ? "Kennfeld entsperren" : "Kennfeld sperren") {
+                    Button(model.isLocked(item) ? "Kennfeld entsperren" as LocalizedStringKey : "Kennfeld sperren") {
                         model.toggleLock(item)
                     }
                     .keyboardShortcut("l")

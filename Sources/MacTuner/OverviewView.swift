@@ -146,17 +146,17 @@ struct OverviewView: View {
             toolTile("Kennfeld-Finder", subtitle: "Struktur-Scan", icon: "sparkle.magnifyingglass", color: .indigo) {
                 model.selection = AppModel.mapFinderSelection
             }
-            toolTile("Datalogging", subtitle: model.datalog?.name ?? "CSV / ADX / ADS", icon: "waveform.path.ecg", color: .cyan) {
+            toolTile("Datalogging", subtitle: LocalizedStringKey(model.datalog?.name ?? "CSV / ADX / ADS"), icon: "waveform.path.ecg", color: .cyan) {
                 model.selection = AppModel.datalogSelection
             }
-            toolTile("Prüfsummen & Flash", subtitle: model.checksumReport?.pluginName ?? "Nicht aktiv", icon: "checkmark.shield",
+            toolTile("Prüfsummen & Flash", subtitle: LocalizedStringKey(model.checksumReport?.pluginName ?? "Nicht aktiv"), icon: "checkmark.shield",
                      color: model.checksumReport?.allValid == true ? .green : (model.checksumReport != nil ? .red : .orange)) {
                 model.selection = AppModel.checksumSelection
             }
         }
     }
 
-    private func toolTile(_ title: String, subtitle: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+    private func toolTile(_ title: LocalizedStringKey, subtitle: LocalizedStringKey, icon: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: icon)

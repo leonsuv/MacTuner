@@ -6,3 +6,4 @@ build/
 *.xdf
 !Samples/*.xdf
 testdata/
+__pycache__/

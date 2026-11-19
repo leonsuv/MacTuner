@@ -273,7 +273,7 @@ struct HistoryEntryRow: View {
                         Text(entry.note).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button(entry.note.isEmpty ? "Notiz hinzufügen" : "Notiz bearbeiten") {
+                    Button(entry.note.isEmpty ? "Notiz hinzufügen" as LocalizedStringKey : "Notiz bearbeiten") {
                         noteText = entry.note
                         editingNote = true
                     }

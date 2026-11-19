@@ -1130,7 +1130,7 @@ struct HexDiffView: View {
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Label(compact ? "2D-Wellenform" : "2D-Wellenform (Vollbild)", systemImage: "waveform.path.ecg")
+                Label(compact ? "2D-Wellenform" as LocalizedStringKey : "2D-Wellenform (Vollbild)", systemImage: "waveform.path.ecg")
                     .font(.caption.weight(.semibold))
                 Text(String(format: "0x%05X – 0x%05X (%d Werte)", startAddr, min(bin.count, startAddr + windowBytes), waveWindowElements))
                     .font(.caption2.monospacedDigit())
@@ -1591,7 +1591,7 @@ struct HexDiffView: View {
                                             .buttonStyle(.link)
                                             .font(.caption.monospaced())
                                             Spacer()
-                                            Text(m.exact ? "Exakt (100%)" : "\(Int(m.correlation * 100)) %")
+                                            (m.exact ? Text("Exakt (100%)") : Text(verbatim: "\(Int(m.correlation * 100)) %"))
                                                 .font(.caption2.monospacedDigit())
                                                 .foregroundStyle(m.exact ? .green : .orange)
                                         }

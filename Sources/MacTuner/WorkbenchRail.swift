@@ -145,7 +145,7 @@ struct WorkbenchRail: View {
     private func railButton(
         _ dest: Destination,
         icon: String,
-        title: String,
+        title: LocalizedStringKey,
         badge: String? = nil,
         badgeColor: Color = .accentColor,
         dotColor: Color? = nil,

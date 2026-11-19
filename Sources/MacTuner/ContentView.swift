@@ -187,7 +187,7 @@ struct StatusBar: View {
                 Button { model.selection = AppModel.checksumSelection } label: {
                     HStack(spacing: 4) {
                         Image(systemName: rep.allValid ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
-                        Text(rep.allValid ? "Prüfsumme OK" : "Prüfsumme ungültig (\(rep.invalidCount))")
+                        Text(rep.allValid ? "Prüfsumme OK" as LocalizedStringKey : "Prüfsumme ungültig (\(rep.invalidCount))")
                     }
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(rep.allValid ? Color.green : Color.red)
