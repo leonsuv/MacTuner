@@ -60,8 +60,22 @@ struct Surface3DView: View {
                 ControlGroup {
                     Button { zoom = max(0.55, zoom - 0.15) } label: { Image(systemName: "minus.magnifyingglass") }
                     Button { zoom = min(2.0, zoom + 0.15) } label: { Image(systemName: "plus.magnifyingglass") }
-                    Button { yaw = -0.68; pitch = 0.55; zoom = 1.0 } label: { Image(systemName: "arrow.counterclockwise") }
-                        .help("Ansicht zurücksetzen")
+                    Button { yaw = -0.68; pitch = 0.52; zoom = 1.0; dragStartYaw = yaw; dragStartPitch = pitch } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .help("Standardansicht (Isometrisch)")
+                    Button { yaw = 0.0; pitch = 0.25; dragStartYaw = yaw; dragStartPitch = pitch } label: {
+                        Text("X")
+                    }
+                    .help("Frontal auf X-Achse schauen")
+                    Button { yaw = -.pi / 2; pitch = 0.25; dragStartYaw = yaw; dragStartPitch = pitch } label: {
+                        Text("Y")
+                    }
+                    .help("Seitlich auf Y-Achse schauen")
+                    Button { yaw = 0.0; pitch = 1.32; dragStartYaw = yaw; dragStartPitch = pitch } label: {
+                        Image(systemName: "square.grid.2x2")
+                    }
+                    .help("Draufsicht (Oben)")
                 }
                 .fixedSize()
             }
@@ -122,29 +136,32 @@ struct Surface3DView: View {
             }
             ctx.stroke(floorGrid, with: .color(.secondary.opacity(0.20)), lineWidth: 0.7)
 
-            // Back Z-height gridlines at 0%, 50%, 100%
+            // Dynamic camera-facing outer edges so axes & labels ALWAYS stay on the outside, never behind/through the mesh
+            let frontY: Double = cos(yaw) >= 0 ? 1.0 : -1.0
+            let frontX: Double = sin(yaw) <= 0 ? 1.0 : -1.0
+            let zCornerX: Double = -frontX
+            let zCornerY: Double = frontY
+
+            // Back Z-height gridlines on the two walls AWAY from camera
             var zGrid = Path()
             for frac in [0.0, 0.5, 1.0] {
                 let nz = zBase + (zTop - zBase) * frac
-                zGrid.move(to: p3(-1, -1, nz))
-                zGrid.addLine(to: p3(1, -1, nz))
-                zGrid.move(to: p3(-1, -1, nz))
-                zGrid.addLine(to: p3(-1, 1, nz))
+                zGrid.move(to: p3(-1, -frontY, nz))
+                zGrid.addLine(to: p3(1, -frontY, nz))
+                zGrid.move(to: p3(-frontX, -1, nz))
+                zGrid.addLine(to: p3(-frontX, 1, nz))
             }
-            ctx.stroke(zGrid, with: .color(.secondary.opacity(0.16)), style: StrokeStyle(lineWidth: 0.6, dash: [3, 3]))
+            ctx.stroke(zGrid, with: .color(.secondary.opacity(0.18)), style: StrokeStyle(lineWidth: 0.6, dash: [3, 3]))
 
-            // Crisp primary X, Y, Z axis lines
+            // Crisp primary X, Y, Z axis lines on camera-facing outer edges
             var axesPath = Path()
-            // X axis along front edge (ny = 1, z = zBase)
-            axesPath.move(to: p3(-1, 1, zBase))
-            axesPath.addLine(to: p3(1, 1, zBase))
-            // Y axis along right edge (nx = 1, z = zBase)
-            axesPath.move(to: p3(1, -1, zBase))
-            axesPath.addLine(to: p3(1, 1, zBase))
-            // Z axis vertical at left corner (nx = -1, ny = 1)
-            axesPath.move(to: p3(-1, 1, zBase))
-            axesPath.addLine(to: p3(-1, 1, zTop))
-            ctx.stroke(axesPath, with: .color(.secondary.opacity(0.65)), lineWidth: 1.2)
+            axesPath.move(to: p3(-1, frontY, zBase))
+            axesPath.addLine(to: p3(1, frontY, zBase))
+            axesPath.move(to: p3(frontX, -1, zBase))
+            axesPath.addLine(to: p3(frontX, 1, zBase))
+            axesPath.move(to: p3(zCornerX, zCornerY, zBase))
+            axesPath.addLine(to: p3(zCornerX, zCornerY, zTop))
+            ctx.stroke(axesPath, with: .color(.secondary.opacity(0.7)), lineWidth: 1.2)
 
             // 2. Comparison ghost wireframe underneath
             if !projectedCmp.isEmpty {
@@ -191,43 +208,43 @@ struct Surface3DView: View {
                            lineWidth: q.changed ? 1.1 : 0.65)
             }
 
-            // 4. Draw axis tick labels & units ON TOP of surface so they are never occluded
+            // 4. Draw axis tick labels & units on camera-facing outer edges (never crossing through the mesh)
             let xTickIndices = tickIndices(count: l.cols, maxTicks: 5)
             for idx in xTickIndices {
                 let nx = l.cols > 1 ? (Double(idx) / Double(l.cols - 1)) * 2.0 - 1.0 : 0.0
-                let pt = p3(nx, 1.16, zBase)
+                let pt = p3(nx, frontY * 1.15, zBase)
                 let lbl = Text(xLabels[idx]).font(.system(size: 9.5, weight: .medium).monospacedDigit()).foregroundStyle(.primary.opacity(0.85))
                 ctx.draw(lbl, at: pt, anchor: .center)
             }
             let xUnit = model.displayUnit(x.scaling.units)
             if !xUnit.isEmpty {
                 let lbl = Text("X: \(xUnit)").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                ctx.draw(lbl, at: p3(0, 1.32, zBase), anchor: .center)
+                ctx.draw(lbl, at: p3(0, frontY * 1.32, zBase), anchor: .center)
             }
 
             let yTickIndices = tickIndices(count: l.rows, maxTicks: 4)
             for idx in yTickIndices {
                 let ny = l.rows > 1 ? (Double(idx) / Double(l.rows - 1)) * 2.0 - 1.0 : 0.0
-                let pt = p3(1.18, ny, zBase)
+                let pt = p3(frontX * 1.18, ny, zBase)
                 let lbl = Text(yLabels[idx]).font(.system(size: 9.5, weight: .medium).monospacedDigit()).foregroundStyle(.primary.opacity(0.85))
                 ctx.draw(lbl, at: pt, anchor: .center)
             }
             let yUnit = model.displayUnit(y.scaling.units)
             if !yUnit.isEmpty {
                 let lbl = Text("Y: \(yUnit)").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                ctx.draw(lbl, at: p3(1.34, 0, zBase), anchor: .center)
+                ctx.draw(lbl, at: p3(frontX * 1.34, 0, zBase), anchor: .center)
             }
 
             for (frac, val) in [(0.0, lo), (0.5, (lo + hi) * 0.5), (1.0, hi)] {
                 let nz = zBase + (zTop - zBase) * frac
-                let pt = p3(-1.16, 1.0, nz)
+                let pt = p3(zCornerX * 1.15, zCornerY, nz)
                 let lbl = Text(s.format(val)).font(.system(size: 9.5, weight: .medium).monospacedDigit()).foregroundStyle(.primary.opacity(0.85))
-                ctx.draw(lbl, at: pt, anchor: .trailing)
+                ctx.draw(lbl, at: pt, anchor: .center)
             }
             let zUnit = model.displayUnit(s.units)
             if !zUnit.isEmpty {
                 let lbl = Text(zUnit).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                ctx.draw(lbl, at: p3(-1.08, 1.0, zTop + 0.14), anchor: .center)
+                ctx.draw(lbl, at: p3(zCornerX * 1.08, zCornerY, zTop + 0.14), anchor: .center)
             }
 
             // 5. Vertex handles in edit mode
@@ -259,8 +276,9 @@ struct Surface3DView: View {
                             liveValue = dragStartValue - Double(value.translation.height) * sensitivity
                         }
                     } else if draggedCell == nil {
-                        yaw = dragStartYaw + Double(value.translation.width) * 0.01
-                        pitch = min(max(dragStartPitch + Double(value.translation.height) * 0.01, -1.1), 1.35)
+                        yaw = dragStartYaw + Double(value.translation.width) * 0.0065
+                        // Clamp pitch above the floor plane so the surface never flips upside-down
+                        pitch = min(max(dragStartPitch + Double(value.translation.height) * 0.0065, 0.14), 1.35)
                     }
                 }
                 .onEnded { _ in
