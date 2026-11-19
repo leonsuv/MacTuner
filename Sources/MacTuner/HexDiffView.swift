@@ -520,18 +520,29 @@ struct HexDiffView: View {
                             }
                         }
 
-                        // XDF item label on far right (with subtle color dot)
-                        if let firstSpan = rowSpans.first {
+                        // XDF item labels on far right (supports multiple maps on the same row)
+                        let uniqueSpans = uniqueRowSpans(rowSpans)
+                        if !uniqueSpans.isEmpty {
                             let xdfStartX = size.width - xdfW
-                            let dotRect = CGRect(x: xdfStartX + 8, y: y + rowHeight * 0.5 - 3, width: 6, height: 6)
-                            ctx.fill(Path(ellipseIn: dotRect), with: .color(XDFAddressIndex.palette[firstSpan.colorIndex % XDFAddressIndex.palette.count]))
-                            let label = firstSpan.isAxis ? "\(firstSpan.title) (Achse)" : firstSpan.title
-                            let maxChars = max(14, Int((xdfW - 26) / 6.2))
-                            let display = label.count > maxChars ? String(label.prefix(maxChars - 1)) + "…" : label
-                            ctx.draw(Text(display)
-                                .font(.system(size: 10.5, weight: .medium))
-                                .foregroundStyle(.primary.opacity(0.85)),
-                                     at: CGPoint(x: xdfStartX + 18, y: y + rowHeight * 0.5), anchor: .leading)
+                            let slotW = max(36, (xdfW - 10) / CGFloat(uniqueSpans.count))
+                            for (idx, span) in uniqueSpans.enumerated() {
+                                let sx = xdfStartX + 6 + CGFloat(idx) * slotW
+                                if idx > 0 {
+                                    var sep = Path()
+                                    sep.move(to: CGPoint(x: sx - 3, y: y + 3))
+                                    sep.addLine(to: CGPoint(x: sx - 3, y: y + rowHeight - 3))
+                                    ctx.stroke(sep, with: .color(.secondary.opacity(0.25)), lineWidth: 0.75)
+                                }
+                                let dotRect = CGRect(x: sx + 2, y: y + rowHeight * 0.5 - 3, width: 6, height: 6)
+                                ctx.fill(Path(ellipseIn: dotRect), with: .color(XDFAddressIndex.palette[span.colorIndex % XDFAddressIndex.palette.count]))
+                                let label = span.isAxis ? "\(span.title) (Achse)" : span.title
+                                let maxChars = max(5, Int((slotW - 18) / 6.2))
+                                let display = label.count > maxChars ? String(label.prefix(maxChars - 1)) + "…" : label
+                                ctx.draw(Text(display)
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .foregroundStyle(.primary.opacity(0.88)),
+                                         at: CGPoint(x: sx + 12, y: y + rowHeight * 0.5), anchor: .leading)
+                            }
                         }
                     }
 
@@ -584,13 +595,16 @@ struct HexDiffView: View {
                         .onChanged { val in
                             let headerH: CGFloat = 22
                             let xdfStartX = geo.size.width - xdfW
-                            // Click on XDF label column jumps straight to that map!
+                            // Click on XDF label column jumps straight to the clicked map!
                             if val.startLocation.x >= xdfStartX, abs(val.translation.width) < 4, abs(val.translation.height) < 4 {
                                 let r = Int((val.startLocation.y - headerH) / rowHeight)
                                 if r >= 0, r < visibleRows {
                                     let rowBase = startAddr + r * rowStride
-                                    if let span = cachedIndex.spansOverlapping(rowBase, min(bin.count, rowBase + rowStride)).first {
-                                        model.selection = span.itemID
+                                    let unique = uniqueRowSpans(cachedIndex.spansOverlapping(rowBase, min(bin.count, rowBase + rowStride)))
+                                    if !unique.isEmpty {
+                                        let slotW = max(36, (xdfW - 10) / CGFloat(unique.count))
+                                        let idx = min(unique.count - 1, max(0, Int((val.startLocation.x - xdfStartX - 6) / slotW)))
+                                        model.selection = unique[idx].itemID
                                     }
                                 }
                                 return
@@ -659,48 +673,122 @@ struct HexDiffView: View {
                 .allowsHitTesting(false)
             )
             .contextMenu {
-                let targetAddr = selectedStart ?? viewportOffset
-                if let span = cachedIndex.span(at: targetAddr) {
-                    Button("Kennfeld „\(span.title)“ im Editor öffnen") {
-                        model.selection = span.itemID
-                    }
-                    Divider()
-                }
-                Button("Ab \(String(format: "0x%05X", targetAddr)) links ausrichten (Spalte +0)") {
-                    byteShift = targetAddr % rowStride
-                }
-                Button("Offset zurücksetzen (+0)") { byteShift = 0 }
-                    .disabled(byteShift == 0)
-                Divider()
-                if let range = selectedRange {
-                    if let onCreateMapFromRange {
-                        Button("Kennfeld aus Auswahl erstellen (\(range.count) B) …") {
-                            onCreateMapFromRange(range)
-                        }
-                    }
-                    Button("Zwillinge / Parallel-Kennfelder suchen") {
-                        twinMatches = BinaryAnalysis.findTwins(for: range, in: bin, elemBytes: elemBytes,
-                                                               lsbFirst: lsbFirst, isSigned: isSigned)
-                        showTwinsPopover = true
-                    }
-                    .disabled(range.count < elemBytes * 4)
-                    Button("Auswahl als Hex kopieren") {
-                        guard range.upperBound <= bin.count else { return }
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(Changes.hex(bin[range]), forType: .string)
-                    }
-                    Divider()
-                }
-                Button("Lesezeichen bei \(String(format: "0x%05X", targetAddr)) setzen") {
-                    bookmarks.append(HexBookmark(name: String(format: "Marker 0x%05X", targetAddr), address: targetAddr))
-                }
-                Button("Adresse kopieren (\(String(format: "0x%05X", targetAddr)))") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(String(format: "0x%05X", targetAddr), forType: .string)
-                }
+                hexContextMenu(targetAddr: selectedStart ?? alignedStart(viewportOffset), is2D: false)
             }
         }
         .card(padding: 0)
+    }
+
+    private func uniqueRowSpans(_ spans: [XDFAddressIndex.Span]) -> [XDFAddressIndex.Span] {
+        var seen = Set<Int>()
+        var result: [XDFAddressIndex.Span] = []
+        for s in spans where seen.insert(s.itemID).inserted {
+            result.append(s)
+        }
+        return result
+    }
+
+    @ViewBuilder
+    private func hexContextMenu(targetAddr: Int, is2D: Bool) -> some View {
+        let bin = model.bin
+        let addrStr = String(format: "0x%05X", targetAddr)
+
+        if let span = cachedIndex.span(at: targetAddr) {
+            Button {
+                model.selection = span.itemID
+            } label: {
+                Label("„\(span.title)“ im Editor öffnen", systemImage: "tablecells")
+            }
+            Button {
+                selectedStart = span.range.lowerBound
+                selectedEnd = max(span.range.lowerBound, span.range.upperBound - elemBytes)
+            } label: {
+                Label("Gesamtes Kennfeld auswählen (\(span.range.count) B)", systemImage: "selection.pin.in.out")
+            }
+            if is2D {
+                Button {
+                    let rowBase = max(0, span.range.lowerBound - rowStride * 2)
+                    viewportOffset = min(max(0, rowBase), max(0, bin.count - rowStride))
+                    selectedStart = span.range.lowerBound
+                    selectedEnd = max(span.range.lowerBound, span.range.upperBound - elemBytes)
+                    if viewMode == .wave2D { viewMode = .text }
+                } label: {
+                    Label("Im Hex-Editor zentrieren", systemImage: "scope")
+                }
+            }
+            Divider()
+        }
+
+        if let range = selectedRange {
+            if let onCreateMapFromRange {
+                Button {
+                    onCreateMapFromRange(range)
+                } label: {
+                    Label("Kennfeld aus Auswahl erstellen (\(range.count) B) …", systemImage: "plus.rectangle.on.rectangle")
+                }
+            }
+            Button {
+                twinMatches = BinaryAnalysis.findTwins(for: range, in: bin, elemBytes: elemBytes,
+                                                       lsbFirst: lsbFirst, isSigned: isSigned)
+                showTwinsPopover = true
+            } label: {
+                Label("Zwillinge / Parallel-Kennfelder suchen", systemImage: "doc.on.doc")
+            }
+            .disabled(range.count < elemBytes * 4)
+            Button {
+                viewMode = .surface3D
+            } label: {
+                Label("Auswahl in 3D-Vorschau ansehen", systemImage: "cube")
+            }
+            .disabled(range.count < elemBytes * 4)
+            Button {
+                guard range.upperBound <= bin.count else { return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(Changes.hex(bin[range]), forType: .string)
+            } label: {
+                Label("Auswahl als Hex kopieren", systemImage: "doc.on.clipboard")
+            }
+            Divider()
+        }
+
+        Button {
+            byteShift = targetAddr % rowStride
+        } label: {
+            Label("Ab \(addrStr) links ausrichten (Spalte +0)", systemImage: "arrow.left.to.line")
+        }
+        Button {
+            byteShift = 0
+        } label: {
+            Label("Offset zurücksetzen (+0)", systemImage: "arrow.uturn.backward")
+        }
+        .disabled(byteShift == 0)
+
+        if is2D {
+            Divider()
+            Button {
+                waveWindowElements = max(64, waveWindowElements / 2)
+            } label: {
+                Label("2D-Ansicht vergrößern", systemImage: "plus.magnifyingglass")
+            }
+            Button {
+                waveWindowElements = min(16384, waveWindowElements * 2)
+            } label: {
+                Label("2D-Ansicht verkleinern", systemImage: "minus.magnifyingglass")
+            }
+        }
+
+        Divider()
+        Button {
+            bookmarks.append(HexBookmark(name: "Marker \(addrStr)", address: targetAddr))
+        } label: {
+            Label("Lesezeichen bei \(addrStr) setzen", systemImage: "bookmark.fill")
+        }
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(addrStr, forType: .string)
+        } label: {
+            Label("Adresse kopieren (\(addrStr))", systemImage: "number")
+        }
     }
 
     // MARK: - WinOLS Zoomable 2D Waveform Graph (Click to Scroll, Drag to Select)
@@ -903,6 +991,9 @@ struct HexDiffView: View {
                     }
                     .allowsHitTesting(false)
                 )
+                .contextMenu {
+                    hexContextMenu(targetAddr: selectedStart ?? startAddr, is2D: true)
+                }
             }
         }
         .card(padding: 10)
