@@ -147,6 +147,20 @@ and ideas and pull requests are welcome in [Issues](../../issues).
 - [x] Apply a change list from one file to another (batch tuning with `.mtpatch` packages in absolute, Δ or Δ% mode)
 - [x] Highlight maps that look wrong: non-monotonic axes, outliers, cut-off curves and out-of-bounds addresses
 
+### WinOLS-class Binary Analysis & Reverse Engineering
+- [x] 60-FPS windowed Hexdump with 8/16/32-bit, Float, LoHi/HiLo, Hex/Dec, and Signed/Unsigned toggles
+- [x] Adjustable column width (`M`/`W`) and byte-offset alignment shift (`±1` byte) to snap unknown maps into alignment
+- [x] Inline per-row bar-graph visualization right next to hex/decimal values (spot maps visually while scrolling)
+- [x] Zoomable 2D waveform graph (bottom dock & full 2D view) with click-to-scroll and drag-to-select byte ranges
+- [x] Whole-file minimap overview bar showing data density, XDF coverage and diff locations for instant navigation
+- [x] Live 3D surface toggle directly on the current hexdump window or selection
+- [x] Byte-sequence, wildcard (`??`), ASCII and numeric value-range search in hexdump
+- [x] Bookmarks & named address markers in hexdump with quick jump
+- [x] Twin-map / parallel-map detector (find identical or mirrored calibration blocks in the same BIN)
+- [x] Entropy & code-vs-calibration region map (separate executable code, calibration tables, empty flash and strings)
+- [ ] Automatic Bosch / Siemens / Marelli / Denso pointer & axis-ID descriptor decoder
+- [x] Synchronized 2D waveform comparison of two different software versions with manual offset-sync slider
+
 ### Checksums and flashing
 - [x] Checksum plugins per control unit family (Bosch ME7 / MED17 / EDC17, Siemens MS4x/SIMOS, Temic DQ250, generic CRC-32)
 - [x] Check the checksum on open and before save, with a clear warning when it does not match (plus one-click undoable correction & live StatusBar indicator)
