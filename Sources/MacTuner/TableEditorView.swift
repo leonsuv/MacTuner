@@ -255,8 +255,8 @@ struct TableEditorView: View {
                     .strokeBorder(isCompareView ? AnyShapeStyle(Theme.compare) : AnyShapeStyle(.separator.opacity(0.6)),
                                   lineWidth: isCompareView ? 2 : 1))
                 .frame(minHeight: min(naturalGridHeight, 120),
-                       idealHeight: showVisual ? min(naturalGridHeight, 360) : naturalGridHeight,
-                       maxHeight: showVisual ? max(naturalGridHeight, 200) : .infinity)
+                       idealHeight: showVisual ? min(naturalGridHeight, 420) : naturalGridHeight,
+                       maxHeight: showVisual ? max(naturalGridHeight, 260) : .infinity)
 
                 if showVisual {
                     HStack(spacing: 10) {
@@ -272,6 +272,7 @@ struct TableEditorView: View {
                     .frame(minHeight: 220, maxHeight: .infinity)
                 }
             }
+            .id("\(item.id)-\(mode)")
         }
         .onAppear { gridFocused = true }
         .sheet(item: $editingAxis) { target in

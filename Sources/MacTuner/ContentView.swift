@@ -5,49 +5,52 @@ struct ContentView: View {
     @State private var search = ""
 
     var body: some View {
-        HStack(spacing: 0) {
-            WorkbenchRail()
-            NavigationSplitView {
-                SidebarView(search: search)
-                    .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 460)
-            } detail: {
-                detail
-            }
-            .searchable(text: $search, placement: .sidebar, prompt: "Kennfeld suchen")
-            .toolbar {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button { model.showCommandPalette.toggle() } label: {
-                        Label("Suche (⌘K)", systemImage: "command")
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                WorkbenchRail()
+                NavigationSplitView {
+                    SidebarView(search: search)
+                        .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 460)
+                } detail: {
+                    detail
+                }
+                .searchable(text: $search, placement: .sidebar, prompt: "Kennfeld suchen")
+                .toolbar {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button { model.showCommandPalette.toggle() } label: {
+                            Label("Suche (⌘K)", systemImage: "command")
+                        }
+                        .help("Befehlspalette öffnen (⌘K)")
+                        OpenMenu()
+                        ControlGroup {
+                            Button { model.selectChange(-1) } label: { Label("Vorherige Änderung", systemImage: "chevron.up") }
+                                .help("Vorherige Änderung (⌥⌘↑)")
+                            Button { model.selectChange(1) } label: { Label("Nächste Änderung", systemImage: "chevron.down") }
+                                .help("Nächste Änderung (⌥⌘↓)")
+                        }
+                        .disabled(model.changedItems.isEmpty)
+                        ControlGroup {
+                            Button { model.undo() } label: { Label("Widerrufen", systemImage: "arrow.uturn.backward") }
+                                .disabled(!model.canUndo)
+                                .help("Widerrufen (⌘Z)")
+                            Button { model.redo() } label: { Label("Wiederholen", systemImage: "arrow.uturn.forward") }
+                                .disabled(!model.canRedo)
+                                .help("Wiederholen (⇧⌘Z)")
+                        }
+                        Button { model.save() } label: {
+                            Label("Speichern", systemImage: "square.and.arrow.down")
+                        }
+                        .tint(model.dirty ? Color.accentColor : nil)
+                        .disabled(!model.hasBin || !model.dirty)
+                        .help("BIN speichern (⌘S)")
                     }
-                    .help("Befehlspalette öffnen (⌘K)")
-                    OpenMenu()
-                    ControlGroup {
-                        Button { model.selectChange(-1) } label: { Label("Vorherige Änderung", systemImage: "chevron.up") }
-                            .help("Vorherige Änderung (⌥⌘↑)")
-                        Button { model.selectChange(1) } label: { Label("Nächste Änderung", systemImage: "chevron.down") }
-                            .help("Nächste Änderung (⌥⌘↓)")
-                    }
-                    .disabled(model.changedItems.isEmpty)
-                    ControlGroup {
-                        Button { model.undo() } label: { Label("Widerrufen", systemImage: "arrow.uturn.backward") }
-                            .disabled(!model.canUndo)
-                            .help("Widerrufen (⌘Z)")
-                        Button { model.redo() } label: { Label("Wiederholen", systemImage: "arrow.uturn.forward") }
-                            .disabled(!model.canRedo)
-                            .help("Wiederholen (⇧⌘Z)")
-                    }
-                    Button { model.save() } label: {
-                        Label("Speichern", systemImage: "square.and.arrow.down")
-                    }
-                    .tint(model.dirty ? Color.accentColor : nil)
-                    .disabled(!model.hasBin || !model.dirty)
-                    .help("BIN speichern (⌘S)")
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            StatusBar()
         }
         .navigationTitle(model.windowTitle)
         .navigationSubtitle(model.hasBin ? (model.definition?.title ?? "") : "")
-        .safeAreaInset(edge: .bottom, spacing: 0) { StatusBar() }
         .dropDestination(for: URL.self) { urls, _ in
             // XDF first, so a dropped pair opens in the right order.
             urls.sorted { ($0.pathExtension.lowercased() == "xdf") && !($1.pathExtension.lowercased() == "xdf") }

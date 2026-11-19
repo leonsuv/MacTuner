@@ -146,47 +146,6 @@ struct Surface3DView: View {
             axesPath.addLine(to: p3(-1, 1, zTop))
             ctx.stroke(axesPath, with: .color(.secondary.opacity(0.65)), lineWidth: 1.2)
 
-            // X axis tick labels (start, mid, end)
-            let xTickIndices = tickIndices(count: l.cols, maxTicks: 5)
-            for idx in xTickIndices {
-                let nx = l.cols > 1 ? (Double(idx) / Double(l.cols - 1)) * 2.0 - 1.0 : 0.0
-                let pt = p3(nx, 1.13, zBase)
-                let lbl = Text(xLabels[idx]).font(.system(size: 9).monospacedDigit()).foregroundStyle(.secondary)
-                ctx.draw(lbl, at: pt, anchor: .center)
-            }
-            let xUnit = model.displayUnit(x.scaling.units)
-            if !xUnit.isEmpty {
-                let lbl = Text("X: \(xUnit)").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(.secondary)
-                ctx.draw(lbl, at: p3(0, 1.28, zBase), anchor: .center)
-            }
-
-            // Y axis tick labels
-            let yTickIndices = tickIndices(count: l.rows, maxTicks: 4)
-            for idx in yTickIndices {
-                let ny = l.rows > 1 ? (Double(idx) / Double(l.rows - 1)) * 2.0 - 1.0 : 0.0
-                let pt = p3(1.16, ny, zBase)
-                let lbl = Text(yLabels[idx]).font(.system(size: 9).monospacedDigit()).foregroundStyle(.secondary)
-                ctx.draw(lbl, at: pt, anchor: .center)
-            }
-            let yUnit = model.displayUnit(y.scaling.units)
-            if !yUnit.isEmpty {
-                let lbl = Text("Y: \(yUnit)").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(.secondary)
-                ctx.draw(lbl, at: p3(1.30, 0, zBase), anchor: .center)
-            }
-
-            // Z axis tick labels (lo, mid, hi) + unit
-            for (frac, val) in [(0.0, lo), (0.5, (lo + hi) * 0.5), (1.0, hi)] {
-                let nz = zBase + (zTop - zBase) * frac
-                let pt = p3(-1.14, 1.0, nz)
-                let lbl = Text(s.format(val)).font(.system(size: 9).monospacedDigit()).foregroundStyle(.secondary)
-                ctx.draw(lbl, at: pt, anchor: .trailing)
-            }
-            let zUnit = model.displayUnit(s.units)
-            if !zUnit.isEmpty {
-                let lbl = Text(zUnit).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(.secondary)
-                ctx.draw(lbl, at: p3(-1.05, 1.0, zTop + 0.14), anchor: .center)
-            }
-
             // 2. Comparison ghost wireframe underneath
             if !projectedCmp.isEmpty {
                 var wire = Path()
@@ -232,7 +191,46 @@ struct Surface3DView: View {
                            lineWidth: q.changed ? 1.1 : 0.65)
             }
 
-            // 4. Vertex handles in edit mode
+            // 4. Draw axis tick labels & units ON TOP of surface so they are never occluded
+            let xTickIndices = tickIndices(count: l.cols, maxTicks: 5)
+            for idx in xTickIndices {
+                let nx = l.cols > 1 ? (Double(idx) / Double(l.cols - 1)) * 2.0 - 1.0 : 0.0
+                let pt = p3(nx, 1.16, zBase)
+                let lbl = Text(xLabels[idx]).font(.system(size: 9.5, weight: .medium).monospacedDigit()).foregroundStyle(.primary.opacity(0.85))
+                ctx.draw(lbl, at: pt, anchor: .center)
+            }
+            let xUnit = model.displayUnit(x.scaling.units)
+            if !xUnit.isEmpty {
+                let lbl = Text("X: \(xUnit)").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                ctx.draw(lbl, at: p3(0, 1.32, zBase), anchor: .center)
+            }
+
+            let yTickIndices = tickIndices(count: l.rows, maxTicks: 4)
+            for idx in yTickIndices {
+                let ny = l.rows > 1 ? (Double(idx) / Double(l.rows - 1)) * 2.0 - 1.0 : 0.0
+                let pt = p3(1.18, ny, zBase)
+                let lbl = Text(yLabels[idx]).font(.system(size: 9.5, weight: .medium).monospacedDigit()).foregroundStyle(.primary.opacity(0.85))
+                ctx.draw(lbl, at: pt, anchor: .center)
+            }
+            let yUnit = model.displayUnit(y.scaling.units)
+            if !yUnit.isEmpty {
+                let lbl = Text("Y: \(yUnit)").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                ctx.draw(lbl, at: p3(1.34, 0, zBase), anchor: .center)
+            }
+
+            for (frac, val) in [(0.0, lo), (0.5, (lo + hi) * 0.5), (1.0, hi)] {
+                let nz = zBase + (zTop - zBase) * frac
+                let pt = p3(-1.16, 1.0, nz)
+                let lbl = Text(s.format(val)).font(.system(size: 9.5, weight: .medium).monospacedDigit()).foregroundStyle(.primary.opacity(0.85))
+                ctx.draw(lbl, at: pt, anchor: .trailing)
+            }
+            let zUnit = model.displayUnit(s.units)
+            if !zUnit.isEmpty {
+                let lbl = Text(zUnit).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                ctx.draw(lbl, at: p3(-1.08, 1.0, zTop + 0.14), anchor: .center)
+            }
+
+            // 5. Vertex handles in edit mode
             if editMode && canEdit {
                 for r in 0..<l.rows {
                     for c in 0..<l.cols {
