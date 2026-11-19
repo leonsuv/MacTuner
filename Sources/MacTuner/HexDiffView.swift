@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Fast interval index mapping byte offsets to the XDF items (values or axes) that cover them.
 struct XDFAddressIndex {
-    struct Span: Identifiable {
+    struct Span: Identifiable, Equatable {
         let id: Int
         let range: Range<Int>
         let itemID: Int
@@ -170,6 +170,24 @@ struct HexDiffView: View {
     @State private var lastClickOffset: Int?
     @State private var lastWaveClickTime: Date = .distantPast
     @State private var lastWaveClickItemID: Int?
+    @State private var hexHover: HexHoverInfo?
+    @State private var waveHover: WaveHoverInfo?
+
+    private struct HexHoverInfo: Equatable {
+        let point: CGPoint
+        let address: Int?
+        let spans: [XDFAddressIndex.Span]
+        let activeItemID: Int?
+        let isXDFColumn: Bool
+    }
+
+    private struct WaveHoverInfo: Equatable {
+        let point: CGPoint
+        let address: Int
+        let valueText: String
+        let cmpText: String?
+        let span: XDFAddressIndex.Span?
+    }
 
     // Cached index & diff offsets (rebuilt only when BIN/XDF changes, NEVER on scroll/hover)
     @State private var cachedIndex = XDFAddressIndex(definition: nil)
@@ -520,12 +538,17 @@ struct HexDiffView: View {
                             }
                         }
 
-                        // XDF item labels on far right (supports multiple maps on the same row)
+                        // XDF item labels on far right (shows up to 2 cleanly + "+N" pill when more share a row)
                         let uniqueSpans = uniqueRowSpans(rowSpans)
                         if !uniqueSpans.isEmpty {
                             let xdfStartX = size.width - xdfW
-                            let slotW = max(36, (xdfW - 10) / CGFloat(uniqueSpans.count))
-                            for (idx, span) in uniqueSpans.enumerated() {
+                            let visibleCount = min(uniqueSpans.count, 2)
+                            let overflow = uniqueSpans.count - visibleCount
+                            let badgeW: CGFloat = overflow > 0 ? 30 : 0
+                            let availW = max(40, xdfW - 10 - badgeW)
+                            let slotW = availW / CGFloat(visibleCount)
+                            for idx in 0..<visibleCount {
+                                let span = uniqueSpans[idx]
                                 let sx = xdfStartX + 6 + CGFloat(idx) * slotW
                                 if idx > 0 {
                                     var sep = Path()
@@ -536,12 +559,21 @@ struct HexDiffView: View {
                                 let dotRect = CGRect(x: sx + 2, y: y + rowHeight * 0.5 - 3, width: 6, height: 6)
                                 ctx.fill(Path(ellipseIn: dotRect), with: .color(XDFAddressIndex.palette[span.colorIndex % XDFAddressIndex.palette.count]))
                                 let label = span.isAxis ? "\(span.title) (Achse)" : span.title
-                                let maxChars = max(5, Int((slotW - 18) / 6.2))
+                                let maxChars = max(6, Int((slotW - 18) / 6.2))
                                 let display = label.count > maxChars ? String(label.prefix(maxChars - 1)) + "…" : label
                                 ctx.draw(Text(display)
                                     .font(.system(size: 10.5, weight: .medium))
                                     .foregroundStyle(.primary.opacity(0.88)),
                                          at: CGPoint(x: sx + 12, y: y + rowHeight * 0.5), anchor: .leading)
+                            }
+                            if overflow > 0 {
+                                let bx = xdfStartX + 6 + availW + 2
+                                let pill = CGRect(x: bx, y: y + 3, width: 24, height: rowHeight - 6)
+                                ctx.fill(Path(roundedRect: pill, cornerRadius: 4), with: .color(.secondary.opacity(0.24)))
+                                ctx.draw(Text("+\(overflow)")
+                                    .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
+                                    .foregroundStyle(.secondary),
+                                         at: CGPoint(x: pill.midX, y: pill.midY), anchor: .center)
                             }
                         }
                     }
@@ -602,8 +634,11 @@ struct HexDiffView: View {
                                     let rowBase = startAddr + r * rowStride
                                     let unique = uniqueRowSpans(cachedIndex.spansOverlapping(rowBase, min(bin.count, rowBase + rowStride)))
                                     if !unique.isEmpty {
-                                        let slotW = max(36, (xdfW - 10) / CGFloat(unique.count))
-                                        let idx = min(unique.count - 1, max(0, Int((val.startLocation.x - xdfStartX - 6) / slotW)))
+                                        let visibleCount = min(unique.count, 2)
+                                        let badgeW: CGFloat = unique.count > 2 ? 30 : 0
+                                        let availW = max(40, xdfW - 10 - badgeW)
+                                        let slotW = availW / CGFloat(visibleCount)
+                                        let idx = min(visibleCount - 1, max(0, Int((val.startLocation.x - xdfStartX - 6) / slotW)))
                                         model.selection = unique[idx].itemID
                                     }
                                 }
@@ -640,6 +675,58 @@ struct HexDiffView: View {
                             }
                         }
                 )
+                .onContinuousHover(coordinateSpace: .local) { phase in
+                    switch phase {
+                    case .ended:
+                        hexHover = nil
+                    case .active(let pt):
+                        let headerH: CGFloat = 22
+                        let r = Int((pt.y - headerH) / rowHeight)
+                        guard pt.y >= headerH, r >= 0, r < visibleRows else {
+                            hexHover = nil
+                            return
+                        }
+                        let rowBase = startAddr + r * rowStride
+                        guard rowBase < bin.count else { hexHover = nil; return }
+                        let xdfStartX = geo.size.width - xdfW
+                        if pt.x >= xdfStartX {
+                            let unique = uniqueRowSpans(cachedIndex.spansOverlapping(rowBase, min(bin.count, rowBase + rowStride)))
+                            if unique.isEmpty {
+                                hexHover = nil
+                            } else {
+                                let visibleCount = min(unique.count, 2)
+                                let badgeW: CGFloat = unique.count > 2 ? 30 : 0
+                                let availW = max(40, xdfW - 10 - badgeW)
+                                let slotW = availW / CGFloat(visibleCount)
+                                let relX = pt.x - xdfStartX - 6
+                                let activeID: Int? = relX <= availW
+                                    ? unique[min(visibleCount - 1, max(0, Int(relX / slotW)))].itemID
+                                    : nil
+                                hexHover = HexHoverInfo(point: pt, address: nil, spans: unique,
+                                                        activeItemID: activeID, isXDFColumn: true)
+                            }
+                        } else if pt.x >= addrWidth && pt.x < addrWidth + dataAreaWidth {
+                            let c = Int((pt.x - addrWidth) / cellW)
+                            guard c >= 0, c < columns else { hexHover = nil; return }
+                            let off = rowBase + c * elemBytes
+                            guard off + elemBytes <= bin.count else { hexHover = nil; return }
+                            if let span = cachedIndex.span(at: off) {
+                                hexHover = HexHoverInfo(point: pt, address: off, spans: [span],
+                                                        activeItemID: span.itemID, isXDFColumn: false)
+                            } else {
+                                hexHover = nil
+                            }
+                        } else {
+                            hexHover = nil
+                        }
+                    }
+                }
+
+                // Floating hover HUD for Hex cells & XDF column
+                if let info = hexHover {
+                    hexHoverHUD(info, in: geo.size)
+                        .allowsHitTesting(false)
+                }
 
                 // Draggable resize handle for XDF column width (strictly 8pt wide, never blocks hex cells)
                 Rectangle()
@@ -686,6 +773,139 @@ struct HexDiffView: View {
             result.append(s)
         }
         return result
+    }
+
+    @ViewBuilder
+    private func hexHoverHUD(_ info: HexHoverInfo, in bounds: CGSize) -> some View {
+        let bin = model.bin
+        let cmp = model.compare ?? []
+        let estW: CGFloat = info.isXDFColumn ? 270 : 250
+        let estH: CGFloat = info.isXDFColumn ? CGFloat(28 + info.spans.count * 22) : 58
+        let placeLeft = info.isXDFColumn || (info.point.x + estW + 20 > bounds.width)
+        let x = placeLeft
+            ? max(8, info.point.x - estW - 14)
+            : min(bounds.width - estW - 8, info.point.x + 14)
+        let y = (info.point.y + estH + 14 > bounds.height)
+            ? max(8, info.point.y - estH - 10)
+            : max(8, info.point.y + 12)
+
+        VStack(alignment: .leading, spacing: 4) {
+            if info.isXDFColumn {
+                Text("\(info.spans.count) \(info.spans.count == 1 ? "Kennfeld" : "Kennfelder") in dieser Zeile")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ForEach(info.spans) { span in
+                    let isActive = span.itemID == info.activeItemID
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(XDFAddressIndex.palette[span.colorIndex % XDFAddressIndex.palette.count])
+                            .frame(width: 7, height: 7)
+                        Text(span.isAxis ? "\(span.title) (Achse)" : span.title)
+                            .font(.caption.weight(isActive ? .semibold : .regular))
+                            .foregroundStyle(isActive ? .primary : .secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 6)
+                        Text(String(format: "0x%05X", span.range.lowerBound))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(isActive ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+                }
+            } else if let span = info.spans.first {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(XDFAddressIndex.palette[span.colorIndex % XDFAddressIndex.palette.count])
+                        .frame(width: 8, height: 8)
+                    Text(span.title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(2)
+                    if span.isAxis {
+                        Text("Achse")
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(.secondary.opacity(0.2), in: Capsule())
+                    }
+                }
+                HStack(spacing: 8) {
+                    if let addr = info.address {
+                        Text(String(format: "0x%05X", addr))
+                            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                        Text(formatElement(bin, at: addr))
+                            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Color.accentColor)
+                        if addr + elemBytes <= cmp.count,
+                           bin[addr ..< (addr + elemBytes)] != cmp[addr ..< (addr + elemBytes)] {
+                            Text("← \(formatElement(cmp, at: addr))")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(Theme.changed)
+                        }
+                    }
+                    Spacer(minLength: 4)
+                    Text("\(span.range.count) B")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(width: estW, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.primary.opacity(0.16), lineWidth: 0.75))
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
+        .offset(x: x, y: y)
+    }
+
+    @ViewBuilder
+    private func waveHoverHUD(_ info: WaveHoverInfo, in bounds: CGSize) -> some View {
+        let estW: CGFloat = info.span != nil ? 245 : 165
+        let estH: CGFloat = info.span != nil ? 46 : 28
+        let x = (info.point.x + estW + 18 > bounds.width)
+            ? max(8, info.point.x - estW - 12)
+            : min(bounds.width - estW - 8, info.point.x + 12)
+        let y = max(6, min(bounds.height - estH - 18, info.point.y - estH * 0.5))
+
+        ZStack(alignment: .topLeading) {
+            // Subtle vertical crosshair
+            Rectangle()
+                .fill(Color.white.opacity(0.35))
+                .frame(width: 1, height: max(0, bounds.height - 20))
+                .offset(x: info.point.x, y: 6)
+
+            VStack(alignment: .leading, spacing: 3) {
+                if let span = info.span {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(XDFAddressIndex.palette[span.colorIndex % XDFAddressIndex.palette.count])
+                            .frame(width: 7, height: 7)
+                        Text(span.isAxis ? "\(span.title) (Achse)" : span.title)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                }
+                HStack(spacing: 8) {
+                    Text(String(format: "0x%05X", info.address))
+                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                    Text(info.valueText)
+                        .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.cyan)
+                    if let cmpText = info.cmpText {
+                        Text("← \(cmpText)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Theme.changed)
+                    }
+                }
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .frame(maxWidth: estW, alignment: .leading)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.primary.opacity(0.16), lineWidth: 0.75))
+            .shadow(color: .black.opacity(0.32), radius: 8, y: 3)
+            .offset(x: x, y: y)
+        }
     }
 
     @ViewBuilder
@@ -977,6 +1197,39 @@ struct HexDiffView: View {
                                 }
                             }
                     )
+                    .onContinuousHover(coordinateSpace: .local) { phase in
+                        switch phase {
+                        case .ended:
+                            waveHover = nil
+                        case .active(let pt):
+                            let plotMinX: CGFloat = 44
+                            let plotW = max(40, geo.size.width - 52)
+                            guard pt.x >= plotMinX, pt.x <= plotMinX + plotW else {
+                                waveHover = nil
+                                return
+                            }
+                            let elemCount = min(waveWindowElements, max(1, (bin.count - startAddr) / elemBytes))
+                            let t = min(max((pt.x - plotMinX) / plotW, 0), 1)
+                            let el = Int(t * CGFloat(elemCount - 1))
+                            let addr = min(bin.count - elemBytes, startAddr + el * elemBytes)
+                            guard addr >= 0, addr + elemBytes <= bin.count else { waveHover = nil; return }
+                            let valStr = formatElement(bin, at: addr)
+                            let cmpAddr = addr + compareSyncOffset
+                            var cmpStr: String? = nil
+                            if showCompareIn2D, cmpAddr >= 0, cmpAddr + elemBytes <= cmp.count,
+                               bin[addr ..< (addr + elemBytes)] != cmp[cmpAddr ..< (cmpAddr + elemBytes)] {
+                                cmpStr = formatElement(cmp, at: cmpAddr)
+                            }
+                            waveHover = WaveHoverInfo(point: pt, address: addr, valueText: valStr,
+                                                      cmpText: cmpStr, span: cachedIndex.span(at: addr))
+                        }
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if let info = waveHover {
+                            waveHoverHUD(info, in: geo.size)
+                                .allowsHitTesting(false)
+                        }
+                    }
                 }
                 .background(
                     ScrollWheelOverlay { dy, mods in
