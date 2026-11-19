@@ -164,6 +164,13 @@ final class AppModel {
     var alert: String?
     var showCommandPalette = false
     var xdfEditorRequest: XDFEditorRequest?
+    var hexJumpTarget: Range<Int>?
+
+    func showInHexEditor(_ item: XDFItem) {
+        let range = item.data.byteRange
+        hexJumpTarget = range
+        selection = Self.hexDiffSelection
+    }
     private(set) var xdfDirty = false
     var scope: SidebarScope = .all {
         didSet { UserDefaults.standard.set(scope.rawValue, forKey: "scope") }

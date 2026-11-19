@@ -301,6 +301,13 @@ struct ItemContextMenu: View {
     let item: XDFItem
 
     var body: some View {
+        Button { model.showInHexEditor(item) } label: {
+            Label("Im Hex-Editor anzeigen", systemImage: "doc.text.magnifyingglass")
+        }
+        Button { model.xdfEditorRequest = XDFEditorRequest(existingItem: item) } label: {
+            Label("XDF-Definition bearbeiten …", systemImage: "slider.horizontal.3")
+        }
+        Divider()
         if model.isFavorite(item) {
             Button("Aus Favoriten entfernen") { model.toggleFavorite(item) }
         } else {
@@ -310,6 +317,10 @@ struct ItemContextMenu: View {
         Button("Auf Vergleich zurücksetzen") { model.restore(item) }
             .disabled(!model.isChanged(item) || model.isLocked(item))
         Divider()
+        Button("Adresse kopieren (\(String(format: "0x%05X", item.data.address)))") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(String(format: "0x%05X", item.data.address), forType: .string)
+        }
         Button("Namen kopieren") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(item.title, forType: .string)

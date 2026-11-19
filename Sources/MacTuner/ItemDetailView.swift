@@ -91,6 +91,11 @@ struct ItemDetailView: View {
 
                 // Clean labeled secondary action cluster
                 HStack(spacing: 6) {
+                    Button { model.showInHexEditor(item) } label: {
+                        Label("Hex", systemImage: "doc.text.magnifyingglass")
+                    }
+                    .help("Dieses Kennfeld direkt im Hex-Editor anzeigen & links ausrichten")
+
                     Button {
                         noteText = model.note(for: item)
                         showNotes.toggle()

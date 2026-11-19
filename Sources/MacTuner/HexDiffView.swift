@@ -166,6 +166,8 @@ struct HexDiffView: View {
     @State private var addressInput = ""
     @State private var selectedStart: Int?
     @State private var selectedEnd: Int?
+    @State private var lastClickTime: Date = .distantPast
+    @State private var lastClickOffset: Int?
 
     // Cached index & diff offsets (rebuilt only when BIN/XDF changes, NEVER on scroll/hover)
     @State private var cachedIndex = XDFAddressIndex(definition: nil)
@@ -230,7 +232,11 @@ struct HexDiffView: View {
         .padding(.top, 10)
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear { rebuildCaches() }
+        .onAppear {
+            rebuildCaches()
+            consumeJumpTarget()
+        }
+        .onChange(of: model.hexJumpTarget) { _, _ in consumeJumpTarget() }
         .onChange(of: model.bin.count) { _, _ in rebuildCaches() }
         .onChange(of: model.xdfURL) { _, _ in rebuildCaches() }
         .onChange(of: model.compareURL) { _, _ in rebuildCaches() }
@@ -291,12 +297,26 @@ struct HexDiffView: View {
             }
             .help("Spaltenanzahl anpassen (wie WinOLS M/W, um Kennfelder auszurichten)")
 
-            // Byte alignment shift
-            HStack(spacing: 2) {
+            // Byte phase offset shift (slides row start 0 ..< rowStride so any map aligns to column 0!)
+            HStack(spacing: 3) {
                 Button { byteShift = (byteShift - 1 + rowStride) % rowStride } label: { Text("−1B") }
+                Button { byteShift = 0 } label: {
+                    Text(String(format: "+%X", ((byteShift % rowStride) + rowStride) % rowStride))
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .frame(minWidth: 22)
+                }
+                .help("Aktueller Zeilen-Versatz (Klicken = auf +0 zurücksetzen)")
                 Button { byteShift = (byteShift + 1) % rowStride } label: { Text("+1B") }
+                if let sel = selectedStart {
+                    Button {
+                        byteShift = sel % rowStride
+                    } label: {
+                        Image(systemName: "arrow.left.to.line")
+                    }
+                    .help("Ausgewählte Adresse (\(String(format: "0x%05X", sel))) ganz links (Spalte +0) ausrichten")
+                }
             }
-            .help("Start-Offset um 1 Byte verschieben")
+            .help("Zeilen-Offset um 1 Byte verschieben, um Kennfelder bündig auszurichten")
 
             if viewMode == .text {
                 Toggle("Balken", isOn: $showBars).toggleStyle(.checkbox)
@@ -522,6 +542,24 @@ struct HexDiffView: View {
                                 selectedEnd = e
                             }
                         }
+                        .onEnded { val in
+                            guard abs(val.translation.width) < 4, abs(val.translation.height) < 4 else { return }
+                            let headerH: CGFloat = 22
+                            let r = Int((val.startLocation.y - headerH) / rowHeight)
+                            let c = Int((val.startLocation.x - addrWidth) / cellW)
+                            guard r >= 0, r < visibleRows, c >= 0, c < columns else { return }
+                            let off = startAddr + r * rowStride + c * elemBytes
+                            let now = Date()
+                            if lastClickOffset == off && now.timeIntervalSince(lastClickTime) < 0.35 {
+                                if let span = cachedIndex.span(at: off) {
+                                    model.selection = span.itemID
+                                }
+                                lastClickOffset = nil
+                            } else {
+                                lastClickOffset = off
+                                lastClickTime = now
+                            }
+                        }
                 )
 
                 // Draggable resize handle for XDF column width (strictly 8pt wide, never blocks hex cells)
@@ -555,6 +593,47 @@ struct HexDiffView: View {
                 }
                 .allowsHitTesting(false)
             )
+            .contextMenu {
+                let targetAddr = selectedStart ?? viewportOffset
+                if let span = cachedIndex.span(at: targetAddr) {
+                    Button("Kennfeld „\(span.title)“ im Editor öffnen") {
+                        model.selection = span.itemID
+                    }
+                    Divider()
+                }
+                Button("Ab \(String(format: "0x%05X", targetAddr)) links ausrichten (Spalte +0)") {
+                    byteShift = targetAddr % rowStride
+                }
+                Button("Offset zurücksetzen (+0)") { byteShift = 0 }
+                    .disabled(byteShift == 0)
+                Divider()
+                if let range = selectedRange {
+                    if let onCreateMapFromRange {
+                        Button("Kennfeld aus Auswahl erstellen (\(range.count) B) …") {
+                            onCreateMapFromRange(range)
+                        }
+                    }
+                    Button("Zwillinge / Parallel-Kennfelder suchen") {
+                        twinMatches = BinaryAnalysis.findTwins(for: range, in: bin, elemBytes: elemBytes,
+                                                               lsbFirst: lsbFirst, isSigned: isSigned)
+                        showTwinsPopover = true
+                    }
+                    .disabled(range.count < elemBytes * 4)
+                    Button("Auswahl als Hex kopieren") {
+                        guard range.upperBound <= bin.count else { return }
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(Changes.hex(bin[range]), forType: .string)
+                    }
+                    Divider()
+                }
+                Button("Lesezeichen bei \(String(format: "0x%05X", targetAddr)) setzen") {
+                    bookmarks.append(HexBookmark(name: String(format: "Marker 0x%05X", targetAddr), address: targetAddr))
+                }
+                Button("Adresse kopieren (\(String(format: "0x%05X", targetAddr)))") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(String(format: "0x%05X", targetAddr), forType: .string)
+                }
+            }
         }
         .card(padding: 0)
     }
@@ -986,8 +1065,11 @@ struct HexDiffView: View {
     // MARK: - Element Decoding & Caching
 
     private func alignedStart(_ off: Int) -> Int {
+        guard !model.bin.isEmpty else { return 0 }
         let clamped = min(max(0, off), max(0, model.bin.count - 1))
-        return max(0, (clamped / elemBytes) * elemBytes + (byteShift % elemBytes))
+        let phase = ((byteShift % rowStride) + rowStride) % rowStride
+        let rowBase = (clamped / rowStride) * rowStride + phase
+        return min(max(0, rowBase > clamped ? rowBase - rowStride : rowBase), max(0, model.bin.count - 1))
     }
 
     private func readElement(_ bytes: [UInt8], at off: Int) -> Double? {
@@ -1076,6 +1158,15 @@ struct HexDiffView: View {
         viewportOffset = max(0, hit - rowStride)
         selectedStart = hit
         selectedEnd = hit
+    }
+
+    private func consumeJumpTarget() {
+        guard let target = model.hexJumpTarget else { return }
+        model.hexJumpTarget = nil
+        byteShift = target.lowerBound % rowStride
+        viewportOffset = max(0, target.lowerBound - rowStride * 2)
+        selectedStart = target.lowerBound
+        selectedEnd = max(target.lowerBound, target.upperBound - elemBytes)
     }
 
     private func jumpToAddress() {
