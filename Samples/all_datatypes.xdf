@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XDFFORMAT version="1.60">
+  <XDFHEADER>
+    <flags>0x1</flags>
+    <deftitle>MacTuner Sample — All Supported Data Types</deftitle>
+    <description>Public-domain synthetic XDF covering 8/16/32-bit signed/unsigned LE/BE, float32, column-major, hex, embedded axes, label axes, XDFFLAG, and XDFPATCH.</description>
+    <DEFAULTS datasizeinbits="8" sigdigits="2" outputtype="1" signed="0" lsbfirst="1" float="0" />
+    <REGION type="0xFFFFFFFF" startaddress="0x0" size="0x400" />
+    <CATEGORY index="0x0" name="Tables" />
+    <CATEGORY index="0x1" name="Constants" />
+    <CATEGORY index="0x2" name="Flags &amp; Patches" />
+  </XDFHEADER>
+
+  <XDFTABLE>
+    <title>Fuel Map (16-bit Unsigned LE, Embedded Axes)</title>
+    <description>Synthetic 4x4 fuel table with embedded 16-bit X (RPM) and 8-bit Y (Load) axes.</description>
+    <CATEGORYMEM index="0" category="1" />
+    <XDFAXIS id="x">
+      <indexcount>4</indexcount>
+      <EMBEDDEDDATA mmedtypeflags="0x2" mmedaddress="0x10" mmedelementsizebits="16" />
+      <units>RPM</units>
+      <decimalpl>0</decimalpl>
+      <outputtype>2</outputtype>
+      <MATH equation="X"><VAR id="X" /></MATH>
+    </XDFAXIS>
+    <XDFAXIS id="y">
+      <indexcount>4</indexcount>
+      <EMBEDDEDDATA mmedtypeflags="0x0" mmedaddress="0x18" mmedelementsizebits="8" />
+      <units>%</units>
+      <decimalpl>0</decimalpl>
+      <outputtype>2</outputtype>
+      <MATH equation="X"><VAR id="X" /></MATH>
+    </XDFAXIS>
+    <XDFAXIS id="z">
+      <EMBEDDEDDATA mmedtypeflags="0x2" mmedaddress="0x20" mmedelementsizebits="16" mmedrowcount="4" mmedcolcount="4" />
+      <units>mg</units>
+      <decimalpl>2</decimalpl>
+      <outputtype>1</outputtype>
+      <MATH equation="X * 0.01"><VAR id="X" /></MATH>
+    </XDFAXIS>
+  </XDFTABLE>
+
+  <XDFTABLE>
+    <title>Ignition Timing (8-bit Signed, Label Axes)</title>
+    <description>Synthetic 2x4 signed 8-bit ignition map.</description>
+    <CATEGORYMEM index="0" category="1" />
+    <XDFAXIS id="x">
+      <indexcount>4</indexcount>
+      <LABEL index="0" value="1000" />
+      <LABEL index="1" value="2500" />
+      <LABEL index="2" value="4000" />
+      <LABEL index="3" value="6000" />
+      <units>RPM</units>
+    </XDFAXIS>
+    <XDFAXIS id="y">
+      <indexcount>2</indexcount>
+      <LABEL index="0" value="Part" />
+      <LABEL index="1" value="WOT" />
+    </XDFAXIS>
+    <XDFAXIS id="z">
+      <EMBEDDEDDATA mmedtypeflags="0x1" mmedaddress="0x60" mmedelementsizebits="8" mmedrowcount="2" mmedcolcount="4" />
+      <units>°</units>
+      <decimalpl>2</decimalpl>
+      <outputtype>1</outputtype>
+      <MATH equation="X * 0.75"><VAR id="X" /></MATH>
+    </XDFAXIS>
+  </XDFTABLE>
+
+  <XDFTABLE>
+    <title>Boost Target (16-bit Big-Endian Column-Major)</title>
+    <CATEGORYMEM index="0" category="1" />
+    <XDFAXIS id="x"><indexcount>4</indexcount></XDFAXIS>
+    <XDFAXIS id="y"><indexcount>3</indexcount></XDFAXIS>
+    <XDFAXIS id="z">
+      <EMBEDDEDDATA mmedtypeflags="0x4" mmedaddress="0x80" mmedelementsizebits="16" mmedrowcount="3" mmedcolcount="4" />
+      <units>bar</units>
+      <decimalpl>2</decimalpl>
+      <outputtype>1</outputtype>
+      <MATH equation="X * 0.001"><VAR id="X" /></MATH>
+    </XDFAXIS>
+  </XDFTABLE>
+
+  <XDFCONSTANT>
+    <title>Rev Limiter (32-bit Float LE)</title>
+    <CATEGORYMEM index="0" category="2" />
+    <EMBEDDEDDATA mmedtypeflags="0x10002" mmedaddress="0xB0" mmedelementsizebits="32" />
+    <units>RPM</units>
+    <decimalpl>0</decimalpl>
+    <outputtype>1</outputtype>
+    <MATH equation="X"><VAR id="X" /></MATH>
+  </XDFCONSTANT>
+
+  <XDFCONSTANT>
+    <title>Coolant Threshold (8-bit Unsigned, Offset Equation)</title>
+    <CATEGORYMEM index="0" category="2" />
+    <EMBEDDEDDATA mmedtypeflags="0x0" mmedaddress="0xB4" mmedelementsizebits="8" />
+    <units>°C</units>
+    <decimalpl>1</decimalpl>
+    <outputtype>1</outputtype>
+    <MATH equation="X * 0.75 - 48"><VAR id="X" /></MATH>
+  </XDFCONSTANT>
+
+  <XDFCONSTANT>
+    <title>Software ID (16-bit Hex BE)</title>
+    <CATEGORYMEM index="0" category="2" />
+    <EMBEDDEDDATA mmedtypeflags="0x0" mmedaddress="0xB6" mmedelementsizebits="16" />
+    <outputtype>3</outputtype>
+    <MATH equation="X"><VAR id="X" /></MATH>
+  </XDFCONSTANT>
+
+  <XDFFLAG>
+    <title>Launch Control Enable (Bit 2)</title>
+    <description>Sets bit 2 (mask 0x04) at 0xC0.</description>
+    <CATEGORYMEM index="0" category="3" />
+    <EMBEDDEDDATA mmedtypeflags="0x0" mmedaddress="0xC0" mmedelementsizebits="8" />
+    <mask>0x04</mask>
+  </XDFFLAG>
+
+  <XDFPATCH>
+    <title>Speed Limiter Bypass Patch</title>
+    <description>Replaces 4 bytes at 0xD0 with NOPs.</description>
+    <CATEGORYMEM index="0" category="3" />
+    <XDFPATCHENTRY name="VMAX Hook" address="0xD0" datasize="0x4" basedata="01020304" patchdata="90909090" />
+  </XDFPATCH>
+</XDFFORMAT>
