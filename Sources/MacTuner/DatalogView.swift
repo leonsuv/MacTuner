@@ -41,11 +41,13 @@ struct DatalogView: View {
                     systemImage: "waveform.path.ecg",
                     description: Text("Lade ein CSV-Log oder eine TunerPro ADX-Datei, um besuchte Zellen live im Kennfeld zu verfolgen, das Treffer-Overlay anzuzeigen und Korrekturvorschläge zu berechnen.")
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             if selectedMapID == nil {
                 selectedMapID = model.selectedItem?.id ?? model.definition?.items.first(where: \.isTable)?.id

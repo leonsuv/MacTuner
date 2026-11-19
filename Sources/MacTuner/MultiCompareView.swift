@@ -51,18 +51,21 @@ struct MultiCompareView: View {
                     systemImage: "square.split.2x1",
                     description: Text("Öffne eine XDF, eine BIN und füge beliebig viele weitere Dateien (z. B. Original, Stage 1, Stage 2) hinzu.")
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HSplitView {
                     itemList(slots: allSlots, baseIdx: baseIdx)
-                        .frame(minWidth: 260, idealWidth: 320, maxWidth: 440)
+                        .frame(minWidth: 260, idealWidth: 320, maxWidth: 440, maxHeight: .infinity)
                     detailPane(slots: allSlots, baseIdx: baseIdx)
-                        .frame(minWidth: 460)
+                        .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             if selectedItemID == nil { selectedItemID = model.selectedItem?.id }
         }

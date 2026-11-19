@@ -161,6 +161,7 @@ struct ItemDetailView: View {
                         Label("Mehr", systemImage: "ellipsis.circle")
                     }
                     .menuIndicator(.hidden)
+                    .fixedSize()
                     .popover(isPresented: $showSafeRange) {
                         safeRangePopover
                     }

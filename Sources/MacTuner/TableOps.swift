@@ -76,22 +76,59 @@ enum TableOps {
         return rows
     }
 
-    /// 3×3 weighted Gaussian smooth over selected cells (display coordinates).
-    static func smooth(_ sel: Set<Cell>, value: (Cell) -> Double?) -> [Cell: Double] {
+    /// Axis-aware smoothing over selected cells (display coordinates).
+    /// Respects selection dimensionality (1D selections never bleed from unselected rows/columns)
+    /// and accounts for non-uniform axis spacing so an already-linear curve stays perfectly smooth.
+    static func smooth(
+        _ sel: Set<Cell>,
+        value: (Cell) -> Double?,
+        hPos: (Cell) -> Double,
+        vPos: (Cell) -> Double
+    ) -> [Cell: Double] {
+        guard sel.count >= 2 else { return [:] }
+        let rows = Set(sel.map(\.r))
+        let cols = Set(sel.map(\.c))
+        let smoothH = cols.count >= 3
+        let smoothV = rows.count >= 3
+
+        func expected1D(_ prev: Cell, _ cur: Cell, _ next: Cell, pos: (Cell) -> Double) -> Double? {
+            guard sel.contains(prev), sel.contains(next),
+                  let vp = value(prev), let vn = value(next), vp.isFinite, vn.isFinite else { return nil }
+            let pp = pos(prev), pc = pos(cur), pn = pos(next)
+            let span = pn - pp
+            if pp.isFinite, pc.isFinite, pn.isFinite, abs(span) > 1e-12 {
+                let t = min(max((pc - pp) / span, 0), 1)
+                return vp + (vn - vp) * t
+            }
+            return 0.5 * (vp + vn)
+        }
+
         var out: [Cell: Double] = [:]
         for cell in sel {
-            var sum = 0.0
-            var weightSum = 0.0
-            for dr in -1...1 {
-                for dc in -1...1 {
-                    let neighbor = Cell(r: cell.r + dr, c: cell.c + dc)
-                    guard let v = value(neighbor), v.isFinite else { continue }
-                    let w: Double = (dr == 0 && dc == 0) ? 4.0 : ((dr == 0 || dc == 0) ? 2.0 : 1.0)
-                    sum += v * w
-                    weightSum += w
-                }
+            guard let vc = value(cell), vc.isFinite else { continue }
+            var estimates: [Double] = []
+            if smoothH, let eh = expected1D(Cell(r: cell.r, c: cell.c - 1), cell, Cell(r: cell.r, c: cell.c + 1), pos: hPos) {
+                estimates.append(eh)
             }
-            if weightSum > 0 { out[cell] = sum / weightSum }
+            if smoothV, let ev = expected1D(Cell(r: cell.r - 1, c: cell.c), cell, Cell(r: cell.r + 1, c: cell.c), pos: vPos) {
+                estimates.append(ev)
+            }
+            // Fallback for 2-cell selections: gentle blend toward neighbor in selection
+            if estimates.isEmpty && !smoothH && !smoothV {
+                let neighbors = [Cell(r: cell.r, c: cell.c - 1), Cell(r: cell.r, c: cell.c + 1),
+                                 Cell(r: cell.r - 1, c: cell.c), Cell(r: cell.r + 1, c: cell.c)]
+                    .filter { sel.contains($0) }
+                    .compactMap(value).filter(\.isFinite)
+                if !neighbors.isEmpty {
+                    let avgN = neighbors.reduce(0, +) / Double(neighbors.count)
+                    out[cell] = 0.65 * vc + 0.35 * avgN
+                }
+                continue
+            }
+            guard !estimates.isEmpty else { continue }
+            let target = estimates.reduce(0, +) / Double(estimates.count)
+            // Blend 50% current + 50% axis-interpolated target (endpoints stay anchored, linear lines stay exact!)
+            out[cell] = 0.5 * vc + 0.5 * target
         }
         return out
     }

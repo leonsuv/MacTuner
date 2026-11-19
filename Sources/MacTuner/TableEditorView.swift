@@ -19,6 +19,7 @@ struct TableEditorView: View {
     @State private var mode: Mode
     @State private var showChart: Bool
     @State private var show3D = false
+    @State private var axisEditMode = false
     @State private var editingAxis: AxisEditTarget?
     @State private var axisInput = ""
     @State private var showFlattenPopover = false
@@ -122,11 +123,12 @@ struct TableEditorView: View {
 
                 if s.output != .hex {
                     HStack(spacing: 4) {
-                        Button { runTransform { TableOps.smooth($0, value: $1) } } label: {
+                        Button { smoothSelection() } label: {
                             Label("Glätten", systemImage: "waveform.path")
                         }
+                        .fixedSize()
                         .disabled(selection.count < 2 || !canTransform)
-                        .help("Auswahl glätten (3×3)")
+                        .help("Auswahl achsenbewusst glätten")
 
                         Menu {
                             Button("Horizontal") { interpolate(.horizontal) }
@@ -135,6 +137,7 @@ struct TableEditorView: View {
                         } label: {
                             Label("Interpolieren", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                         }
+                        .fixedSize()
                         .disabled(selection.count < 3 || !canTransform)
 
                         Menu {
@@ -149,12 +152,14 @@ struct TableEditorView: View {
                         } label: {
                             Label("Füllen", systemImage: "arrow.down.right.square")
                         }
+                        .fixedSize()
                         .disabled(!canTransform)
                     }
                     .controlSize(.small)
                     .padding(.horizontal, 8).padding(.vertical, 5)
                     .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator.opacity(0.4)))
+                    .fixedSize()
                 }
 
                 Spacer(minLength: 4)
@@ -193,6 +198,14 @@ struct TableEditorView: View {
                     .truncationMode(.tail)
                     .textSelection(.enabled)
                 Spacer(minLength: 8)
+                if (x.layout != nil || y.layout != nil) && mode != .wrapped && !isCompareView && !model.isLocked(item) {
+                    Toggle(isOn: $axisEditMode) {
+                        Label("Achsen", systemImage: "pencil.line")
+                    }
+                    .toggleStyle(.button)
+                    .fixedSize()
+                    .help("Achsenwerte direkt im Tabellenkopf bearbeiten (oder Doppelklick auf eine Achse)")
+                }
                 if s.output != .hex {
                     Picker("Anzeige", selection: $valueMode) {
                         Text(verbatim: "BIN").tag(ValueMode.values)
@@ -223,6 +236,7 @@ struct TableEditorView: View {
             .controlSize(.small)
 
             let showVisual = (show3D && l.rows > 1 && l.cols > 1 && s.output != .hex) || showChart
+            let naturalGridHeight = CGFloat(displayRows + 1) * (Self.cellHeight + Self.gap) + 26
             VSplitView {
                 ScrollView([.horizontal, .vertical]) {
                     grid(xs: xs, ys: ys, values: shown, deltas: deltas, lo: lo, hi: hi, maxDelta: maxDelta,
@@ -235,12 +249,14 @@ struct TableEditorView: View {
                 .onKeyPress(phases: .down, action: handleKey)
                 .onCopyCommand { copyText().map { [NSItemProvider(object: $0 as NSString)] } ?? [] }
                 .onPasteCommand(of: [.plainText, .utf8PlainText, .tabSeparatedText]) { _ in pasteFromClipboard() }
-                .help("⇧-Klick Bereich · ⌘-Klick einzeln · Achse klicken = ganze Zeile/Spalte · ⌥-Klick Achse = bearbeiten · Zahl tippen + ↩ setzt · +/− Schritt")
+                .help("⇧-Klick Bereich · ⌘-Klick einzeln · Achse doppelklicken = bearbeiten · Zahl tippen + ↩ setzt · +/− Schritt")
                 .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(isCompareView ? AnyShapeStyle(Theme.compare) : AnyShapeStyle(.separator.opacity(0.6)),
                                   lineWidth: isCompareView ? 2 : 1))
-                .frame(minHeight: 160, maxHeight: .infinity)
+                .frame(minHeight: min(naturalGridHeight, 120),
+                       idealHeight: showVisual ? min(naturalGridHeight, 360) : naturalGridHeight,
+                       maxHeight: showVisual ? max(naturalGridHeight, 200) : .infinity)
 
                 if showVisual {
                     HStack(spacing: 10) {
@@ -253,7 +269,7 @@ struct TableEditorView: View {
                         }
                     }
                     .padding(.top, 8)
-                    .frame(minHeight: 180, maxHeight: .infinity)
+                    .frame(minHeight: 220, maxHeight: .infinity)
                 }
             }
         }
@@ -298,40 +314,15 @@ struct TableEditorView: View {
 
     private var actionsMenu: some View {
         let changed = changedCells
-        let canTransform = !selection.isEmpty && s.output != .hex && !isCompareView && !model.isLocked(item)
         return Menu {
-            Button("Alles auswählen") { selectAll() }
+            Button("Alles auswählen (⌘A)") { selectAll() }
             Button("Geänderte Zellen auswählen") { selection = changed; anchor = changed.min { ($0.r, $0.c) < ($1.r, $1.c) } }
                 .disabled(changed.isEmpty)
             Divider()
-            Section("Interpolieren") {
-                Button("Horizontal") { interpolate(.horizontal) }
-                Button("Vertikal") { interpolate(.vertical) }
-                Button("Flächig (aus den vier Ecken)") { interpolate(.bilinear) }
-            }
-            .disabled(selection.count < 3 || !canTransform)
-            Section("Bearbeiten") {
-                Button("Glätten (3×3)") { runTransform { TableOps.smooth($0, value: $1) } }
-                    .disabled(selection.count < 2 || !canTransform)
-                Button("Auf Durchschnitt setzen") { runTransform { TableOps.setToAverage($0, value: $1) } }
-                    .disabled(selection.count < 2 || !canTransform)
-                Button("Abflachen auf Wert …") { flattenInput = ""; showFlattenPopover = true }
-                    .disabled(!canTransform)
-                Button("Auf Bereich begrenzen (Clamp) …") { clampMinInput = ""; clampMaxInput = ""; showClampPopover = true }
-                    .disabled(!canTransform)
-                Menu("Füllen") {
-                    Button("Nach unten füllen") { runTransform { TableOps.fillDown($0, value: $1) } }
-                    Button("Nach oben füllen") { runTransform { TableOps.fillUp($0, value: $1) } }
-                    Button("Nach rechts füllen") { runTransform { TableOps.fillRight($0, value: $1) } }
-                    Button("Nach links füllen") { runTransform { TableOps.fillLeft($0, value: $1) } }
-                }
-                .disabled(selection.count < 2 || !canTransform)
-            }
-            Divider()
-            Button("Kopieren") { if let t = copyText() { setClipboard(t) } }
+            Button("Kopieren (⌘C)") { if let t = copyText() { setClipboard(t) } }
                 .disabled(selection.isEmpty)
             Button("Kopieren mit Achsen") { setClipboard(copyTextWithAxes()) }
-            Button("Einfügen") { pasteFromClipboard() }
+            Button("Einfügen (⌘V)") { pasteFromClipboard() }
                 .disabled(selection.isEmpty || isCompareView || model.isLocked(item))
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -339,7 +330,30 @@ struct TableEditorView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Auswahl, Glätten, Füllen, Interpolieren, Kopieren und Einfügen (⌘C / ⌘V)")
+        .help("Auswahl, Kopieren und Einfügen (⌘C / ⌘V)")
+    }
+
+    private func smoothSelection() {
+        let xv = model.axisValues(x, count: l.cols), yv = model.axisValues(y, count: l.rows)
+        let disp = Set(selection.map { c -> Cell in let (i, j) = display(c); return Cell(r: i, c: j) })
+        let result = TableOps.smooth(
+            disp,
+            value: { d in cell(d.r, d.c).flatMap { model.raw(l, $0) }.map(s.value(raw:)) },
+            hPos: { d in
+                guard let c = cell(d.r, d.c) else { return .nan }
+                return mode == .transposed ? yv[c.r] : xv[c.c]
+            },
+            vPos: { d in
+                guard let c = cell(d.r, d.c) else { return .nan }
+                switch mode {
+                case .normal: return yv[c.r]
+                case .transposed: return xv[c.c]
+                case .wrapped: return Double(c.c)
+                }
+            })
+        var values: [Cell: Double] = [:]
+        for (d, v) in result { if let c = cell(d.r, d.c) { values[c] = v } }
+        apply(.values(values), cells: Set(values.keys))
     }
 
     private func runTransform(_ fn: (Set<Cell>, (Cell) -> Double?) -> [Cell: Double]) {
@@ -611,23 +625,31 @@ struct TableEditorView: View {
                     let isXAxis = mode == .normal
                     let axisObj = isXAxis ? x : y
                     let editable = mode != .wrapped && axisObj.layout != nil && !isCompareView && !model.isLocked(item)
-                    header(colLabels[j], changed: colChanged[j], editable: editable)
-                        .onTapGesture {
-                            if editable && NSEvent.modifierFlags.contains(.option) {
-                                axisInput = colLabels[j]
-                                editingAxis = AxisEditTarget(isX: isXAxis, index: j)
-                            } else {
+                    if axisEditMode && editable {
+                        InlineAxisField(initialText: colLabels[j], changed: colChanged[j]) { newText in
+                            if let v = axisObj.scaling.parse(newText) {
+                                let nv = model.toNativeValue(v, xdfUnit: axisObj.scaling.units)
+                                model.applyAxis(nv, item: item, axis: axisObj, axisName: isXAxis ? "X" : "Y", index: j)
+                            }
+                        }
+                    } else {
+                        header(colLabels[j], changed: colChanged[j], editable: editable)
+                            .onTapGesture(count: 2) {
+                                if editable { axisEditMode = true }
+                            }
+                            .onTapGesture {
                                 select((0..<displayRows).compactMap { cell($0, j) })
                             }
-                        }
-                        .contextMenu {
-                            if editable {
-                                Button("Achsenwert bearbeiten …") {
-                                    axisInput = colLabels[j]
-                                    editingAxis = AxisEditTarget(isX: isXAxis, index: j)
+                            .contextMenu {
+                                if editable {
+                                    Button("Achsen inline bearbeiten") { axisEditMode = true }
+                                    Button("Einzelwert bearbeiten …") {
+                                        axisInput = colLabels[j]
+                                        editingAxis = AxisEditTarget(isX: isXAxis, index: j)
+                                    }
                                 }
                             }
-                        }
+                    }
                 }
             }
             ForEach(0..<displayRows, id: \.self) { i in
@@ -635,23 +657,31 @@ struct TableEditorView: View {
                     let isXAxis = mode == .transposed
                     let axisObj = isXAxis ? x : y
                     let editable = mode != .wrapped && axisObj.layout != nil && !isCompareView && !model.isLocked(item)
-                    header(rowLabels[i], changed: rowChanged[i], editable: editable)
-                        .onTapGesture {
-                            if editable && NSEvent.modifierFlags.contains(.option) {
-                                axisInput = rowLabels[i]
-                                editingAxis = AxisEditTarget(isX: isXAxis, index: i)
-                            } else {
+                    if axisEditMode && editable {
+                        InlineAxisField(initialText: rowLabels[i], changed: rowChanged[i]) { newText in
+                            if let v = axisObj.scaling.parse(newText) {
+                                let nv = model.toNativeValue(v, xdfUnit: axisObj.scaling.units)
+                                model.applyAxis(nv, item: item, axis: axisObj, axisName: isXAxis ? "X" : "Y", index: i)
+                            }
+                        }
+                    } else {
+                        header(rowLabels[i], changed: rowChanged[i], editable: editable)
+                            .onTapGesture(count: 2) {
+                                if editable { axisEditMode = true }
+                            }
+                            .onTapGesture {
                                 select((0..<displayCols).compactMap { cell(i, $0) })
                             }
-                        }
-                        .contextMenu {
-                            if editable {
-                                Button("Achsenwert bearbeiten …") {
-                                    axisInput = rowLabels[i]
-                                    editingAxis = AxisEditTarget(isX: isXAxis, index: i)
+                            .contextMenu {
+                                if editable {
+                                    Button("Achsen inline bearbeiten") { axisEditMode = true }
+                                    Button("Einzelwert bearbeiten …") {
+                                        axisInput = rowLabels[i]
+                                        editingAxis = AxisEditTarget(isX: isXAxis, index: i)
+                                    }
                                 }
                             }
-                        }
+                    }
                     ForEach(0..<displayCols, id: \.self) { j in
                         if let c = cell(i, j) {
                             cellView(c, value: values[c.r][c.c], delta: deltas.isEmpty ? nil : deltas[c.r][c.c],
@@ -919,5 +949,34 @@ struct TableEditorView: View {
             }
         }
         return pts
+    }
+}
+
+/// Inline editable axis cell used when "Achsen" edit mode is enabled.
+private struct InlineAxisField: View {
+    let initialText: String
+    let changed: Bool
+    let onCommit: (String) -> Void
+    @State private var text: String
+
+    init(initialText: String, changed: Bool, onCommit: @escaping (String) -> Void) {
+        self.initialText = initialText
+        self.changed = changed
+        self.onCommit = onCommit
+        _text = State(initialValue: initialText)
+    }
+
+    var body: some View {
+        TextField("", text: $text)
+            .textFieldStyle(.plain)
+            .multilineTextAlignment(.center)
+            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+            .foregroundStyle(changed ? Theme.changed : .primary)
+            .padding(.horizontal, 4)
+            .frame(width: 54, height: 26)
+            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Color.accentColor.opacity(0.75), lineWidth: 1))
+            .onSubmit { onCommit(text) }
+            .onChange(of: initialText) { _, newVal in text = newVal }
     }
 }

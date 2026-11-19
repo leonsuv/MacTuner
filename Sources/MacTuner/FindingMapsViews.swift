@@ -44,12 +44,15 @@ struct MapFinderView: View {
 
             if !model.hasBin {
                 ContentUnavailableView("Keine BIN geladen", systemImage: "memorychip")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if !scanned {
                 ContentUnavailableView("Unbekannte Kennfelder erkennen", systemImage: "sparkle.magnifyingglass",
                                        description: Text("Durchsucht die BIN anhand von Achsen-Headern und glatten 2D-Strukturen nach potentiellen Kennfeldern."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if candidates.isEmpty {
                 ContentUnavailableView("Keine neuen Kandidaten gefunden", systemImage: "checkmark.circle",
                                        description: Text("Probiere andere Bitbreite oder Byte-Reihenfolge (LSB/MSB)."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HSplitView {
                     List(candidates, selection: $selectedID) { c in
@@ -67,21 +70,25 @@ struct MapFinderView: View {
                         .tag(c.id as UUID?)
                     }
                     .listStyle(.inset)
-                    .frame(minWidth: 280, idealWidth: 340, maxWidth: 420)
+                    .frame(minWidth: 280, idealWidth: 340, maxWidth: 420, maxHeight: .infinity)
                     .card(padding: 6)
 
                     if let sel = candidates.first(where: { $0.id == selectedID }) {
                         candidatePreview(sel)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         ContentUnavailableView("Kandidat wählen", systemImage: "tablecells")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .card(padding: 12)
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func candidatePreview(_ c: MapFinder.Candidate) -> some View {
@@ -208,6 +215,7 @@ struct VersionPortView: View {
             if matches.isEmpty {
                 ContentUnavailableView("Kennfelder in anderer Softwareversion finden", systemImage: "arrow.triangle.branch",
                                        description: Text("Wähle eine Ziel-BIN einer anderen Softwareversion. MacTuner sucht alle Kennfelder per Byte- und Form-Korrelation und kann XDF sowie Tune portieren."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Table(matches) {
                     TableColumn("Kennfeld") { m in Text(m.item.title).lineLimit(1) }
@@ -240,6 +248,7 @@ struct VersionPortView: View {
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func pickTarget() {
@@ -335,11 +344,13 @@ struct BatchTunerView: View {
             } else {
                 ContentUnavailableView("Änderungsliste auf mehrere Dateien anwenden", systemImage: "square.stack.3d.up",
                                        description: Text("Extrahiert alle Änderungen zwischen aktueller BIN und Vergleich (oder lädt eine .mtpatch-Datei) und wendet sie im Stapel auf beliebig viele Ziel-BINs an."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var currentPackage: BatchTuner.TunePackage? {
@@ -402,9 +413,11 @@ struct DiagnosticsView: View {
 
             if !model.hasBin || model.definition == nil {
                 ContentUnavailableView("XDF und BIN benötigt", systemImage: "stethoscope")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if findings.isEmpty {
                 ContentUnavailableView("Keine Auffälligkeiten", systemImage: "checkmark.seal.fill",
                                        description: Text("Alle Achsen sind monoton, keine Ausreißer, keine abgeschnittenen Kurven und keine Adressfehler gefunden."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Table(findings) {
                     TableColumn("Typ") { f in
@@ -426,5 +439,6 @@ struct DiagnosticsView: View {
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

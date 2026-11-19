@@ -21,17 +21,20 @@ struct SnapshotsView: View {
             if !model.hasBin {
                 ContentUnavailableView("Keine BIN geladen", systemImage: "camera",
                                        description: Text("Öffne zuerst eine BIN-Datei, um Snapshots anzulegen."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 createCard
                 if model.snapshots.count >= 2 {
                     compareTwoBar
                 }
                 snapshotList
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var createCard: some View {
@@ -175,6 +178,7 @@ struct HistoryView: View {
             if entries.isEmpty {
                 ContentUnavailableView("Kein Verlauf vorhanden", systemImage: "clock",
                                        description: Text("Jede Bearbeitung eines Kennfelds wird automatisch mit Zeitstempel, Wertänderung und optionaler Notiz protokolliert."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
@@ -183,11 +187,13 @@ struct HistoryView: View {
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

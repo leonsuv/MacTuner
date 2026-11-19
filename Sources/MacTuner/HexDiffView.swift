@@ -112,22 +112,27 @@ struct HexDiffView: View {
 
             if totalBytes == 0 {
                 ContentUnavailableView("Keine BIN geladen", systemImage: "memorychip")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
-                    VStack(spacing: 0) {
-                        columnHeader
-                        Divider()
-                        ScrollView([.vertical, .horizontal]) {
-                            LazyVStack(alignment: .leading, spacing: 1) {
-                                ForEach(displayedRows, id: \.self) { row in
-                                    hexRow(row: row, bin: bin, cmp: cmp, index: index)
-                                        .id(row)
+                    ScrollView(.horizontal) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            columnHeader
+                            Divider()
+                            ScrollView(.vertical) {
+                                LazyVStack(alignment: .leading, spacing: 1) {
+                                    ForEach(displayedRows, id: \.self) { row in
+                                        hexRow(row: row, bin: bin, cmp: cmp, index: index)
+                                            .id(row)
+                                    }
                                 }
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 10)
                             }
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 10)
                         }
+                        .frame(minWidth: 1180, maxHeight: .infinity, alignment: .topLeading)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .card(padding: 0)
                     .onChange(of: scrollTarget) { _, target in
                         guard let row = target else { return }
@@ -144,6 +149,7 @@ struct HexDiffView: View {
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func headerBar(diffRowCount: Int, totalBytes: Int, diffRows: [Int]) -> some View {

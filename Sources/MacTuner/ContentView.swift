@@ -14,61 +14,39 @@ struct ContentView: View {
                 detail
             }
             .searchable(text: $search, placement: .sidebar, prompt: "Kennfeld suchen")
+            .toolbar {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button { model.showCommandPalette.toggle() } label: {
+                        Label("Suche (⌘K)", systemImage: "command")
+                    }
+                    .help("Befehlspalette öffnen (⌘K)")
+                    OpenMenu()
+                    ControlGroup {
+                        Button { model.selectChange(-1) } label: { Label("Vorherige Änderung", systemImage: "chevron.up") }
+                            .help("Vorherige Änderung (⌥⌘↑)")
+                        Button { model.selectChange(1) } label: { Label("Nächste Änderung", systemImage: "chevron.down") }
+                            .help("Nächste Änderung (⌥⌘↓)")
+                    }
+                    .disabled(model.changedItems.isEmpty)
+                    ControlGroup {
+                        Button { model.undo() } label: { Label("Widerrufen", systemImage: "arrow.uturn.backward") }
+                            .disabled(!model.canUndo)
+                            .help("Widerrufen (⌘Z)")
+                        Button { model.redo() } label: { Label("Wiederholen", systemImage: "arrow.uturn.forward") }
+                            .disabled(!model.canRedo)
+                            .help("Wiederholen (⇧⌘Z)")
+                    }
+                    Button { model.save() } label: {
+                        Label("Speichern", systemImage: "square.and.arrow.down")
+                    }
+                    .tint(model.dirty ? Color.accentColor : nil)
+                    .disabled(!model.hasBin || !model.dirty)
+                    .help("BIN speichern (⌘S)")
+                }
+            }
         }
         .navigationTitle(model.windowTitle)
         .navigationSubtitle(model.hasBin ? (model.definition?.title ?? "") : "")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Button { model.showCommandPalette.toggle() } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Kennfeld, Adresse oder Aktion …")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 16)
-                        Text("⌘K")
-                            .font(.caption2.weight(.semibold).monospaced())
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .frame(minWidth: 260, idealWidth: 320)
-                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.separator.opacity(0.5)))
-                }
-                .buttonStyle(.plain)
-                .help("Befehlspalette öffnen (⌘K)")
-            }
-
-            ToolbarItemGroup(placement: .primaryAction) {
-                OpenMenu()
-                ControlGroup {
-                    Button { model.selectChange(-1) } label: { Label("Vorherige Änderung", systemImage: "chevron.up") }
-                        .help("Vorherige Änderung (⌥⌘↑)")
-                    Button { model.selectChange(1) } label: { Label("Nächste Änderung", systemImage: "chevron.down") }
-                        .help("Nächste Änderung (⌥⌘↓)")
-                }
-                .disabled(model.changedItems.isEmpty)
-                ControlGroup {
-                    Button { model.undo() } label: { Label("Widerrufen", systemImage: "arrow.uturn.backward") }
-                        .disabled(!model.canUndo)
-                        .help("Widerrufen (⌘Z)")
-                    Button { model.redo() } label: { Label("Wiederholen", systemImage: "arrow.uturn.forward") }
-                        .disabled(!model.canRedo)
-                        .help("Wiederholen (⇧⌘Z)")
-                }
-                Button { model.save() } label: {
-                    Label("Speichern", systemImage: "square.and.arrow.down")
-                }
-                .tint(model.dirty ? Color.accentColor : nil)
-                .disabled(!model.hasBin || !model.dirty)
-                .help("BIN speichern (⌘S)")
-            }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) { StatusBar() }
         .dropDestination(for: URL.self) { urls, _ in
             // XDF first, so a dropped pair opens in the right order.
