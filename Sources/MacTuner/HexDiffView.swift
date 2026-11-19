@@ -84,22 +84,16 @@ struct XDFAddressIndex {
         spansOverlapping(offset, offset + 1).first
     }
 
-    /// Alternating warm/cool complementary hues so adjacent maps in binary address order always pop apart.
+    /// Clean, dark-mode-friendly alternating hues so neighboring maps in address order never blend.
     static let palette: [Color] = [
-        Color(red: 0.18, green: 0.56, blue: 0.96), // vivid blue
-        Color(red: 0.92, green: 0.34, blue: 0.48), // rose / crimson
-        Color(red: 0.16, green: 0.76, blue: 0.46), // emerald green
-        Color(red: 0.68, green: 0.38, blue: 0.95), // violet
-        Color(red: 0.88, green: 0.62, blue: 0.14), // amber gold
-        Color(red: 0.12, green: 0.74, blue: 0.82), // cyan-teal
+        Color(red: 0.18, green: 0.52, blue: 0.94), // blue
+        Color(red: 0.84, green: 0.30, blue: 0.48), // rose
+        Color(red: 0.14, green: 0.68, blue: 0.52), // emerald
+        Color(red: 0.64, green: 0.36, blue: 0.92), // violet
     ]
 
     static func color(for span: Span) -> Color {
-        palette[span.colorIndex % palette.count].opacity(span.isAxis ? 0.18 : 0.27)
-    }
-
-    static func borderColor(for span: Span) -> Color {
-        palette[span.colorIndex % palette.count].opacity(span.isAxis ? 0.55 : 0.78)
+        palette[span.colorIndex % palette.count].opacity(span.isAxis ? 0.20 : 0.30)
     }
 }
 
@@ -621,51 +615,6 @@ struct HexDiffView: View {
                                     .foregroundStyle(.secondary),
                                          at: CGPoint(x: pill.midX, y: pill.midY), anchor: .center)
                             }
-                        }
-                    }
-
-                    // Crisp colored perimeter borders around each XDF map so adjacent maps always separate cleanly
-                    let visSpans = cachedIndex.spansOverlapping(max(0, startAddr - rowStride), min(bin.count, startAddr + (visibleRows + 1) * rowStride))
-                    if !visSpans.isEmpty {
-                        func spanIDAt(_ rr: Int, _ cc: Int) -> Int? {
-                            guard cc >= 0, cc < columns else { return nil }
-                            let off = startAddr + rr * rowStride + cc * elemBytes
-                            guard off >= 0, off < bin.count else { return nil }
-                            return visSpans.first { $0.range.contains(off) }?.id
-                        }
-                        var pathsBySpan: [Int: (span: XDFAddressIndex.Span, path: Path)] = [:]
-                        for r in 0..<visibleRows {
-                            let y = headerH + CGFloat(r) * rowHeight
-                            for c in 0..<columns {
-                                let off = startAddr + r * rowStride + c * elemBytes
-                                guard off < bin.count, let sp = visSpans.first(where: { $0.range.contains(off) }) else { continue }
-                                var entry = pathsBySpan[sp.id] ?? (sp, Path())
-                                let x0 = addrWidth + CGFloat(c) * cellW + 0.5
-                                let x1 = addrWidth + CGFloat(c + 1) * cellW - 0.5
-                                let y0 = y + 0.5
-                                let y1 = y + rowHeight - 0.5
-                                if spanIDAt(r - 1, c) != sp.id {
-                                    entry.path.move(to: CGPoint(x: x0, y: y0))
-                                    entry.path.addLine(to: CGPoint(x: x1, y: y0))
-                                }
-                                if spanIDAt(r + 1, c) != sp.id {
-                                    entry.path.move(to: CGPoint(x: x0, y: y1))
-                                    entry.path.addLine(to: CGPoint(x: x1, y: y1))
-                                }
-                                if spanIDAt(r, c - 1) != sp.id {
-                                    entry.path.move(to: CGPoint(x: x0, y: y0))
-                                    entry.path.addLine(to: CGPoint(x: x0, y: y1))
-                                }
-                                if spanIDAt(r, c + 1) != sp.id {
-                                    entry.path.move(to: CGPoint(x: x1, y: y0))
-                                    entry.path.addLine(to: CGPoint(x: x1, y: y1))
-                                }
-                                pathsBySpan[sp.id] = entry
-                            }
-                        }
-                        for (_, entry) in pathsBySpan where !entry.path.isEmpty {
-                            ctx.stroke(entry.path, with: .color(XDFAddressIndex.borderColor(for: entry.span)),
-                                       style: StrokeStyle(lineWidth: 1.15, lineCap: .square, lineJoin: .miter))
                         }
                     }
 
