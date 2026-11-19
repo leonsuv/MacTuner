@@ -81,6 +81,8 @@ struct ContentView: View {
             BatchTunerView()
         } else if model.selection == AppModel.diagnosticsSelection, model.hasBin {
             DiagnosticsView()
+        } else if model.selection == AppModel.checksumSelection, model.hasBin {
+            ChecksumAndFlashView()
         } else if let item = model.selectedItem {
             if model.hasBin {
                 ItemDetailView(item: item).id(item.id)
@@ -120,8 +122,26 @@ struct StatusBar: View {
                     .help("Alle geänderten Kennfelder anzeigen (⌘2)")
                 }
             }
-            Label("Prüfsumme wird nicht korrigiert", systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.secondary)
+            if let rep = model.checksumReport {
+                Button { model.selection = AppModel.checksumSelection } label: {
+                    if rep.allValid {
+                        Label("Prüfsumme OK (\(rep.pluginName))", systemImage: "checkmark.shield.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        Label("Prüfsumme ungültig (\(rep.invalidCount))", systemImage: "exclamationmark.shield.fill")
+                            .foregroundStyle(.red)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("Prüfsummen & Flash-Export öffnen")
+            } else {
+                Button { model.selection = AppModel.checksumSelection } label: {
+                    Label("Prüfsumme wird nicht korrigiert", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Prüfsummen-Plugin wählen")
+            }
         }
         .font(.caption)
         .lineLimit(1)
@@ -189,6 +209,9 @@ struct ToolsMenu: View {
             }
             Button { model.selection = AppModel.diagnosticsSelection } label: {
                 Label("Diagnose (\(model.diagnosticFindings.count))", systemImage: "stethoscope")
+            }
+            Button { model.selection = AppModel.checksumSelection } label: {
+                Label("Prüfsummen & Flashen", systemImage: "checkmark.shield")
             }
             Divider()
             Button { model.exportPDFReport() } label: {

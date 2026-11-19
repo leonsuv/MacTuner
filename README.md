@@ -147,9 +147,9 @@ and ideas and pull requests are welcome in [Issues](../../issues).
 - [x] Highlight maps that look wrong: non-monotonic axes, outliers, cut-off curves and out-of-bounds addresses
 
 ### Checksums and flashing
-- [ ] Checksum plugins per control unit family (Bosch ME7 / MED17 / EDC17, Siemens, Temic DQ250 …)
-- [ ] Check the checksum on open and before save, with a clear warning when it does not match
-- [ ] Hand-off to common flash tools, with the right file layout and name
+- [x] Checksum plugins per control unit family (Bosch ME7 / MED17 / EDC17, Siemens MS4x/SIMOS, Temic DQ250, generic CRC-32)
+- [x] Check the checksum on open and before save, with a clear warning when it does not match (plus one-click undoable correction & live StatusBar indicator)
+- [x] Hand-off to common flash tools (KESS, KTAG/Bench, PCMFlash, Flex, CMDFlash, MPPS), with the right file layout, padding, changelog sidecar and name
 
 ### Datalogging
 - [ ] Load logs (CSV, ADX) and trace the visited cells live in the heatmap

@@ -126,6 +126,7 @@ final class AppModel {
     static let versionPortSelection = -7
     static let batchTunerSelection = -8
     static let diagnosticsSelection = -9
+    static let checksumSelection = -10
 
     private(set) var definition: XDFDefinition?
     private(set) var xdfURL: URL?
@@ -141,6 +142,7 @@ final class AppModel {
     private(set) var history: [EditHistoryEntry] = []
     /// Named snapshots of the current BIN.
     private(set) var snapshots: [BinSnapshotMeta] = []
+    private(set) var checksumPluginID: String?
     private var openedSnapshot: [UInt8] = []
     private(set) var dirty = false
     var selection: Int?
@@ -172,6 +174,36 @@ final class AppModel {
     @ObservationIgnored private var revision = 0
     @ObservationIgnored private var outsideCache: (revision: Int, ranges: [Range<Int>])?
     @ObservationIgnored private var diagnosticsCache: (revision: Int, findings: [MapDiagnostics.Finding])?
+    @ObservationIgnored private var checksumCache: (revision: Int, pluginID: String, report: ChecksumReport)?
+
+    var checksumReport: ChecksumReport? {
+        guard hasBin, let id = checksumPluginID, let plugin = ChecksumRegistry.shared.plugin(id: id) else { return nil }
+        _ = bin.count
+        if let c = checksumCache, c.revision == revision, c.pluginID == id { return c.report }
+        let rep = plugin.verify(bin: bin)
+        checksumCache = (revision, id, rep)
+        return rep
+    }
+
+    func setChecksumPlugin(_ id: String?) {
+        checksumPluginID = id
+        checksumCache = nil
+        touch()
+    }
+
+    func autoDetectChecksumPlugin() {
+        guard hasBin else { return }
+        if let p = ChecksumRegistry.shared.autoDetect(bin: bin) {
+            setChecksumPlugin(p.id)
+        }
+    }
+
+    func correctChecksums() {
+        guard hasBin, let id = checksumPluginID, let plugin = ChecksumRegistry.shared.plugin(id: id) else { return }
+        let patches = plugin.correct(bin: bin)
+        guard !patches.isEmpty else { return }
+        commit(patches)
+    }
 
     var diagnosticFindings: [MapDiagnostics.Finding] {
         guard hasBin, let def = definition else { return [] }
@@ -484,6 +516,8 @@ final class AppModel {
             redoStack = []
             history = HistoryStore.load(for: url.path)
             snapshots = SnapshotStore.loadIndex(for: url.path)
+            checksumPluginID = ChecksumRegistry.shared.autoDetect(bin: bin)?.id
+            checksumCache = nil
             UserDefaults.standard.set(url.path, forKey: "binPath")
             recentBins = Self.remember(url, in: "recentBin")
             touch()
@@ -663,13 +697,33 @@ final class AppModel {
         alert = String(localized: "Die BIN ist \(bin.count) Bytes groß, die XDF erwartet \(need) Bytes. Passt die Datei zur Definition?")
     }
 
+    private func confirmChecksumBeforeSave() -> Bool {
+        guard let rep = checksumReport, rep.invalidCount > 0 else { return true }
+        let a = NSAlert()
+        a.alertStyle = .warning
+        a.messageText = String(localized: "Prüfsumme stimmt nicht überein (\(rep.pluginName))")
+        a.informativeText = String(localized: "\(rep.invalidCount) von \(rep.blocks.count) Prüfsummen-Blöcken sind ungültig. Soll die Prüfsumme vor dem Speichern korrigiert werden?")
+        a.addButton(withTitle: String(localized: "Korrigieren & Speichern"))
+        a.addButton(withTitle: String(localized: "Ohne Korrektur speichern"))
+        a.addButton(withTitle: String(localized: "Abbrechen"))
+        switch a.runModal() {
+        case .alertFirstButtonReturn:
+            correctChecksums()
+            return true
+        case .alertSecondButtonReturn:
+            return true
+        default:
+            return false
+        }
+    }
+
     func save() {
-        guard let binURL else { return }
+        guard let binURL, confirmChecksumBeforeSave() else { return }
         write(to: binURL)
     }
 
     func saveAs() {
-        guard hasBin else { return }
+        guard hasBin, confirmChecksumBeforeSave() else { return }
         let p = NSSavePanel()
         p.nameFieldStringValue = binURL?.lastPathComponent ?? "tuned.bin"
         p.directoryURL = binURL?.deletingLastPathComponent()
