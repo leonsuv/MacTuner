@@ -202,7 +202,13 @@ enum XDFParser {
     }
 
     static func load(_ url: URL) throws -> XDFDefinition {
-        let doc = try XMLDocument(contentsOf: url, options: [])
+        let rawData = try Data(contentsOf: url)
+        if let prefix = String(data: rawData.prefix(64), encoding: .isoLatin1)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           prefix.hasPrefix("XDF") && !prefix.hasPrefix("<") {
+            return try loadLegacy(rawData, url: url)
+        }
+        let doc = try XMLDocument(data: rawData, options: [])
         guard let root = doc.rootElement(), root.name == "XDFFORMAT" else { throw XDFError.invalid("kein <XDFFORMAT>") }
         guard let header = root.child("XDFHEADER") else { throw XDFError.invalid("kein <XDFHEADER>") }
 
@@ -336,6 +342,195 @@ enum XDFParser {
             i = next
         }
         return out
+    }
+
+    // MARK: - Legacy TunerPro XDF (v1.11 text format)
+
+    private static func loadLegacy(_ data: Data, url: URL) throws -> XDFDefinition {
+        let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        let lines = normalized.components(separatedBy: "\n")
+
+        var title = url.deletingPathExtension().lastPathComponent
+        var description = ""
+        var regionSize: Int?
+        var baseOffset = 0
+        var categories: [Int: String] = [:]
+        var items: [XDFItem] = []
+
+        var section: String?
+        var kv: [String: String] = [:]
+        var lastKey: String?
+
+        func cleanValue(_ raw: String) -> String {
+            var s = raw.trimmingCharacters(in: .whitespaces)
+            if s.hasPrefix("\"") { s.removeFirst() }
+            if s.hasSuffix("\"") { s.removeLast() }
+            return s.replacingOccurrences(of: "\\r\\n", with: "\n").replacingOccurrences(of: "\\n", with: "\n")
+        }
+
+        func cleanEquation(_ raw: String?) -> String {
+            guard let raw else { return "X" }
+            let eq = raw.components(separatedBy: ",TH|").first?.trimmingCharacters(in: .whitespaces) ?? "X"
+            return eq.isEmpty ? "X" : eq
+        }
+
+        func flushSection() {
+            guard let sec = section else { return }
+            defer { kv = [:]; lastKey = nil; section = nil }
+
+            switch sec {
+            case "%%HEADER%%":
+                if let t = kv["DefTitle"], !t.isEmpty { title = cleanValue(t) }
+                if let d = kv["Desc"] { description = cleanValue(d) }
+                regionSize = int(kv["BinSize"])
+                baseOffset = int(kv["BaseOffset"]) ?? 0
+                for (k, v) in kv where k.hasPrefix("Category") {
+                    if let idx = Int(k.dropFirst("Category".count)) {
+                        let name = cleanValue(v)
+                        if !name.isEmpty { categories[idx] = name }
+                    }
+                }
+
+            case "%%TABLE%%":
+                guard let addr = int(kv["Address"]) else { return }
+                let flags = int(kv["Flags"]) ?? 0
+                let bits = int(kv["SizeInBits"]) ?? 8
+                let rows = max(1, int(kv["Rows"]) ?? 1)
+                let cols = max(1, int(kv["Cols"]) ?? 1)
+                let dl = DataLayout(
+                    address: addr + baseOffset,
+                    bits: bits,
+                    signed: flags & 0x1 != 0,
+                    lsbFirst: flags & 0x2 != 0,
+                    columnMajor: flags & 0x4 != 0,
+                    isFloat: flags & 0x10000 != 0,
+                    rows: rows,
+                    cols: cols
+                )
+                let zEq = cleanEquation(kv["ZEq"])
+                let zSc = Scaling(
+                    equation: zEq,
+                    expr: Expr.parse(zEq) ?? .x,
+                    units: cleanValue(kv["ZUnits"] ?? ""),
+                    decimals: int(kv["DecimalPl"]) ?? 2,
+                    output: int(kv["OutType"]).flatMap(OutputType.init) ?? .float
+                )
+                let xLabels = (kv["XLabels"] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                let yLabels = (kv["YLabels"] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                let xEq = cleanEquation(kv["XEq"]), yEq = cleanEquation(kv["YEq"])
+                let xSc = Scaling(equation: xEq, expr: Expr.parse(xEq) ?? .x, units: cleanValue(kv["XUnits"] ?? ""), decimals: 1, output: .float)
+                let ySc = Scaling(equation: yEq, expr: Expr.parse(yEq) ?? .x, units: cleanValue(kv["YUnits"] ?? ""), decimals: 1, output: .float)
+                let xAxis = Axis(source: xLabels.isEmpty ? .none : .labels(xLabels), count: cols, scaling: xSc)
+                let yAxis = Axis(source: yLabels.isEmpty ? .none : .labels(yLabels), count: rows, scaling: ySc)
+                let cats = ["Cat0ID", "Cat1ID", "Cat2ID"].compactMap { int(kv[$0]).map { $0 - 1 } }.filter { $0 >= 0 }
+                items.append(XDFItem(
+                    id: items.count,
+                    title: cleanValue(kv["Title"] ?? "?"),
+                    description: cleanValue(kv["Desc"] ?? ""),
+                    categories: cats,
+                    kind: .table(x: xAxis, y: yAxis),
+                    data: dl,
+                    scaling: zSc
+                ))
+
+            case "%%CONSTANT%%":
+                guard let addr = int(kv["Address"]) else { return }
+                let flags = int(kv["Flags"]) ?? 0
+                let bits = int(kv["SizeInBits"]) ?? 8
+                let dl = DataLayout(
+                    address: addr + baseOffset,
+                    bits: bits,
+                    signed: flags & 0x1 != 0,
+                    lsbFirst: flags & 0x2 != 0,
+                    columnMajor: false,
+                    isFloat: flags & 0x10000 != 0,
+                    rows: 1,
+                    cols: 1
+                )
+                let eq = cleanEquation(kv["Equation"])
+                let sc = Scaling(
+                    equation: eq,
+                    expr: Expr.parse(eq) ?? .x,
+                    units: cleanValue(kv["Units"] ?? ""),
+                    decimals: int(kv["DecimalPl"]) ?? 2,
+                    output: int(kv["OutType"]).flatMap(OutputType.init) ?? .float
+                )
+                let cats = ["Cat0ID", "Cat1ID", "Cat2ID"].compactMap { int(kv[$0]).map { $0 - 1 } }.filter { $0 >= 0 }
+                items.append(XDFItem(
+                    id: items.count,
+                    title: cleanValue(kv["Title"] ?? "?"),
+                    description: cleanValue(kv["Desc"] ?? ""),
+                    categories: cats,
+                    kind: .constant,
+                    data: dl,
+                    scaling: sc
+                ))
+
+            case "%%FLAG%%":
+                guard let addr = int(kv["Address"]) else { return }
+                let bits = int(kv["SizeInBits"]) ?? 8
+                let bitNum = int(kv["BitNumber"]) ?? 0
+                let mask = uint64(kv["BitMask"]) ?? (UInt64(1) << UInt64(max(0, min(63, bitNum))))
+                let flags = int(kv["Flags"]) ?? 0
+                let dl = DataLayout(
+                    address: addr + baseOffset,
+                    bits: bits,
+                    signed: false,
+                    lsbFirst: flags & 0x2 != 0,
+                    columnMajor: false,
+                    isFloat: false,
+                    rows: 1,
+                    cols: 1
+                )
+                let cats = ["Cat0ID", "Cat1ID", "Cat2ID"].compactMap { int(kv[$0]).map { $0 - 1 } }.filter { $0 >= 0 }
+                items.append(XDFItem(
+                    id: items.count,
+                    title: cleanValue(kv["Title"] ?? "?"),
+                    description: cleanValue(kv["Desc"] ?? ""),
+                    categories: cats,
+                    kind: .flag(mask: mask, invert: (flags & 0x1) != 0),
+                    data: dl,
+                    scaling: .identity
+                ))
+
+            default:
+                break
+            }
+        }
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed == "%%END%%" {
+                flushSection()
+                continue
+            }
+            if trimmed.hasPrefix("%%") && trimmed.hasSuffix("%%") {
+                flushSection()
+                section = trimmed
+                continue
+            }
+            guard section != nil else { continue }
+            if let eqIdx = line.firstIndex(of: "=") {
+                let lhs = line[..<eqIdx].trimmingCharacters(in: .whitespaces)
+                let rhs = String(line[line.index(after: eqIdx)...])
+                // Format is "040005 Title" -> take last token as key
+                let parts = lhs.split(whereSeparator: \.isWhitespace)
+                if parts.count >= 2, parts[0].allSatisfy(\.isHexDigit) {
+                    let key = String(parts[1])
+                    kv[key] = rhs
+                    lastKey = key
+                    continue
+                }
+            }
+            // Multiline continuation (e.g. Desc spanning multiple lines)
+            if let lk = lastKey {
+                kv[lk, default: ""] += "\n" + line
+            }
+        }
+        flushSection()
+
+        return XDFDefinition(title: title, description: description, categories: categories, items: items, regionSize: regionSize)
     }
 }
 

@@ -133,6 +133,7 @@ and ideas and pull requests are welcome in [Issues](../../issues).
 - [x] Command palette (⌘K) for every action and every map
 
 ### Definitions
+- [x] Legacy TunerPro XDF v1.11 text format parser (in addition to XML XDF 1.60)
 - [x] `XDFFLAG` bitmasks as switches, `XDFPATCH` patches with apply / revert
 - [x] Built-in XDF editor: add and change maps, axes, formulas and categories, save the XDF
 - [x] Create a map straight from a selected address range (in Hex-Diff or Outside-XDF changes)
@@ -158,12 +159,12 @@ and ideas and pull requests are welcome in [Issues](../../issues).
 
 ### Workflow and macOS
 - [x] Favorites, recent files, overview page, search by address
-- [ ] Projects: XDF, BIN, comparison, notes and snapshots in one file
-- [ ] Several files open at once in tabs or windows
-- [ ] Quick Look and Finder previews for `.xdf` and `.bin`
-- [ ] Shortcuts and AppleScript actions, plus a `mactuner` command line (diff, apply, export)
-- [ ] Plugins in JavaScript for custom checksums, importers and tools
-- [ ] iPad version for reviewing and small edits on the road
+- [x] Projects (`.mtproj`): XDF, BIN, comparison, notes, history and snapshots in one file
+- [x] Several files open at once in tabs or windows (`WindowGroup` + native macOS window tabbing)
+- [x] Quick Look and Finder previews for `.xdf`, `.bin` and `.mtproj`
+- [x] Shortcuts (`AppIntents`) and AppleScript (`MacTuner.sdef`) actions, plus a `mactuner` command line (`diff`, `apply`, `export`, `info`, `checksum`, `convert`)
+- [x] Plugins in JavaScript (`JavaScriptCore`) for custom checksums and tools
+- [x] iPad version (`iPad/MacTunerPadApp.swift`) for reviewing and small edits on the road
 
 ### Quality and distribution
 - [x] 25 languages

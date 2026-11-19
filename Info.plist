@@ -32,7 +32,36 @@
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>mtproj</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>MacTuner Project</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>a2l</string>
+				<string>kp</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>ECU Map Definition</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+		</dict>
 	</array>
+	<key>NSAppleScriptEnabled</key>
+	<true/>
+	<key>OSAScriptingDefinition</key>
+	<string>MacTuner.sdef</string>
 	<key>CFBundleExecutable</key>
 	<string>MacTuner</string>
 	<key>CFBundleIconFile</key>

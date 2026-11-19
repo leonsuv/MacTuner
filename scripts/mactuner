@@ -1,0 +1,15 @@
+#!/bin/zsh
+# Wrapper script to invoke MacTuner's built-in CLI (`mactuner diff|apply|export|info|checksum|convert`).
+set -euo pipefail
+for candidate in \
+  "/Applications/MacTuner.app/Contents/MacOS/MacTuner" \
+  "$(dirname "$0")/../build/MacTuner.app/Contents/MacOS/MacTuner" \
+  "$(dirname "$0")/../.build/release/MacTuner" \
+  "$(dirname "$0")/../.build/debug/MacTuner"
+do
+  if [[ -x "$candidate" ]]; then
+    exec "$candidate" "$@"
+  fi
+done
+echo "MacTuner binary not found. Build with ./build_app.sh or install MacTuner.app in /Applications." >&2
+exit 1

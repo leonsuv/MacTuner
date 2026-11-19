@@ -8,15 +8,16 @@ struct MacTunerApp: App {
 
     init() {
         let args = CommandLine.arguments
+        if let code = CLI.runIfRequested(args) { exit(code) }
         if let i = args.firstIndex(of: "--check") { exit(SelfCheck.run(Array(args[(i + 1)...]))) }
         if let i = args.firstIndex(of: "--edit-test") { exit(EditTest.run(Array(args[(i + 1)...]))) }
         if let i = args.firstIndex(of: "--changes") { exit(ChangeTest.run(Array(args[(i + 1)...]))) }
+        PluginEngine.shared.reloadAll()
     }
 
     var body: some Scene {
-        Window("MacTuner", id: "main") {
-            ContentView()
-                .environment(model)
+        WindowGroup("MacTuner", id: "main") {
+            WindowRootView()
                 .frame(minWidth: 960, minHeight: 600)
         }
         .defaultSize(width: 1500, height: 940)
@@ -27,6 +28,17 @@ struct MacTunerApp: App {
                 Button("A2L / WinOLS .kp importieren …") { model.importDefinitionPanel() }
                 Button("BIN öffnen …") { model.openBinPanel() }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
+                Divider()
+                Button("Projekt öffnen (.mtproj) …") { model.openProjectPanel() }
+                Button("Projekt sichern unter (.mtproj) …") { model.saveProjectAs() }
+                    .disabled(model.definition == nil && !model.hasBin)
+                Divider()
+                Button("Quick Look Vorschau (XDF / BIN)") {
+                    if let url = model.xdfURL ?? model.binURL {
+                        QuickLookPreviewGenerator.showQuickLook(for: url)
+                    }
+                }
+                .disabled(model.xdfURL == nil && model.binURL == nil)
                 Divider()
                 Button("Vergleichs-BIN öffnen …") { model.openComparePanel() }
                     .keyboardShortcut("o", modifiers: [.command, .option])
@@ -170,6 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        NSWindow.allowsAutomaticWindowTabbing = true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -183,5 +196,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated { urls.forEach(AppModel.shared.open) }
+    }
+}
+
+/// First window binds to `AppModel.shared`; additional windows/tabs (`⌘N`) get their own independent `AppModel`.
+private struct WindowRootView: View {
+    @State private var windowModel: AppModel
+
+    @MainActor private static var claimedShared = false
+
+    @MainActor
+    init() {
+        if !Self.claimedShared {
+            Self.claimedShared = true
+            _windowModel = State(initialValue: AppModel.shared)
+        } else {
+            _windowModel = State(initialValue: AppModel(restorePrevious: false))
+        }
+    }
+
+    var body: some View {
+        ContentView()
+            .environment(windowModel)
     }
 }

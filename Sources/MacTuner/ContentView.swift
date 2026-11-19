@@ -85,6 +85,8 @@ struct ContentView: View {
             ChecksumAndFlashView()
         } else if model.selection == AppModel.datalogSelection {
             DatalogView()
+        } else if model.selection == AppModel.pluginsSelection {
+            PluginsView()
         } else if let item = model.selectedItem {
             if model.hasBin {
                 ItemDetailView(item: item).id(item.id)
@@ -217,6 +219,9 @@ struct ToolsMenu: View {
             }
             Button { model.selection = AppModel.datalogSelection } label: {
                 Label("Datalogging", systemImage: "waveform.path.ecg")
+            }
+            Button { model.selection = AppModel.pluginsSelection } label: {
+                Label("JavaScript-Plugins", systemImage: "puzzlepiece.extension")
             }
             Divider()
             Button { model.exportPDFReport() } label: {

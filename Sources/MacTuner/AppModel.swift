@@ -128,6 +128,7 @@ final class AppModel {
     static let diagnosticsSelection = -9
     static let checksumSelection = -10
     static let datalogSelection = -11
+    static let pluginsSelection = -12
 
     private(set) var definition: XDFDefinition?
     private(set) var xdfURL: URL?
@@ -276,7 +277,7 @@ final class AppModel {
     var canRedo: Bool { !redoStack.isEmpty }
     var hasBin: Bool { binURL != nil }
 
-    private init() {
+    init(restorePrevious: Bool = true) {
         let d = UserDefaults.standard
         let fm = FileManager.default
         scope = d.string(forKey: "scope").flatMap(SidebarScope.init) ?? .all
@@ -284,10 +285,12 @@ final class AppModel {
         translationMode = d.string(forKey: "translationMode").flatMap(XDFTranslationMode.init) ?? .original
         recentXDFs = Self.recent("recentXDF")
         recentBins = Self.recent("recentBin")
-        if let p = d.string(forKey: "xdfPath"), fm.fileExists(atPath: p) { loadXDF(URL(fileURLWithPath: p)) }
-        if let p = d.string(forKey: "binPath"), fm.fileExists(atPath: p) { loadBin(URL(fileURLWithPath: p)) }
-        if let p = d.string(forKey: "comparePath"), fm.fileExists(atPath: p) { loadCompare(URL(fileURLWithPath: p)) }
-        if let s = d.object(forKey: "selection") as? Int, let def = definition, s < def.items.count { selection = s }
+        if restorePrevious {
+            if let p = d.string(forKey: "xdfPath"), fm.fileExists(atPath: p) { loadXDF(URL(fileURLWithPath: p)) }
+            if let p = d.string(forKey: "binPath"), fm.fileExists(atPath: p) { loadBin(URL(fileURLWithPath: p)) }
+            if let p = d.string(forKey: "comparePath"), fm.fileExists(atPath: p) { loadCompare(URL(fileURLWithPath: p)) }
+            if let s = d.object(forKey: "selection") as? Int, let def = definition, s < def.items.count { selection = s }
+        }
     }
 
     var windowTitle: String {
@@ -310,13 +313,119 @@ final class AppModel {
 
     func open(_ url: URL) {
         let ext = url.pathExtension.lowercased()
-        if ext == "xdf" {
+        if ext == "mtproj" {
+            loadProject(url)
+        } else if ext == "xdf" {
             loadXDF(url)
         } else if ext == "a2l" || ext == "kp" {
             importDefinition(url)
+        } else if ext == "csv" || ext == "adx" {
+            loadDatalog(url)
         } else {
             openBin(url)
         }
+    }
+
+    // MARK: Projects (.mtproj)
+
+    func openProjectPanel() {
+        guard let url = chooseFile(String(localized: "MacTuner-Projekt öffnen"), types: ["mtproj"]) else { return }
+        loadProject(url)
+    }
+
+    func saveProjectAs() {
+        let p = NSSavePanel()
+        p.nameFieldStringValue = (binURL?.deletingPathExtension().lastPathComponent ?? definition?.title ?? "Projekt") + ".mtproj"
+        p.directoryURL = binURL?.deletingLastPathComponent() ?? xdfURL?.deletingLastPathComponent()
+        guard p.runModal() == .OK, let url = p.url else { return }
+
+        var proj = MacTunerProject()
+        proj.xdfName = xdfURL?.lastPathComponent ?? definition?.title
+        if let def = definition { proj.xdfXML = XDFWriter.serialize(def) }
+        if hasBin {
+            proj.binName = binURL?.lastPathComponent
+            proj.binBase64 = Data(bin).base64EncodedString()
+        }
+        if let cmp = compare {
+            proj.compareName = compareName
+            proj.compareBase64 = Data(cmp).base64EncodedString()
+        }
+        proj.extraCompares = extraCompares.map {
+            MacTunerProject.StoredCompare(name: $0.name, dataBase64: Data($0.bytes).base64EncodedString())
+        }
+        proj.mapNotes = mapNotes
+        proj.history = history
+        if let key = binStorageKey {
+            proj.snapshots = snapshots.compactMap { meta in
+                guard let b = SnapshotStore.loadBytes(id: meta.id, for: key) else { return nil }
+                return MacTunerProject.StoredSnapshot(meta: meta, dataBase64: Data(b).base64EncodedString())
+            }
+        }
+        proj.favorites = favorites.sorted()
+        proj.lockedItems = lockedItems.sorted()
+        proj.safeRanges = safeRanges
+        proj.checksumPluginID = checksumPluginID
+
+        do {
+            try MacTunerProject.save(proj, to: url)
+        } catch {
+            alert = String(localized: "Projekt konnte nicht gespeichert werden:\n\(error.localizedDescription)")
+        }
+    }
+
+    func loadProject(_ url: URL) {
+        guard confirmDiscard() else { return }
+        do {
+            let proj = try MacTunerProject.load(from: url)
+            if let xml = proj.xdfXML {
+                let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("mactuner-proj.xdf")
+                try xml.write(to: tmp, atomically: true, encoding: .utf8)
+                definition = try XDFParser.load(tmp)
+                try? FileManager.default.removeItem(at: tmp)
+                xdfURL = nil
+                covered = definition.map(Changes.coverage) ?? IndexSet()
+            }
+            if let b64 = proj.binBase64, let data = Data(base64Encoded: b64) {
+                bin = [UInt8](data)
+                binURL = url.deletingPathExtension().appendingPathExtension("bin")
+                openedSnapshot = bin
+                dirty = false
+                undoStack = []
+                redoStack = []
+            }
+            if let c64 = proj.compareBase64, let data = Data(base64Encoded: c64) {
+                compare = [UInt8](data)
+                compareURL = nil
+                compareLabelOverride = proj.compareName
+            }
+            extraCompares = proj.extraCompares.compactMap { sc in
+                guard let data = Data(base64Encoded: sc.dataBase64) else { return nil }
+                return CompareFile(name: sc.name, url: nil, bytes: [UInt8](data))
+            }
+            mapNotes = proj.mapNotes
+            history = proj.history
+            favorites = Set(proj.favorites)
+            lockedItems = Set(proj.lockedItems)
+            safeRanges = proj.safeRanges
+            checksumPluginID = proj.checksumPluginID
+            if let key = binStorageKey {
+                snapshots = proj.snapshots.map(\.meta)
+                for s in proj.snapshots {
+                    if let d = Data(base64Encoded: s.dataBase64) {
+                        try? SnapshotStore.saveSnapshot(s.meta, bytes: [UInt8](d), for: key)
+                    }
+                }
+                SnapshotStore.saveIndex(snapshots, for: key)
+            }
+            selection = nil
+            touch()
+        } catch {
+            alert = String(localized: "Projekt konnte nicht geladen werden:\n\(error.localizedDescription)")
+        }
+    }
+
+    func applyExternalPatches(_ patches: [Patch]) {
+        commit(patches)
     }
 
     func openXDFPanel() { if let u = chooseFile(String(localized: "XDF öffnen"), types: ["xdf"]) { loadXDF(u) } }

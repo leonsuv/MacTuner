@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="MacTuner Terminology">
+    <suite name="MacTuner Suite" code="MTNR" description="Control MacTuner from AppleScript and Shortcuts.">
+        <command name="open xdf" code="MTNRoxdf" description="Open an XDF definition file.">
+            <direct-parameter type="text" description="POSIX path to the XDF file."/>
+        </command>
+        <command name="open bin" code="MTNRobin" description="Open a BIN binary file.">
+            <direct-parameter type="text" description="POSIX path to the BIN file."/>
+        </command>
+        <command name="open compare" code="MTNRocmp" description="Open a comparison BIN file.">
+            <direct-parameter type="text" description="POSIX path to the comparison BIN file."/>
+        </command>
+        <command name="export report" code="MTNRxrep" description="Export the change report as text.">
+            <result type="text" description="Formatted change report."/>
+        </command>
+        <command name="save bin" code="MTNRsbin" description="Save the current BIN file."/>
+    </suite>
+</dictionary>
