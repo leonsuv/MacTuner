@@ -36,104 +36,33 @@ struct ItemDetailView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let historyCount = model.history(for: item).count
+        let hasNote = !model.note(for: item).isEmpty
+        let locked = model.isLocked(item)
+        let violations = item.scaling.output != .hex ? model.outOfSafeRangeCount(item) : 0
+        let sr = model.safeRange(for: item)
+
+        return VStack(alignment: .leading, spacing: 8) {
             if let c = item.categories.first, let name = model.definition?.categories[c] {
                 Text(name.uppercased())
                     .font(.caption2.weight(.semibold))
                     .tracking(0.6)
                     .foregroundStyle(.tertiary)
             }
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 Text(model.displayTitle(item))
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 21, weight: .bold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .textSelection(.enabled)
+
                 Button { model.toggleFavorite(item) } label: {
                     Image(systemName: favorite ? "star.fill" : "star")
-                        .font(.title3)
+                        .font(.body)
                         .foregroundStyle(favorite ? .yellow : .secondary)
                 }
                 .buttonStyle(.plain)
                 .help(favorite ? String(localized: "Aus Favoriten entfernen (⌘D)") : String(localized: "Zu Favoriten hinzufügen (⌘D)"))
-                Button { showHistory.toggle() } label: {
-                    Image(systemName: "clock")
-                        .font(.title3)
-                        .foregroundStyle(model.history(for: item).isEmpty ? Color.secondary : Color.accentColor)
-                }
-                .buttonStyle(.plain)
-                .help("Änderungsverlauf dieses Kennfelds")
-                .popover(isPresented: $showHistory) {
-                    ItemHistoryPopover(item: item)
-                }
-                Button { model.toggleLock(item) } label: {
-                    Image(systemName: model.isLocked(item) ? "lock.fill" : "lock.open")
-                        .font(.title3)
-                        .foregroundStyle(model.isLocked(item) ? Color.red : Color.secondary)
-                }
-                .buttonStyle(.plain)
-                .help(model.isLocked(item) ? "Kennfeld entsperren (⌘L)" : "Kennfeld gegen Änderungen sperren (⌘L)")
-
-                if item.scaling.output != .hex {
-                    let sr = model.safeRange(for: item)
-                    let violations = model.outOfSafeRangeCount(item)
-                    Button {
-                        safeMinText = sr.min.map(item.scaling.format) ?? ""
-                        safeMaxText = sr.max.map(item.scaling.format) ?? ""
-                        showSafeRange.toggle()
-                    } label: {
-                        Image(systemName: violations > 0 ? "exclamationmark.shield.fill" : (sr.isEmpty ? "shield" : "checkmark.shield.fill"))
-                            .font(.title3)
-                            .foregroundStyle(violations > 0 ? Color.red : (sr.isEmpty ? Color.secondary : Color.green))
-                    }
-                    .buttonStyle(.plain)
-                    .help(violations > 0 ? "\(violations) Zelle(n) außerhalb des Sicherheitsbereichs" : "Sicherheitsbereich (Min/Max) festlegen")
-                    .popover(isPresented: $showSafeRange) {
-                        safeRangePopover
-                    }
-                }
-
-                copyFromMenu
-
-                let hasNote = !model.note(for: item).isEmpty
-                Button {
-                    noteText = model.note(for: item)
-                    showNotes.toggle()
-                } label: {
-                    Image(systemName: hasNote ? "note.text" : "note.text.badge.plus")
-                        .font(.title3)
-                        .foregroundStyle(hasNote ? Color.accentColor : Color.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Notizen zu diesem Kennfeld (neben der XDF gespeichert)")
-                .popover(isPresented: $showNotes) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Notizen: \(item.title)").font(.headline).lineLimit(1)
-                        TextEditor(text: $noteText)
-                            .font(.body)
-                            .frame(width: 340, height: 140)
-                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
-                        HStack {
-                            Text("Wird neben der XDF gespeichert").font(.caption2).foregroundStyle(.tertiary)
-                            Spacer()
-                            Button("Speichern") {
-                                model.setNote(noteText, for: item)
-                                showNotes = false
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                        }
-                    }
-                    .padding(12)
-                }
-
-                Button {
-                    model.xdfEditorRequest = XDFEditorRequest(existingItem: item)
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("XDF-Definition dieses Elements bearbeiten")
 
                 if info.isChanged {
                     Label(badge, systemImage: "pencil")
@@ -141,13 +70,102 @@ struct ItemDetailView: View {
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Theme.changed.opacity(0.18), in: Capsule())
                         .foregroundStyle(Theme.changed)
-                    Spacer()
-                    Button { withAnimation(.snappy) { model.restore(item) } } label: {
-                        Label("Zurücksetzen", systemImage: "arrow.uturn.backward.circle")
-                    }
-                    .controlSize(.small)
-                    .help("Ganzes Kennfeld samt Achsen auf den Vergleich zurücksetzen")
                 }
+
+                if violations > 0 {
+                    Button {
+                        safeMinText = sr.min.map(item.scaling.format) ?? ""
+                        safeMaxText = sr.max.map(item.scaling.format) ?? ""
+                        showSafeRange = true
+                    } label: {
+                        Label("\(violations) außerhalb Bereich", systemImage: "exclamationmark.shield.fill")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color.red.opacity(0.16), in: Capsule())
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer(minLength: 12)
+
+                // Clean labeled secondary action cluster
+                HStack(spacing: 6) {
+                    Button {
+                        noteText = model.note(for: item)
+                        showNotes.toggle()
+                    } label: {
+                        Label(hasNote ? "Notiz" : "Notiz", systemImage: hasNote ? "note.text" : "note.text.badge.plus")
+                            .foregroundStyle(hasNote ? Color.accentColor : Color.primary)
+                    }
+                    .popover(isPresented: $showNotes) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Notizen: \(item.title)").font(.headline).lineLimit(1)
+                            TextEditor(text: $noteText)
+                                .font(.body)
+                                .frame(width: 340, height: 140)
+                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
+                            HStack {
+                                Text("Wird neben der XDF gespeichert").font(.caption2).foregroundStyle(.tertiary)
+                                Spacer()
+                                Button("Speichern") {
+                                    model.setNote(noteText, for: item)
+                                    showNotes = false
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            }
+                        }
+                        .padding(12)
+                    }
+
+                    Button { showHistory.toggle() } label: {
+                        Label(historyCount > 0 ? "Verlauf (\(historyCount))" : "Verlauf", systemImage: "clock")
+                    }
+                    .popover(isPresented: $showHistory) {
+                        ItemHistoryPopover(item: item)
+                    }
+
+                    Button { model.toggleLock(item) } label: {
+                        Label(locked ? "Gesperrt" : "Sperren", systemImage: locked ? "lock.fill" : "lock.open")
+                            .foregroundStyle(locked ? Color.red : Color.primary)
+                    }
+                    .help(locked ? "Kennfeld entsperren (⌘L)" : "Kennfeld gegen Änderungen sperren (⌘L)")
+
+                    if info.isChanged {
+                        Button { withAnimation(.snappy) { model.restore(item) } } label: {
+                            Label("Zurücksetzen", systemImage: "arrow.uturn.backward.circle")
+                        }
+                        .disabled(locked)
+                        .help("Ganzes Kennfeld samt Achsen auf den Vergleich zurücksetzen")
+                    }
+
+                    Menu {
+                        if item.scaling.output != .hex {
+                            Button {
+                                safeMinText = sr.min.map(item.scaling.format) ?? ""
+                                safeMaxText = sr.max.map(item.scaling.format) ?? ""
+                                showSafeRange = true
+                            } label: {
+                                Label(sr.isEmpty ? "Sicherheitsbereich festlegen …" : "Sicherheitsbereich bearbeiten …", systemImage: "shield")
+                            }
+                        }
+                        copyFromSubmenu
+                        Divider()
+                        Button {
+                            model.xdfEditorRequest = XDFEditorRequest(existingItem: item)
+                        } label: {
+                            Label("XDF-Definition bearbeiten …", systemImage: "slider.horizontal.3")
+                        }
+                    } label: {
+                        Label("Mehr", systemImage: "ellipsis.circle")
+                    }
+                    .menuIndicator(.hidden)
+                    .popover(isPresented: $showSafeRange) {
+                        safeRangePopover
+                    }
+                }
+                .controlSize(.small)
             }
             HStack(spacing: 6) {
                 ForEach(chips, id: \.0) { Chip(text: $0.0, icon: $0.1) }
@@ -232,7 +250,7 @@ struct ItemDetailView: View {
         .frame(width: 300)
     }
 
-    private var copyFromMenu: some View {
+    private var copyFromSubmenu: some View {
         let matching = model.matchingLayoutItems(for: item)
         return Menu {
             if let cmp = model.compare {
@@ -252,7 +270,7 @@ struct ItemDetailView: View {
                 }
             }
             if !matching.isEmpty {
-                Section("Anderes Kennfeld mit gleichem Layout (\(item.data.rows)×\(item.data.cols))") {
+                Section("Anderes Kennfeld (\(item.data.rows)×\(item.data.cols))") {
                     ForEach(matching.prefix(30)) { other in
                         Button(other.title) {
                             model.copyMap(into: item, fromBytes: model.bin, sourceLayout: other.data,
@@ -262,15 +280,9 @@ struct ItemDetailView: View {
                 }
             }
         } label: {
-            Image(systemName: "doc.on.doc")
-                .font(.title3)
-                .foregroundStyle(.secondary)
+            Label("Kennfeld kopieren von …", systemImage: "doc.on.doc")
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
         .disabled(model.isLocked(item))
-        .help("Ganzes Kennfeld aus anderer Datei oder anderem Kennfeld kopieren")
     }
 }
 
@@ -330,7 +342,6 @@ struct EditControls: View {
                 .help("Auswahl auf den Vergleichswert zurücksetzen")
 
             if let status {
-                Spacer(minLength: 8)
                 Text(status)
                     .font(.caption.weight(.medium).monospacedDigit())
                     .foregroundStyle(enabled ? Color.accentColor : .secondary)
@@ -339,12 +350,13 @@ struct EditControls: View {
                     .fixedSize()
             }
         }
-        .controlSize(.regular)
+        .controlSize(.small)
         .disabled(!enabled)
         .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 6)
+        .background(.quaternary.opacity(0.32), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator.opacity(0.4)))
+        .fixedSize(horizontal: true, vertical: true)
     }
 
     private var divider: some View {

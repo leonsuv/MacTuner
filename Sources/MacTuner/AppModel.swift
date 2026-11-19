@@ -155,7 +155,12 @@ final class AppModel {
     @ObservationIgnored private var logTimer: Timer?
     private var openedSnapshot: [UInt8] = []
     private(set) var dirty = false
-    var selection: Int?
+    var selection: Int? {
+        didSet {
+            if let s = selection, s >= 0 { lastMapSelection = s }
+        }
+    }
+    private(set) var lastMapSelection: Int?
     var alert: String?
     var showCommandPalette = false
     var xdfEditorRequest: XDFEditorRequest?

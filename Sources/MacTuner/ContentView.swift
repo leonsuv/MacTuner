@@ -5,21 +5,47 @@ struct ContentView: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationSplitView {
-            SidebarView(search: search)
-                .navigationSplitViewColumnWidth(min: 240, ideal: 310, max: 520)
-        } detail: {
-            detail
+        HStack(spacing: 0) {
+            WorkbenchRail()
+            NavigationSplitView {
+                SidebarView(search: search)
+                    .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 460)
+            } detail: {
+                detail
+            }
+            .searchable(text: $search, placement: .sidebar, prompt: "Kennfeld suchen")
         }
-        .searchable(text: $search, placement: .sidebar, prompt: "Kennfeld suchen")
         .navigationTitle(model.windowTitle)
         .navigationSubtitle(model.hasBin ? (model.definition?.title ?? "") : "")
         .toolbar {
-            ToolbarItemGroup {
+            ToolbarItem(placement: .principal) {
+                Button { model.showCommandPalette.toggle() } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Kennfeld, Adresse oder Aktion …")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 16)
+                        Text("⌘K")
+                            .font(.caption2.weight(.semibold).monospaced())
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .frame(minWidth: 260, idealWidth: 320)
+                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.separator.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
+                .help("Befehlspalette öffnen (⌘K)")
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
                 OpenMenu()
-                ToolsMenu()
-                Button { model.showCommandPalette.toggle() } label: { Label("Befehlspalette", systemImage: "command") }
-                    .help("Befehlspalette öffnen (⌘K)")
                 ControlGroup {
                     Button { model.selectChange(-1) } label: { Label("Vorherige Änderung", systemImage: "chevron.up") }
                         .help("Vorherige Änderung (⌥⌘↑)")
@@ -27,13 +53,20 @@ struct ContentView: View {
                         .help("Nächste Änderung (⌥⌘↓)")
                 }
                 .disabled(model.changedItems.isEmpty)
-                Button { model.undo() } label: { Label("Widerrufen", systemImage: "arrow.uturn.backward") }
-                    .disabled(!model.canUndo)
-                Button { model.redo() } label: { Label("Wiederholen", systemImage: "arrow.uturn.forward") }
-                    .disabled(!model.canRedo)
-                Button { model.save() } label: { Label("Speichern", systemImage: "square.and.arrow.down") }
-                    .disabled(!model.hasBin || !model.dirty)
-                    .help("BIN speichern (⌘S) — Prüfsumme wird NICHT korrigiert")
+                ControlGroup {
+                    Button { model.undo() } label: { Label("Widerrufen", systemImage: "arrow.uturn.backward") }
+                        .disabled(!model.canUndo)
+                        .help("Widerrufen (⌘Z)")
+                    Button { model.redo() } label: { Label("Wiederholen", systemImage: "arrow.uturn.forward") }
+                        .disabled(!model.canRedo)
+                        .help("Wiederholen (⇧⌘Z)")
+                }
+                Button { model.save() } label: {
+                    Label("Speichern", systemImage: "square.and.arrow.down")
+                }
+                .tint(model.dirty ? Color.accentColor : nil)
+                .disabled(!model.hasBin || !model.dirty)
+                .help("BIN speichern (⌘S)")
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { StatusBar() }
@@ -106,8 +139,8 @@ struct StatusBar: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack(spacing: 14) {
-            entry("doc.text", "XDF", model.xdfURL?.lastPathComponent)
+        HStack(spacing: 12) {
+            entry("doc.text", "XDF", model.xdfURL?.lastPathComponent ?? model.definition?.title)
             entry("memorychip", "BIN", model.binURL.map { "\($0.lastPathComponent) (\(model.bin.count / 1024) KB)" })
             if model.hasBin {
                 HStack(spacing: 4) {
@@ -115,32 +148,76 @@ struct StatusBar: View {
                     CompareMenu()
                 }
             }
-            Spacer()
+
+            Spacer(minLength: 8)
+
+            // Quick Unit System Switcher
+            Menu {
+                ForEach(UnitSystem.allCases) { sys in
+                    Button {
+                        model.unitSystem = sys
+                    } label: {
+                        if model.unitSystem == sys { Label(sys.label, systemImage: "checkmark") } else { Text(sys.label) }
+                    }
+                }
+            } label: {
+                Label(model.unitSystem == .original ? "XDF" : (model.unitSystem == .metric ? "Metrisch" : "Imperial"),
+                      systemImage: "ruler")
+                    .font(.caption)
+                    .foregroundStyle(model.unitSystem == .original ? Color.secondary : Color.accentColor)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Einheitensystem umschalten")
+
+            // Quick Heatmap Palette Switcher
+            Menu {
+                ForEach(HeatmapPalette.allCases) { p in
+                    Button {
+                        model.heatmapPalette = p
+                    } label: {
+                        if model.heatmapPalette == p { Label(p.label, systemImage: "checkmark") } else { Text(p.label) }
+                    }
+                }
+            } label: {
+                Image(systemName: "paintpalette")
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Heatmap-Farbpalette wählen")
+
             if model.definition != nil, model.hasBin {
                 let n = model.changedItems.count
                 if n > 0 {
                     Button { model.scope = .changed } label: {
-                        Text("\(n) geändert").foregroundStyle(Theme.changed)
+                        Text("\(n) geändert")
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(Theme.changed)
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(Theme.changed.opacity(0.14), in: Capsule())
                     }
                     .buttonStyle(.plain)
                     .help("Alle geänderten Kennfelder anzeigen (⌘2)")
                 }
             }
+
             if let rep = model.checksumReport {
                 Button { model.selection = AppModel.checksumSelection } label: {
-                    if rep.allValid {
-                        Label("Prüfsumme OK (\(rep.pluginName))", systemImage: "checkmark.shield.fill")
-                            .foregroundStyle(.green)
-                    } else {
-                        Label("Prüfsumme ungültig (\(rep.invalidCount))", systemImage: "exclamationmark.shield.fill")
-                            .foregroundStyle(.red)
+                    HStack(spacing: 4) {
+                        Image(systemName: rep.allValid ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                        Text(rep.allValid ? "Prüfsumme OK" : "Prüfsumme ungültig (\(rep.invalidCount))")
                     }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(rep.allValid ? Color.green : Color.red)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background((rep.allValid ? Color.green : Color.red).opacity(0.14), in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .help("Prüfsummen & Flash-Export öffnen")
-            } else {
+            } else if model.hasBin {
                 Button { model.selection = AppModel.checksumSelection } label: {
-                    Label("Prüfsumme wird nicht korrigiert", systemImage: "exclamationmark.triangle")
+                    Label("Keine Prüfsumme", systemImage: "shield.slash")
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -149,9 +226,12 @@ struct StatusBar: View {
         }
         .font(.caption)
         .lineLimit(1)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
         .background(.bar)
+        .overlay(alignment: .top) {
+            Rectangle().fill(.separator.opacity(0.5)).frame(height: 1)
+        }
     }
 
     private func entry(_ icon: String, _ name: LocalizedStringKey, _ value: String?) -> some View {
@@ -160,10 +240,11 @@ struct StatusBar: View {
         } icon: {
             Image(systemName: icon).foregroundStyle(.secondary)
         }
+        .truncationMode(.middle)
     }
 }
 
-/// Toolbar menu: open files, recent files.
+/// Toolbar menu: open files, projects, imports, recent files.
 struct OpenMenu: View {
     @Environment(AppModel.self) private var model
 
@@ -175,68 +256,17 @@ struct OpenMenu: View {
             Button("Vergleichs-BIN öffnen …") { model.openComparePanel() }
             Button("Weitere Vergleichs-BIN hinzufügen …") { model.addExtraComparePanel() }
                 .disabled(!model.hasBin)
+            Divider()
+            Button("Projekt öffnen (.mtproj) …") { model.openProjectPanel() }
+            Button("Projekt sichern unter (.mtproj) …") { model.saveProjectAs() }
+                .disabled(model.definition == nil && !model.hasBin)
+            Divider()
+            Button("Datalog laden (CSV / ADX / ADS) …") { model.openDatalogPanel() }
             RecentFilesSection()
         } label: {
             Label("Öffnen", systemImage: "folder")
         }
-        .help("XDF, BIN oder Vergleich öffnen")
-    }
-}
-
-/// Toolbar menu for workbench views (Hex-Diff, Multi-Compare, Snapshots, History, PDF).
-struct ToolsMenu: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        Menu {
-            Button { model.selection = AppModel.multiCompareSelection } label: {
-                Label("Mehrdatei-Vergleich", systemImage: "square.split.2x1")
-            }
-            Button { model.selection = AppModel.hexDiffSelection } label: {
-                Label("Hex-Diff", systemImage: "doc.text.magnifyingglass")
-            }
-            Button { model.selection = AppModel.snapshotsSelection } label: {
-                Label("Snapshots (\(model.snapshots.count))", systemImage: "camera")
-            }
-            Button { model.selection = AppModel.historySelection } label: {
-                Label("Änderungsverlauf", systemImage: "clock")
-            }
-            Divider()
-            Button { model.selection = AppModel.mapFinderSelection } label: {
-                Label("Kennfeld-Finder", systemImage: "sparkle.magnifyingglass")
-            }
-            Button { model.selection = AppModel.versionPortSelection } label: {
-                Label("Versions-Portierung", systemImage: "arrow.triangle.branch")
-            }
-            Button { model.selection = AppModel.batchTunerSelection } label: {
-                Label("Batch-Tuning", systemImage: "square.stack.3d.up")
-            }
-            Button { model.selection = AppModel.diagnosticsSelection } label: {
-                Label("Diagnose (\(model.diagnosticFindings.count))", systemImage: "stethoscope")
-            }
-            Button { model.selection = AppModel.checksumSelection } label: {
-                Label("Prüfsummen & Flashen", systemImage: "checkmark.shield")
-            }
-            Button { model.selection = AppModel.datalogSelection } label: {
-                Label("Datalogging", systemImage: "waveform.path.ecg")
-            }
-            Button { model.selection = AppModel.pluginsSelection } label: {
-                Label("JavaScript-Plugins", systemImage: "puzzlepiece.extension")
-            }
-            Divider()
-            Button { model.exportPDFReport() } label: {
-                Label("PDF-Bericht exportieren …", systemImage: "doc.richtext")
-            }
-            .disabled(model.definition == nil)
-            Button { model.printChangeReport() } label: {
-                Label("Bericht drucken …", systemImage: "printer")
-            }
-            .disabled(model.definition == nil)
-        } label: {
-            Label("Werkzeuge", systemImage: "wrench.and.screwdriver")
-        }
-        .disabled(!model.hasBin)
-        .help("Hex-Diff, Mehrdatei-Vergleich, Snapshots, Verlauf und PDF-Bericht")
+        .help("XDF, A2L/KP, BIN, Projekt oder Datalog öffnen")
     }
 }
 
@@ -263,7 +293,7 @@ struct CompareMenu: View {
         Menu {
             Button("Vergleichs-BIN öffnen …") { model.openComparePanel() }
             Button("Vergleich: Stand beim Öffnen") { model.resetCompare() }
-                .disabled(model.compareURL == nil)
+                .disabled(model.compareURL == nil && model.compareLabelOverride == nil)
             Button("BIN und Vergleich tauschen") { model.swapWithCompare() }
                 .disabled(model.compareURL == nil)
                 .help("Den Vergleich bearbeiten und die BIN als Vergleich nehmen")

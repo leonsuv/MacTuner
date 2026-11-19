@@ -115,10 +115,12 @@ struct OverviewView: View {
                     }
                     HStack(spacing: 10) {
                         stat("Kennfelder", def.items.filter(\.isTable).count)
-                        stat("Konstanten", def.items.filter { !$0.isTable }.count)
+                        stat("Konstanten", def.items.filter { !$0.isTable && !$0.isFlag && !$0.isPatch }.count)
                         stat("Kategorien", def.categories.count)
                         stat("Geändert", changed.count, highlight: !changed.isEmpty)
+                        stat("Diagnose", model.diagnosticFindings.count, highlight: !model.diagnosticFindings.isEmpty)
                     }
+                    workbenchCards
                     changes(changed)
                     if !favorites.isEmpty { list("Favoriten", favorites) }
                 }
@@ -127,6 +129,51 @@ struct OverviewView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private var workbenchCards: some View {
+        let cols = [GridItem(.adaptive(minimum: 155), spacing: 10)]
+        return LazyVGrid(columns: cols, spacing: 10) {
+            toolTile("Mehrdatei-Vergleich", subtitle: "\(model.extraCompares.count + 2) Dateien", icon: "square.split.2x1", color: .blue) {
+                model.selection = AppModel.multiCompareSelection
+            }
+            toolTile("Hex-Diff", subtitle: "XDF-Overlay & Inspektor", icon: "doc.text.magnifyingglass", color: .purple) {
+                model.selection = AppModel.hexDiffSelection
+            }
+            toolTile("Snapshots", subtitle: "\(model.snapshots.count) gesichert", icon: "camera", color: .teal) {
+                model.selection = AppModel.snapshotsSelection
+            }
+            toolTile("Kennfeld-Finder", subtitle: "Struktur-Scan", icon: "sparkle.magnifyingglass", color: .indigo) {
+                model.selection = AppModel.mapFinderSelection
+            }
+            toolTile("Datalogging", subtitle: model.datalog?.name ?? "CSV / ADX / ADS", icon: "waveform.path.ecg", color: .cyan) {
+                model.selection = AppModel.datalogSelection
+            }
+            toolTile("Prüfsummen & Flash", subtitle: model.checksumReport?.pluginName ?? "Nicht aktiv", icon: "checkmark.shield",
+                     color: model.checksumReport?.allValid == true ? .green : (model.checksumReport != nil ? .red : .orange)) {
+                model.selection = AppModel.checksumSelection
+            }
+        }
+    }
+
+    private func toolTile(_ title: String, subtitle: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundStyle(color)
+                    .frame(width: 28, height: 28)
+                    .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text(subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .card(padding: 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func stat(_ title: LocalizedStringKey, _ n: Int, highlight: Bool = false) -> some View {

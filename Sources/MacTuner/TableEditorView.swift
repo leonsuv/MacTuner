@@ -114,10 +114,50 @@ struct TableEditorView: View {
             if let log = model.datalog {
                 inlineLogBar(log)
             }
-            HStack(spacing: 10) {
+            let canTransform = !selection.isEmpty && s.output != .hex && !isCompareView && !model.isLocked(item)
+            HStack(spacing: 8) {
                 EditControls(scaling: s, enabled: !selection.isEmpty && !isCompareView && !model.isLocked(item),
                              canRestore: selection.contains { model.isChanged(l, $0) } && !model.isLocked(item),
                              input: $input, status: selectionText) { op in applyDisplayOp(op, cells: selection) }
+
+                if s.output != .hex {
+                    HStack(spacing: 4) {
+                        Button { runTransform { TableOps.smooth($0, value: $1) } } label: {
+                            Label("Glätten", systemImage: "waveform.path")
+                        }
+                        .disabled(selection.count < 2 || !canTransform)
+                        .help("Auswahl glätten (3×3)")
+
+                        Menu {
+                            Button("Horizontal") { interpolate(.horizontal) }
+                            Button("Vertikal") { interpolate(.vertical) }
+                            Button("Flächig (4 Ecken)") { interpolate(.bilinear) }
+                        } label: {
+                            Label("Interpolieren", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                        }
+                        .disabled(selection.count < 3 || !canTransform)
+
+                        Menu {
+                            Button("Nach unten füllen") { runTransform { TableOps.fillDown($0, value: $1) } }
+                            Button("Nach oben füllen") { runTransform { TableOps.fillUp($0, value: $1) } }
+                            Button("Nach rechts füllen") { runTransform { TableOps.fillRight($0, value: $1) } }
+                            Button("Nach links füllen") { runTransform { TableOps.fillLeft($0, value: $1) } }
+                            Divider()
+                            Button("Auf Durchschnitt setzen") { runTransform { TableOps.setToAverage($0, value: $1) } }
+                            Button("Abflachen auf Wert …") { flattenInput = ""; showFlattenPopover = true }
+                            Button("Begrenzen (Clamp) …") { clampMinInput = ""; clampMaxInput = ""; showClampPopover = true }
+                        } label: {
+                            Label("Füllen", systemImage: "arrow.down.right.square")
+                        }
+                        .disabled(!canTransform)
+                    }
+                    .controlSize(.small)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator.opacity(0.4)))
+                }
+
+                Spacer(minLength: 4)
                 actionsMenu
             }
 
@@ -182,35 +222,40 @@ struct TableEditorView: View {
             }
             .controlSize(.small)
 
-            ScrollView([.horizontal, .vertical]) {
-                grid(xs: xs, ys: ys, values: shown, deltas: deltas, lo: lo, hi: hi, maxDelta: maxDelta,
-                     activeLogCell: logTrace.activeCell, hitCounts: logTrace.hits, maxHits: logTrace.maxHits)
-                    .padding(10)
-            }
-            .focusable()
-            .focused($gridFocused)
-            .focusEffectDisabled()
-            .onKeyPress(phases: .down, action: handleKey)
-            .onCopyCommand { copyText().map { [NSItemProvider(object: $0 as NSString)] } ?? [] }
-            .onPasteCommand(of: [.plainText, .utf8PlainText, .tabSeparatedText]) { _ in pasteFromClipboard() }
-            .help("⇧-Klick Bereich · ⌘-Klick einzeln · Achse klicken = ganze Zeile/Spalte · Zahl tippen + ↩ setzt · +/− Schritt")
-            .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isCompareView ? AnyShapeStyle(Theme.compare) : AnyShapeStyle(.separator.opacity(0.6)),
-                              lineWidth: isCompareView ? 2 : 1))
-            .frame(maxHeight: CGFloat(displayRows + 1) * (Self.cellHeight + Self.gap) + 22)
-            .layoutPriority(1)
+            let showVisual = (show3D && l.rows > 1 && l.cols > 1 && s.output != .hex) || showChart
+            VSplitView {
+                ScrollView([.horizontal, .vertical]) {
+                    grid(xs: xs, ys: ys, values: shown, deltas: deltas, lo: lo, hi: hi, maxDelta: maxDelta,
+                         activeLogCell: logTrace.activeCell, hitCounts: logTrace.hits, maxHits: logTrace.maxHits)
+                        .padding(10)
+                }
+                .focusable()
+                .focused($gridFocused)
+                .focusEffectDisabled()
+                .onKeyPress(phases: .down, action: handleKey)
+                .onCopyCommand { copyText().map { [NSItemProvider(object: $0 as NSString)] } ?? [] }
+                .onPasteCommand(of: [.plainText, .utf8PlainText, .tabSeparatedText]) { _ in pasteFromClipboard() }
+                .help("⇧-Klick Bereich · ⌘-Klick einzeln · Achse klicken = ganze Zeile/Spalte · ⌥-Klick Achse = bearbeiten · Zahl tippen + ↩ setzt · +/− Schritt")
+                .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(isCompareView ? AnyShapeStyle(Theme.compare) : AnyShapeStyle(.separator.opacity(0.6)),
+                                  lineWidth: isCompareView ? 2 : 1))
+                .frame(minHeight: 160, maxHeight: .infinity)
 
-            if show3D && l.rows > 1 && l.cols > 1 && s.output != .hex {
-                Surface3DView(item: item, x: x, y: y, readOnly: isCompareView)
+                if showVisual {
+                    HStack(spacing: 10) {
+                        if show3D && l.rows > 1 && l.cols > 1 && s.output != .hex {
+                            Surface3DView(item: item, x: x, y: y, readOnly: isCompareView)
+                        }
+                        if showChart {
+                            TableChart(points: chartPoints(values: shown, ys: ys), seriesCount: l.rows, dashedIsBin: isCompareView,
+                                       units: model.displayUnit(s.units), xUnits: mode == .wrapped || x.scaling.units.isEmpty ? "" : model.displayUnit(x.scaling.units))
+                        }
+                    }
+                    .padding(.top, 8)
+                    .frame(minHeight: 180, maxHeight: .infinity)
+                }
             }
-
-            if showChart {
-                TableChart(points: chartPoints(values: shown, ys: ys), seriesCount: l.rows, dashedIsBin: isCompareView,
-                           units: model.displayUnit(s.units), xUnits: mode == .wrapped || x.scaling.units.isEmpty ? "" : model.displayUnit(x.scaling.units))
-                    .frame(minHeight: 200, maxHeight: 380)
-            }
-            Spacer(minLength: 0)
         }
         .onAppear { gridFocused = true }
         .sheet(item: $editingAxis) { target in
