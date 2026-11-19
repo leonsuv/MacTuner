@@ -141,10 +141,10 @@ and ideas and pull requests are welcome in [Issues](../../issues).
 - [x] Translate map names and descriptions of foreign-language XDFs on the fly (including Bosch/Siemens ECU acronym glossary)
 
 ### Finding maps
-- [ ] Map finder: detect tables and axes in unknown binaries by their structure, like WinOLS
-- [ ] Find the same maps in another software version and port a tune across versions
-- [ ] Apply a change list from one file to another (batch tuning)
-- [ ] Highlight maps that look wrong: non-monotonic axes, outliers, cut-off curves
+- [x] Map finder: detect tables and axes in unknown binaries by their structure, like WinOLS (with live mini-heatmap preview & one-click add to XDF)
+- [x] Find the same maps in another software version and port a tune across versions (exports relocated XDF and ported BIN)
+- [x] Apply a change list from one file to another (batch tuning with `.mtpatch` packages in absolute, Δ or Δ% mode)
+- [x] Highlight maps that look wrong: non-monotonic axes, outliers, cut-off curves and out-of-bounds addresses
 
 ### Checksums and flashing
 - [ ] Checksum plugins per control unit family (Bosch ME7 / MED17 / EDC17, Siemens, Temic DQ250 …)

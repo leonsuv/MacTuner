@@ -73,6 +73,14 @@ struct ContentView: View {
             SnapshotsView()
         } else if model.selection == AppModel.historySelection, model.hasBin {
             HistoryView()
+        } else if model.selection == AppModel.mapFinderSelection, model.hasBin {
+            MapFinderView()
+        } else if model.selection == AppModel.versionPortSelection, model.hasBin {
+            VersionPortView()
+        } else if model.selection == AppModel.batchTunerSelection, model.hasBin {
+            BatchTunerView()
+        } else if model.selection == AppModel.diagnosticsSelection, model.hasBin {
+            DiagnosticsView()
         } else if let item = model.selectedItem {
             if model.hasBin {
                 ItemDetailView(item: item).id(item.id)
@@ -168,6 +176,19 @@ struct ToolsMenu: View {
             }
             Button { model.selection = AppModel.historySelection } label: {
                 Label("Änderungsverlauf", systemImage: "clock")
+            }
+            Divider()
+            Button { model.selection = AppModel.mapFinderSelection } label: {
+                Label("Kennfeld-Finder", systemImage: "sparkle.magnifyingglass")
+            }
+            Button { model.selection = AppModel.versionPortSelection } label: {
+                Label("Versions-Portierung", systemImage: "arrow.triangle.branch")
+            }
+            Button { model.selection = AppModel.batchTunerSelection } label: {
+                Label("Batch-Tuning", systemImage: "square.stack.3d.up")
+            }
+            Button { model.selection = AppModel.diagnosticsSelection } label: {
+                Label("Diagnose (\(model.diagnosticFindings.count))", systemImage: "stethoscope")
             }
             Divider()
             Button { model.exportPDFReport() } label: {

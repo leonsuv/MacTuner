@@ -122,6 +122,10 @@ final class AppModel {
     static let multiCompareSelection = -3
     static let snapshotsSelection = -4
     static let historySelection = -5
+    static let mapFinderSelection = -6
+    static let versionPortSelection = -7
+    static let batchTunerSelection = -8
+    static let diagnosticsSelection = -9
 
     private(set) var definition: XDFDefinition?
     private(set) var xdfURL: URL?
@@ -167,6 +171,20 @@ final class AppModel {
     @ObservationIgnored private var covered = IndexSet()
     @ObservationIgnored private var revision = 0
     @ObservationIgnored private var outsideCache: (revision: Int, ranges: [Range<Int>])?
+    @ObservationIgnored private var diagnosticsCache: (revision: Int, findings: [MapDiagnostics.Finding])?
+
+    var diagnosticFindings: [MapDiagnostics.Finding] {
+        guard hasBin, let def = definition else { return [] }
+        _ = bin.count
+        if let c = diagnosticsCache, c.revision == revision { return c.findings }
+        let res = MapDiagnostics.analyze(definition: def, bin: bin)
+        diagnosticsCache = (revision, res)
+        return res
+    }
+
+    func hasDiagnosticWarning(_ item: XDFItem) -> Bool {
+        diagnosticFindings.contains { $0.itemID == item.id }
+    }
 
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }

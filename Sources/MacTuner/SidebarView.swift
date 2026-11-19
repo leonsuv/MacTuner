@@ -213,6 +213,12 @@ struct SidebarView: View {
                     .foregroundStyle(.red)
                     .help("Außerhalb des Sicherheitsbereichs")
             }
+            if model.hasBin, model.hasDiagnosticWarning(item) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.yellow)
+                    .help("Diagnose-Hinweis (Achse, Ausreißer oder Sättigung)")
+            }
             if model.hasBin, model.isChanged(item) {
                 Circle().fill(Theme.changed).frame(width: 7, height: 7).help("Geändert gegenüber Vergleich")
             }
