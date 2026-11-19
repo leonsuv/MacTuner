@@ -147,7 +147,8 @@ struct HexDiffView: View {
     @State private var byteShift = 0
     @State private var showBars = true
     @State private var showCompareIn2D = true
-    @State private var barWidthRatio: CGFloat = 0.28
+    @State private var barWidthRatio: CGFloat = 0.22
+    @State private var xdfColWidth: CGFloat = 240
     @State private var compareSyncOffset = 0
     @State private var entropyMode = false
 
@@ -371,12 +372,12 @@ struct HexDiffView: View {
         let cmp = model.compare ?? []
         let rowHeight: CGFloat = 19
         let addrWidth: CGFloat = 72
-        let xdfColWidth: CGFloat = 140
 
         return GeometryReader { geo in
+            let xdfW = min(max(140, xdfColWidth), geo.size.width * 0.35)
             let visibleRows = max(1, Int((geo.size.height - 26) / rowHeight))
-            let barAreaWidth: CGFloat = showBars ? max(110, (geo.size.width - addrWidth - xdfColWidth - 20) * barWidthRatio) : 0
-            let dataAreaWidth = max(200, geo.size.width - addrWidth - barAreaWidth - xdfColWidth - 24)
+            let barAreaWidth: CGFloat = showBars ? max(100, (geo.size.width - addrWidth - xdfW - 24) * barWidthRatio) : 0
+            let dataAreaWidth = max(200, geo.size.width - addrWidth - barAreaWidth - xdfW - 24)
             let cellW = dataAreaWidth / CGFloat(columns)
             let startAddr = alignedStart(viewportOffset)
 
@@ -396,8 +397,14 @@ struct HexDiffView: View {
                         ctx.draw(Text("2D-Balken").font(.caption2.bold()).foregroundStyle(.secondary),
                                  at: CGPoint(x: addrWidth + dataAreaWidth + 10, y: headerH / 2), anchor: .leading)
                     }
-                    ctx.draw(Text("XDF").font(.caption2.bold()).foregroundStyle(.secondary),
-                             at: CGPoint(x: size.width - xdfColWidth + 8, y: headerH / 2), anchor: .leading)
+                    let xdfStartX = size.width - xdfW
+                    ctx.draw(Text("XDF-Kennfeld").font(.caption2.bold()).foregroundStyle(.secondary),
+                             at: CGPoint(x: xdfStartX + 8, y: headerH / 2), anchor: .leading)
+                    // Subtle vertical separator before XDF column
+                    var sep = Path()
+                    sep.move(to: CGPoint(x: xdfStartX, y: 0))
+                    sep.addLine(to: CGPoint(x: xdfStartX, y: size.height))
+                    ctx.stroke(sep, with: .color(.secondary.opacity(0.22)), lineWidth: 1)
 
                     // Compute min/max in visible window for crisp bar-graph scaling
                     var visMin = Double.infinity, visMax = -Double.infinity
@@ -471,12 +478,18 @@ struct HexDiffView: View {
                             }
                         }
 
-                        // XDF item label on far right
+                        // XDF item label on far right (with subtle color dot)
                         if let firstSpan = rowSpans.first {
-                            ctx.draw(Text(firstSpan.title)
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(.secondary),
-                                     at: CGPoint(x: size.width - xdfColWidth + 8, y: y + rowHeight * 0.5), anchor: .leading)
+                            let xdfStartX = size.width - xdfW
+                            let dotRect = CGRect(x: xdfStartX + 8, y: y + rowHeight * 0.5 - 3, width: 6, height: 6)
+                            ctx.fill(Path(ellipseIn: dotRect), with: .color(XDFAddressIndex.palette[firstSpan.colorIndex % XDFAddressIndex.palette.count]))
+                            let label = firstSpan.isAxis ? "\(firstSpan.title) (Achse)" : firstSpan.title
+                            let maxChars = max(14, Int((xdfW - 26) / 6.2))
+                            let display = label.count > maxChars ? String(label.prefix(maxChars - 1)) + "…" : label
+                            ctx.draw(Text(display)
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundStyle(.primary.opacity(0.85)),
+                                     at: CGPoint(x: xdfStartX + 18, y: y + rowHeight * 0.5), anchor: .leading)
                         }
                     }
                 }
@@ -484,6 +497,18 @@ struct HexDiffView: View {
                     DragGesture(minimumDistance: 0)
                         .onChanged { val in
                             let headerH: CGFloat = 22
+                            let xdfStartX = geo.size.width - xdfW
+                            // Click on XDF label column jumps straight to that map!
+                            if val.startLocation.x >= xdfStartX, abs(val.translation.width) < 4, abs(val.translation.height) < 4 {
+                                let r = Int((val.startLocation.y - headerH) / rowHeight)
+                                if r >= 0, r < visibleRows {
+                                    let rowBase = startAddr + r * rowStride
+                                    if let span = cachedIndex.spansOverlapping(rowBase, min(bin.count, rowBase + rowStride)).first {
+                                        model.selection = span.itemID
+                                    }
+                                }
+                                return
+                            }
                             let hitOffset = { (pt: CGPoint) -> Int? in
                                 let r = Int((pt.y - headerH) / rowHeight)
                                 let c = Int((pt.x - addrWidth) / cellW)
@@ -497,6 +522,22 @@ struct HexDiffView: View {
                             }
                         }
                 )
+
+                // Draggable resize handle for XDF column width
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: 8)
+                    .contentShape(Rectangle())
+                    .position(x: geo.size.width - xdfW, y: geo.size.height / 2)
+                    .gesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { val in
+                                xdfColWidth = min(max(140, geo.size.width - val.location.x), geo.size.width * 0.35)
+                            }
+                    )
+                    .onHover { inside in
+                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                    }
 
                 // Smooth 60-FPS mouse/trackpad scroll wheel capture
                 ScrollWheelOverlay { dy, mods in
