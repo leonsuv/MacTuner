@@ -297,16 +297,26 @@ struct HexDiffView: View {
             }
             .help("Spaltenanzahl anpassen (wie WinOLS M/W, um Kennfelder auszurichten)")
 
-            // Byte phase offset shift (slides row start 0 ..< rowStride so any map aligns to column 0!)
+            // Column-phase offset shift (slides by 1 value = elemBytes, plus fine ±1B odd-alignment when > 8-bit)
             HStack(spacing: 3) {
-                Button { byteShift = (byteShift - 1 + rowStride) % rowStride } label: { Text("−1B") }
+                Button { byteShift = (byteShift - elemBytes + rowStride) % rowStride } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .help("1 Wert (\(elemBytes) B) nach links schieben")
                 Button { byteShift = 0 } label: {
                     Text(String(format: "+%X", ((byteShift % rowStride) + rowStride) % rowStride))
                         .font(.caption.monospacedDigit().weight(.semibold))
                         .frame(minWidth: 22)
                 }
-                .help("Aktueller Zeilen-Versatz (Klicken = auf +0 zurücksetzen)")
-                Button { byteShift = (byteShift + 1) % rowStride } label: { Text("+1B") }
+                .help("Aktueller Zeilen-Versatz in Bytes (Klicken = auf +0 zurücksetzen)")
+                Button { byteShift = (byteShift + elemBytes) % rowStride } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .help("1 Wert (\(elemBytes) B) nach rechts schieben")
+                if elemBytes > 1 {
+                    Button { byteShift = (byteShift + 1) % rowStride } label: { Text("±1B") }
+                        .help("Fein-Versatz um 1 einzelnes Byte (für ungerade 16/32-Bit-Ausrichtung)")
+                }
                 if let sel = selectedStart {
                     Button {
                         byteShift = sel % rowStride
@@ -316,7 +326,6 @@ struct HexDiffView: View {
                     .help("Ausgewählte Adresse (\(String(format: "0x%05X", sel))) ganz links (Spalte +0) ausrichten")
                 }
             }
-            .help("Zeilen-Offset um 1 Byte verschieben, um Kennfelder bündig auszurichten")
 
             if viewMode == .text {
                 Toggle("Balken", isOn: $showBars).toggleStyle(.checkbox)
