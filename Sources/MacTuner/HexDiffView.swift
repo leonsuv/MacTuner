@@ -168,6 +168,8 @@ struct HexDiffView: View {
     @State private var selectedEnd: Int?
     @State private var lastClickTime: Date = .distantPast
     @State private var lastClickOffset: Int?
+    @State private var lastWaveClickTime: Date = .distantPast
+    @State private var lastWaveClickItemID: Int?
 
     // Cached index & diff offsets (rebuilt only when BIN/XDF changes, NEVER on scroll/hover)
     @State private var cachedIndex = XDFAddressIndex(definition: nil)
@@ -479,20 +481,31 @@ struct HexDiffView: View {
                             guard off + elemBytes <= bin.count else { break }
                             let rect = CGRect(x: addrWidth + CGFloat(c) * cellW + 1, y: y + 1, width: max(12, cellW - 2), height: rowHeight - 2)
                             let isDiff = off + elemBytes <= cmp.count && bin[off ..< (off + elemBytes)] != cmp[off ..< (off + elemBytes)]
-                            let isSel = selRange?.contains(off) ?? false
+                            let isSel = selRange?.overlaps(off ..< (off + elemBytes)) ?? false
                             let span = rowSpans.first { $0.range.contains(off) }
 
-                            if isSel {
-                                ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(Color.accentColor.opacity(0.42)))
-                            } else if isDiff {
-                                ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(Theme.changed.opacity(0.28)))
-                            } else if let span {
+                            // Keep XDF map color continuous; never replace it with diff/selection fill
+                            if let span {
                                 ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(XDFAddressIndex.color(for: span)))
+                            } else if isDiff {
+                                ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(Theme.changed.opacity(0.10)))
+                            }
+
+                            if isSel {
+                                ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(Color.accentColor.opacity(0.28)))
+                                ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(Color.white.opacity(0.08)))
+                            }
+
+                            // Crisp bottom bar for edited/diff bytes (preserves XDF map background)
+                            if isDiff {
+                                let barRect = CGRect(x: rect.minX + 3, y: rect.maxY - 2.5, width: max(4, rect.width - 6), height: 2)
+                                ctx.fill(Path(roundedRect: barRect, cornerRadius: 1), with: .color(Theme.changed))
                             }
 
                             let text = formatElement(bin, at: off)
-                            let fg: Color = isSel ? .white : (isDiff ? Theme.changed : .primary)
-                            ctx.draw(Text(text).font(.system(size: 10.5, weight: isDiff ? .bold : .regular, design: .monospaced)).foregroundStyle(fg),
+                            let fg: Color = isDiff ? Theme.changed : (isSel ? .white : .primary)
+                            let weight: Font.Weight = isDiff ? .bold : (isSel ? .semibold : .regular)
+                            ctx.draw(Text(text).font(.system(size: 10.5, weight: weight, design: .monospaced)).foregroundStyle(fg),
                                      at: CGPoint(x: rect.midX, y: rect.midY), anchor: .center)
 
                             // WinOLS per-row bar-graph on the right!
@@ -519,6 +532,49 @@ struct HexDiffView: View {
                                 .font(.system(size: 10.5, weight: .medium))
                                 .foregroundStyle(.primary.opacity(0.85)),
                                      at: CGPoint(x: xdfStartX + 18, y: y + rowHeight * 0.5), anchor: .leading)
+                        }
+                    }
+
+                    // Crisp continuous perimeter border around the selected byte range
+                    if let selRange {
+                        let isCellSel: (Int, Int) -> Bool = { rr, cc in
+                            guard cc >= 0, cc < columns else { return false }
+                            let off = startAddr + rr * rowStride + cc * elemBytes
+                            guard off >= 0, off + elemBytes <= bin.count else { return false }
+                            return selRange.overlaps(off ..< (off + elemBytes))
+                        }
+                        var border = Path()
+                        for r in 0..<visibleRows {
+                            let y = headerH + CGFloat(r) * rowHeight
+                            for c in 0..<columns {
+                                guard isCellSel(r, c) else { continue }
+                                let x0 = addrWidth + CGFloat(c) * cellW + 0.5
+                                let x1 = addrWidth + CGFloat(c + 1) * cellW - 0.5
+                                let y0 = y + 0.5
+                                let y1 = y + rowHeight - 0.5
+                                if !isCellSel(r - 1, c) {
+                                    border.move(to: CGPoint(x: x0, y: y0))
+                                    border.addLine(to: CGPoint(x: x1, y: y0))
+                                }
+                                if !isCellSel(r + 1, c) {
+                                    border.move(to: CGPoint(x: x0, y: y1))
+                                    border.addLine(to: CGPoint(x: x1, y: y1))
+                                }
+                                if !isCellSel(r, c - 1) {
+                                    border.move(to: CGPoint(x: x0, y: y0))
+                                    border.addLine(to: CGPoint(x: x0, y: y1))
+                                }
+                                if !isCellSel(r, c + 1) {
+                                    border.move(to: CGPoint(x: x1, y: y0))
+                                    border.addLine(to: CGPoint(x: x1, y: y1))
+                                }
+                            }
+                        }
+                        if !border.isEmpty {
+                            ctx.stroke(border, with: .color(.black.opacity(0.55)),
+                                       style: StrokeStyle(lineWidth: 3.4, lineCap: .square, lineJoin: .miter))
+                            ctx.stroke(border, with: .color(.white.opacity(0.95)),
+                                       style: StrokeStyle(lineWidth: 1.8, lineCap: .square, lineJoin: .miter))
                         }
                     }
                 }
@@ -810,6 +866,27 @@ struct HexDiffView: View {
                                 let b = addrFor(val.location.x)
                                 selectedStart = a
                                 selectedEnd = b
+                            }
+                            .onEnded { val in
+                                guard abs(val.translation.width) < 4, abs(val.translation.height) < 4 else { return }
+                                let plotMinX: CGFloat = 44
+                                let plotW = max(40, geo.size.width - 52)
+                                let elemCount = min(waveWindowElements, max(1, (bin.count - startAddr) / elemBytes))
+                                let t = min(max((val.startLocation.x - plotMinX) / plotW, 0), 1)
+                                let el = Int(t * CGFloat(elemCount - 1))
+                                let addr = min(bin.count - elemBytes, startAddr + el * elemBytes)
+                                let now = Date()
+                                if let span = cachedIndex.span(at: addr) {
+                                    if lastWaveClickItemID == span.itemID && now.timeIntervalSince(lastWaveClickTime) < 0.35 {
+                                        model.selection = span.itemID
+                                        lastWaveClickItemID = nil
+                                    } else {
+                                        lastWaveClickItemID = span.itemID
+                                        lastWaveClickTime = now
+                                    }
+                                } else {
+                                    lastWaveClickItemID = nil
+                                }
                             }
                     )
                 }

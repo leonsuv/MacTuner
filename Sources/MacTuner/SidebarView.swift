@@ -7,9 +7,10 @@ struct SidebarView: View {
     @State private var expanded: Set<Int> = []
 
     private struct Group: Identifiable {
-        let id: Int
+        let categoryID: Int
         let name: String
         let items: [XDFItem]
+        var id: String { "cat_\(categoryID)" }
     }
 
     var body: some View {
@@ -23,8 +24,9 @@ struct SidebarView: View {
                     // Categories are plain rows, not Sections: a sidebar Section keeps its own collapse
                     // state (hover chevron) and does not show rows that are added to it later.
                     ForEach(groups(def, items)) { g in
-                        let open = isOpen(g.id)
+                        let open = isOpen(g.categoryID)
                         categoryRow(g, open: open)
+                            .selectionDisabled(true)
                         if open {
                             ForEach(g.items) { row($0).tag($0.id as Int?) }
                         }
@@ -79,7 +81,7 @@ struct SidebarView: View {
             for c in item.categories.isEmpty ? [-1] : item.categories { byCat[c, default: []].append(item) }
         }
         return byCat.keys.sorted().map { c in
-            Group(id: c, name: def.categories[c] ?? String(localized: "Ohne Kategorie"), items: byCat[c]!)
+            Group(categoryID: c, name: def.categories[c] ?? String(localized: "Ohne Kategorie"), items: byCat[c]!)
         }
     }
 
@@ -162,7 +164,7 @@ struct SidebarView: View {
     // MARK: Rows
 
     private func categoryRow(_ g: Group, open: Bool) -> some View {
-        Button { toggle(g.id) } label: {
+        Button { toggle(g.categoryID) } label: {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .bold))
