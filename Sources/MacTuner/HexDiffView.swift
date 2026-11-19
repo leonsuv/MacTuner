@@ -381,7 +381,7 @@ struct HexDiffView: View {
             let cellW = dataAreaWidth / CGFloat(columns)
             let startAddr = alignedStart(viewportOffset)
 
-            ZStack {
+            ZStack(alignment: .topLeading) {
                 Canvas { ctx, size in
                     let headerH: CGFloat = 22
                     // Header background
@@ -493,6 +493,7 @@ struct HexDiffView: View {
                         }
                     }
                 }
+                .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { val in
@@ -523,12 +524,12 @@ struct HexDiffView: View {
                         }
                 )
 
-                // Draggable resize handle for XDF column width
+                // Draggable resize handle for XDF column width (strictly 8pt wide, never blocks hex cells)
                 Rectangle()
                     .fill(Color.clear)
-                    .frame(width: 8)
+                    .frame(width: 8, height: geo.size.height)
                     .contentShape(Rectangle())
-                    .position(x: geo.size.width - xdfW, y: geo.size.height / 2)
+                    .offset(x: geo.size.width - xdfW - 4, y: 0)
                     .gesture(
                         DragGesture(minimumDistance: 1)
                             .onChanged { val in
@@ -705,6 +706,7 @@ struct HexDiffView: View {
                                      at: CGPoint(x: tx, y: plot.maxY + 8), anchor: .center)
                         }
                     }
+                    .contentShape(Rectangle())
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { val in
