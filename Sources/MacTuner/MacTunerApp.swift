@@ -9,6 +9,7 @@ struct MacTunerApp: App {
     init() {
         let args = CommandLine.arguments
         if let code = CLI.runIfRequested(args) { exit(code) }
+        if args.contains("--self-test") { exit(TestSuite.run()) }
         if let i = args.firstIndex(of: "--check") { exit(SelfCheck.run(Array(args[(i + 1)...]))) }
         if let i = args.firstIndex(of: "--edit-test") { exit(EditTest.run(Array(args[(i + 1)...]))) }
         if let i = args.firstIndex(of: "--changes") { exit(ChangeTest.run(Array(args[(i + 1)...]))) }
@@ -22,6 +23,9 @@ struct MacTunerApp: App {
         }
         .defaultSize(width: 1500, height: 940)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Nach Updates suchen …") { UpdateChecker.check(interactive: true) }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("XDF öffnen …") { model.openXDFPanel() }
                     .keyboardShortcut("o")
@@ -107,6 +111,19 @@ struct MacTunerApp: App {
                                 Label(sys.label, systemImage: "checkmark")
                             } else {
                                 Text(sys.label)
+                            }
+                        }
+                    }
+                }
+                Menu("Farbpalette (Heatmap)") {
+                    ForEach(HeatmapPalette.allCases) { p in
+                        Button {
+                            model.heatmapPalette = p
+                        } label: {
+                            if model.heatmapPalette == p {
+                                Label(p.label, systemImage: "checkmark")
+                            } else {
+                                Text(p.label)
                             }
                         }
                     }

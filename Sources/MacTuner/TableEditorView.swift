@@ -704,12 +704,15 @@ struct TableEditorView: View {
             .zIndex((selected || isLogActive) ? 2 : 0)
             .contentShape(shape)
             .help(changed ? (isCompareView ? "BIN: \(model.text(l, s, c))" : String(localized: "Vergleich: \(model.text(l, s, c, original: true))")) : "")
+            .accessibilityLabel("Zelle Zeile \(c.r + 1), Spalte \(c.c + 1)")
+            .accessibilityValue("\(text) \(model.displayUnit(s.units))" + (changed ? ", geändert" : ""))
+            .accessibilityAddTraits(selected ? .isSelected : [])
             .onTapGesture { click(c) }
     }
 
     private func heat(_ v: Double?, lo: Double, hi: Double) -> (bg: Color, fg: Color) {
         guard let v, s.output != .hex else { return (Color.secondary.opacity(0.12), .primary) }
-        return Theme.heat(hi > lo ? (v - lo) / (hi - lo) : 0.5)
+        return Theme.heat(hi > lo ? (v - lo) / (hi - lo) : 0.5, palette: model.heatmapPalette)
     }
 
     private func signed(_ t: String) -> String {

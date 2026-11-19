@@ -165,6 +165,9 @@ enum DatalogParser {
         if ext == "adx" {
             return try parseADX(url)
         }
+        if ext == "ads" {
+            return try parseADS(url)
+        }
         return try parseCSV(url)
     }
 
@@ -232,6 +235,30 @@ enum DatalogParser {
         }
         guard !channels.isEmpty else { throw LogError.empty(url.lastPathComponent) }
         // ADX defines acquisition channels; create a 1-frame placeholder if no CSV samples are attached yet.
+        return Datalog(name: url.lastPathComponent, channels: channels, units: units,
+                       samples: [Array(repeating: 0.0, count: channels.count)])
+    }
+
+    /// Parses legacy TunerPro v4 `.ads` datastream definitions (extracts channel labels).
+    static func parseADS(_ url: URL) throws -> Datalog {
+        let data = try Data(contentsOf: url)
+        let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+        var channels: [String] = []
+        var units: [String] = []
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        for line in lines {
+            if let eq = line.firstIndex(of: "=") {
+                let lhs = line[..<eq].trimmingCharacters(in: .whitespaces)
+                let rhs = line[line.index(after: eq)...].trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "\"")))
+                if lhs.hasSuffix("Title") && !rhs.isEmpty {
+                    channels.append(rhs)
+                    units.append("")
+                } else if lhs.hasSuffix("Units") && !units.isEmpty {
+                    units[units.count - 1] = rhs
+                }
+            }
+        }
+        guard !channels.isEmpty else { throw LogError.empty(url.lastPathComponent) }
         return Datalog(name: url.lastPathComponent, channels: channels, units: units,
                        samples: [Array(repeating: 0.0, count: channels.count)])
     }

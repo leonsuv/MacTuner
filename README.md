@@ -153,7 +153,7 @@ and ideas and pull requests are welcome in [Issues](../../issues).
 - [x] Hand-off to common flash tools (KESS, KTAG/Bench, PCMFlash, Flex, CMDFlash, MPPS), with the right file layout, padding, changelog sidecar and name
 
 ### Datalogging
-- [x] Load logs (CSV, ADX) and trace the visited cells live in the heatmap (with inline playback scrubber & auto-channel matching)
+- [x] Load logs (CSV, ADX, legacy TunerPro v4 ADS) and trace the visited cells live in the heatmap (with inline playback scrubber & auto-channel matching)
 - [x] Hit-count overlay: which cells the engine actually uses, over a whole log
 - [x] Log-based suggestions, e.g. for fuel (multiplicative) or shift/boost maps (additive) from measured values with min-hits & damping control
 
@@ -168,10 +168,10 @@ and ideas and pull requests are welcome in [Issues](../../issues).
 
 ### Quality and distribution
 - [x] 25 languages
-- [ ] Notarized builds and automatic updates
-- [ ] Homebrew cask (`brew install --cask mactuner`)
-- [ ] VoiceOver support and color-blind friendly heatmap palettes
-- [ ] Test suite with public sample definitions for every supported data type
+- [x] Notarized builds (`scripts/notarize.sh`) and automatic updates (GitHub Releases update checker)
+- [x] Homebrew cask (`Casks/mactuner.rb` for `brew install --cask mactuner`)
+- [x] VoiceOver support and color-blind friendly heatmap palettes (Viridis, Cividis, Plasma, High Contrast)
+- [x] Test suite (`--self-test`) with public sample definitions (`Samples/all_datatypes.xdf`) for every supported data type
 
 ## Building
 

@@ -169,6 +169,9 @@ final class AppModel {
     var translationMode: XDFTranslationMode = .original {
         didSet { UserDefaults.standard.set(translationMode.rawValue, forKey: "translationMode") }
     }
+    var heatmapPalette: HeatmapPalette = .classic {
+        didSet { Theme.palette = heatmapPalette }
+    }
     private(set) var mapNotes = MapNotesStore.Payload()
     private(set) var favorites: Set<String> = []
     private(set) var lockedItems: Set<String> = []
@@ -218,7 +221,7 @@ final class AppModel {
     // MARK: Datalogging
 
     func openDatalogPanel() {
-        guard let url = chooseFile(String(localized: "Datalog öffnen (CSV / ADX)"), types: ["csv", "adx", "txt"]) else { return }
+        guard let url = chooseFile(String(localized: "Datalog öffnen (CSV / ADX / ADS)"), types: ["csv", "adx", "ads", "txt"]) else { return }
         loadDatalog(url)
     }
 
@@ -283,6 +286,7 @@ final class AppModel {
         scope = d.string(forKey: "scope").flatMap(SidebarScope.init) ?? .all
         unitSystem = d.string(forKey: "unitSystem").flatMap(UnitSystem.init) ?? .original
         translationMode = d.string(forKey: "translationMode").flatMap(XDFTranslationMode.init) ?? .original
+        heatmapPalette = Theme.palette
         recentXDFs = Self.recent("recentXDF")
         recentBins = Self.recent("recentBin")
         if restorePrevious {
