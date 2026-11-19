@@ -538,8 +538,8 @@ struct HexDiffView: View {
                     .onHover { inside in
                         if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
                     }
-
-                // Smooth 60-FPS mouse/trackpad scroll wheel capture
+            }
+            .background(
                 ScrollWheelOverlay { dy, mods in
                     if mods.contains(.option) {
                         let step = dy > 0 ? 1 : -1
@@ -552,7 +552,8 @@ struct HexDiffView: View {
                         }
                     }
                 }
-            }
+                .allowsHitTesting(false)
+            )
         }
         .card(padding: 0)
     }
@@ -721,6 +722,8 @@ struct HexDiffView: View {
                                 selectedEnd = b
                             }
                     )
+                }
+                .background(
                     ScrollWheelOverlay { dy, mods in
                         if mods.contains(.option) || mods.contains(.command) {
                             if dy > 0 { waveWindowElements = max(64, Int(Double(waveWindowElements) * 0.8)) }
@@ -731,7 +734,8 @@ struct HexDiffView: View {
                             viewportOffset = min(max(0, viewportOffset + delta), maxOff)
                         }
                     }
-                }
+                    .allowsHitTesting(false)
+                )
             }
         }
         .card(padding: 10)
