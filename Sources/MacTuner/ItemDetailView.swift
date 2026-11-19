@@ -5,6 +5,7 @@ struct ItemDetailView: View {
     @Environment(AppModel.self) private var model
     let item: XDFItem
     @State private var descriptionExpanded = false
+    @State private var showHistory = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -42,6 +43,16 @@ struct ItemDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .help(favorite ? String(localized: "Aus Favoriten entfernen (⌘D)") : String(localized: "Zu Favoriten hinzufügen (⌘D)"))
+                Button { showHistory.toggle() } label: {
+                    Image(systemName: "clock")
+                        .font(.title3)
+                        .foregroundStyle(model.history(for: item).isEmpty ? Color.secondary : Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                .help("Änderungsverlauf dieses Kennfelds")
+                .popover(isPresented: $showHistory) {
+                    ItemHistoryPopover(item: item)
+                }
                 if info.isChanged {
                     Label(badge, systemImage: "pencil")
                         .font(.caption.weight(.semibold))

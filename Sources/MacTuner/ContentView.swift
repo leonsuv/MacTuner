@@ -17,6 +17,7 @@ struct ContentView: View {
         .toolbar {
             ToolbarItemGroup {
                 OpenMenu()
+                ToolsMenu()
                 ControlGroup {
                     Button { model.selectChange(-1) } label: { Label("Vorherige Änderung", systemImage: "chevron.up") }
                         .help("Vorherige Änderung (⌥⌘↑)")
@@ -51,6 +52,14 @@ struct ContentView: View {
     @ViewBuilder private var detail: some View {
         if model.selection == AppModel.outsideSelection, model.hasBin, model.definition != nil {
             OutsideChangesView()
+        } else if model.selection == AppModel.hexDiffSelection, model.hasBin {
+            HexDiffView()
+        } else if model.selection == AppModel.multiCompareSelection, model.hasBin {
+            MultiCompareView()
+        } else if model.selection == AppModel.snapshotsSelection, model.hasBin {
+            SnapshotsView()
+        } else if model.selection == AppModel.historySelection, model.hasBin {
+            HistoryView()
         } else if let item = model.selectedItem {
             if model.hasBin {
                 ItemDetailView(item: item).id(item.id)
@@ -118,11 +127,48 @@ struct OpenMenu: View {
             Button("XDF öffnen …") { model.openXDFPanel() }
             Button("BIN öffnen …") { model.openBinPanel() }
             Button("Vergleichs-BIN öffnen …") { model.openComparePanel() }
+            Button("Weitere Vergleichs-BIN hinzufügen …") { model.addExtraComparePanel() }
+                .disabled(!model.hasBin)
             RecentFilesSection()
         } label: {
             Label("Öffnen", systemImage: "folder")
         }
         .help("XDF, BIN oder Vergleich öffnen")
+    }
+}
+
+/// Toolbar menu for workbench views (Hex-Diff, Multi-Compare, Snapshots, History, PDF).
+struct ToolsMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Menu {
+            Button { model.selection = AppModel.multiCompareSelection } label: {
+                Label("Mehrdatei-Vergleich", systemImage: "square.split.2x1")
+            }
+            Button { model.selection = AppModel.hexDiffSelection } label: {
+                Label("Hex-Diff", systemImage: "doc.text.magnifyingglass")
+            }
+            Button { model.selection = AppModel.snapshotsSelection } label: {
+                Label("Snapshots (\(model.snapshots.count))", systemImage: "camera")
+            }
+            Button { model.selection = AppModel.historySelection } label: {
+                Label("Änderungsverlauf", systemImage: "clock")
+            }
+            Divider()
+            Button { model.exportPDFReport() } label: {
+                Label("PDF-Bericht exportieren …", systemImage: "doc.richtext")
+            }
+            .disabled(model.definition == nil)
+            Button { model.printChangeReport() } label: {
+                Label("Bericht drucken …", systemImage: "printer")
+            }
+            .disabled(model.definition == nil)
+        } label: {
+            Label("Werkzeuge", systemImage: "wrench.and.screwdriver")
+        }
+        .disabled(!model.hasBin)
+        .help("Hex-Diff, Mehrdatei-Vergleich, Snapshots, Verlauf und PDF-Bericht")
     }
 }
 

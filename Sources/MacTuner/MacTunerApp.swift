@@ -52,6 +52,13 @@ struct MacTunerApp: App {
                 Button("Änderungsliste kopieren") { model.copyChangeReport() }
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                     .disabled(!model.hasBin || model.definition == nil)
+                Divider()
+                Button("PDF-Bericht exportieren …") { model.exportPDFReport() }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+                    .disabled(!model.hasBin || model.definition == nil)
+                Button("Änderungsbericht drucken …") { model.printChangeReport() }
+                    .keyboardShortcut("p")
+                    .disabled(!model.hasBin || model.definition == nil)
             }
             CommandGroup(replacing: .undoRedo) {
                 Button("Widerrufen") { model.undo() }
@@ -73,6 +80,18 @@ struct MacTunerApp: App {
                 Button("Übersicht") { model.selection = nil }
                     .keyboardShortcut("0")
                     .disabled(model.definition == nil)
+                Button("Mehrdatei-Vergleich") { model.selection = AppModel.multiCompareSelection }
+                    .keyboardShortcut("4")
+                    .disabled(!model.hasBin)
+                Button("Hex-Diff") { model.selection = AppModel.hexDiffSelection }
+                    .keyboardShortcut("5")
+                    .disabled(!model.hasBin)
+                Button("Snapshots") { model.selection = AppModel.snapshotsSelection }
+                    .keyboardShortcut("6")
+                    .disabled(!model.hasBin)
+                Button("Änderungsverlauf") { model.selection = AppModel.historySelection }
+                    .keyboardShortcut("7")
+                    .disabled(!model.hasBin)
                 Button("Nächste Änderung") { model.selectChange(1) }
                     .keyboardShortcut(.downArrow, modifiers: [.command, .option])
                     .disabled(model.changedItems.isEmpty)

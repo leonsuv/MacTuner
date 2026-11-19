@@ -98,8 +98,12 @@ enum SidebarScope: String {
 @MainActor @Observable
 final class AppModel {
     static let shared = AppModel()
-    /// Selection value of the "outside the XDF" entry in the change list.
+    /// Selection values for special detail views.
     static let outsideSelection = -1
+    static let hexDiffSelection = -2
+    static let multiCompareSelection = -3
+    static let snapshotsSelection = -4
+    static let historySelection = -5
 
     private(set) var definition: XDFDefinition?
     private(set) var xdfURL: URL?
@@ -108,6 +112,13 @@ final class AppModel {
     /// Reference for change marks: a chosen file, or the bin as it was when opened.
     private(set) var compare: [UInt8]?
     private(set) var compareURL: URL?
+    private(set) var compareLabelOverride: String?
+    /// Additional comparison files (Stage 1, Stage 2, Snapshots, …).
+    private(set) var extraCompares: [CompareFile] = []
+    /// Persistent per-map edit history across sessions.
+    private(set) var history: [EditHistoryEntry] = []
+    /// Named snapshots of the current BIN.
+    private(set) var snapshots: [BinSnapshotMeta] = []
     private var openedSnapshot: [UInt8] = []
     private(set) var dirty = false
     var selection: Int?
@@ -153,7 +164,11 @@ final class AppModel {
         return def.items[s]
     }
 
-    var compareName: String { compareURL?.lastPathComponent ?? String(localized: "Stand beim Öffnen") }
+    var compareName: String {
+        compareLabelOverride ?? compareURL?.lastPathComponent ?? String(localized: "Stand beim Öffnen")
+    }
+
+    private var binStorageKey: String? { binURL?.path }
 
     // MARK: Files
 
@@ -192,10 +207,12 @@ final class AppModel {
             bin = [UInt8](try Data(contentsOf: url))
             binURL = url
             openedSnapshot = bin
-            if compareURL == nil { compare = bin }
+            if compareURL == nil && compareLabelOverride == nil { compare = bin }
             dirty = false
             undoStack = []
             redoStack = []
+            history = HistoryStore.load(for: url.path)
+            snapshots = SnapshotStore.loadIndex(for: url.path)
             UserDefaults.standard.set(url.path, forKey: "binPath")
             recentBins = Self.remember(url, in: "recentBin")
             touch()
@@ -209,6 +226,7 @@ final class AppModel {
         do {
             compare = [UInt8](try Data(contentsOf: url))
             compareURL = url
+            compareLabelOverride = nil
             UserDefaults.standard.set(url.path, forKey: "comparePath")
             recentBins = Self.remember(url, in: "recentBin")
             touch()
@@ -227,8 +245,146 @@ final class AppModel {
     func resetCompare() {
         compare = hasBin ? openedSnapshot : nil
         compareURL = nil
+        compareLabelOverride = nil
         UserDefaults.standard.removeObject(forKey: "comparePath")
         touch()
+    }
+
+    // MARK: Multi-File Compare
+
+    func addExtraComparePanel() {
+        let p = NSOpenPanel()
+        p.title = String(localized: "Weitere Vergleichs-BIN öffnen")
+        p.allowedContentTypes = [UTType(filenameExtension: "bin")].compactMap { $0 } + [.data]
+        p.allowsMultipleSelection = true
+        guard p.runModal() == .OK else { return }
+        for url in p.urls { addExtraCompare(url) }
+    }
+
+    func addExtraCompare(_ url: URL) {
+        do {
+            let bytes = [UInt8](try Data(contentsOf: url))
+            if extraCompares.contains(where: { $0.url == url }) { return }
+            extraCompares.append(CompareFile(name: url.lastPathComponent, url: url, bytes: bytes))
+            recentBins = Self.remember(url, in: "recentBin")
+            touch()
+        } catch {
+            alert = String(localized: "Vergleichs-BIN konnte nicht geladen werden:\n\(error.localizedDescription)")
+        }
+    }
+
+    func removeExtraCompare(_ id: UUID) {
+        extraCompares.removeAll { $0.id == id }
+        touch()
+    }
+
+    func addSnapshotToMultiCompare(_ snap: BinSnapshotMeta) {
+        guard let key = binStorageKey, let bytes = SnapshotStore.loadBytes(id: snap.id, for: key) else { return }
+        let name = "📷 \(snap.name)"
+        if extraCompares.contains(where: { $0.name == name }) { return }
+        extraCompares.append(CompareFile(name: name, url: nil, bytes: bytes))
+        touch()
+    }
+
+    // MARK: Snapshots
+
+    func createSnapshot(name: String, note: String = "") {
+        guard hasBin, let key = binStorageKey else { return }
+        let meta = BinSnapshotMeta(name: name, note: note, createdAt: Date(), byteCount: bin.count)
+        do {
+            try SnapshotStore.saveSnapshot(meta, bytes: bin, for: key)
+            snapshots.insert(meta, at: 0)
+            SnapshotStore.saveIndex(snapshots, for: key)
+        } catch {
+            alert = String(localized: "Snapshot konnte nicht gespeichert werden:\n\(error.localizedDescription)")
+        }
+    }
+
+    func restoreSnapshot(_ snap: BinSnapshotMeta) {
+        guard hasBin, let key = binStorageKey, let target = SnapshotStore.loadBytes(id: snap.id, for: key) else { return }
+        let n = min(bin.count, target.count)
+        var patches: [Patch] = []
+        var i = 0
+        while i < n {
+            if bin[i] != target[i] {
+                let start = i
+                while i < n && bin[i] != target[i] { i += 1 }
+                patches.append(Patch(offset: start, old: Array(bin[start..<i]), new: Array(target[start..<i])))
+            } else {
+                i += 1
+            }
+        }
+        commit(patches)
+    }
+
+    func compareWithSnapshot(_ snap: BinSnapshotMeta) {
+        guard let key = binStorageKey, let bytes = SnapshotStore.loadBytes(id: snap.id, for: key) else { return }
+        compare = bytes
+        compareURL = nil
+        compareLabelOverride = "📷 \(snap.name)"
+        touch()
+    }
+
+    func deleteSnapshot(_ snap: BinSnapshotMeta) {
+        guard let key = binStorageKey else { return }
+        SnapshotStore.deleteSnapshot(id: snap.id, for: key)
+        snapshots.removeAll { $0.id == snap.id }
+        SnapshotStore.saveIndex(snapshots, for: key)
+    }
+
+    func exportSnapshot(_ snap: BinSnapshotMeta) {
+        guard let key = binStorageKey, let bytes = SnapshotStore.loadBytes(id: snap.id, for: key) else { return }
+        let p = NSSavePanel()
+        p.nameFieldStringValue = "\(snap.name).bin"
+        p.directoryURL = binURL?.deletingLastPathComponent()
+        guard p.runModal() == .OK, let url = p.url else { return }
+        do {
+            try Data(bytes).write(to: url, options: .atomic)
+        } catch {
+            alert = String(localized: "Speichern fehlgeschlagen:\n\(error.localizedDescription)")
+        }
+    }
+
+    // MARK: History
+
+    func history(for item: XDFItem) -> [EditHistoryEntry] {
+        let key = favoriteID(item)
+        return history.filter { $0.itemKey == key }
+    }
+
+    func recordHistory(item: XDFItem, summary: String, note: String = "") {
+        guard let key = binStorageKey else { return }
+        let entry = EditHistoryEntry(itemKey: favoriteID(item), itemTitle: item.title,
+                                     address: item.data.address, summary: summary, note: note)
+        history.insert(entry, at: 0)
+        if history.count > 2000 { history = Array(history.prefix(2000)) }
+        HistoryStore.save(history, for: key)
+    }
+
+    func updateHistoryNote(id: UUID, note: String) {
+        guard let key = binStorageKey, let idx = history.firstIndex(where: { $0.id == id }) else { return }
+        history[idx].note = note
+        HistoryStore.save(history, for: key)
+    }
+
+    func exportHistoryCSV() {
+        let p = NSSavePanel()
+        p.allowedContentTypes = [.commaSeparatedText]
+        p.nameFieldStringValue = (binURL?.deletingPathExtension().lastPathComponent ?? "MacTuner") + "-history.csv"
+        p.directoryURL = binURL?.deletingLastPathComponent()
+        guard p.runModal() == .OK, let url = p.url else { return }
+        let iso = ISO8601DateFormatter()
+        var lines = ["Timestamp,Item,Address,Summary,Note"]
+        for e in history {
+            let esc = { (s: String) -> String in "\"\(s.replacingOccurrences(of: "\"", with: "\"\""))\"" }
+            lines.append([iso.string(from: e.timestamp), esc(e.itemTitle),
+                          String(format: "0x%05X", e.address), esc(e.summary), esc(e.note)].joined(separator: ","))
+        }
+        do {
+            try (lines.joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            alert = String(localized: "Speichern fehlgeschlagen:\n\(error.localizedDescription)")
+        }
     }
 
     private func checkSize() {
@@ -407,7 +563,11 @@ final class AppModel {
 
     /// Resets values and axes of the item to the comparison (one undo step).
     func restore(_ item: XDFItem) {
+        let beforeCount = undoStack.count
         restore(ranges: item.layouts.map(\.byteRange))
+        if undoStack.count > beforeCount {
+            recordHistory(item: item, summary: String(localized: "Auf Vergleich zurückgesetzt"))
+        }
     }
 
     func restoreOutside() {
@@ -449,10 +609,69 @@ final class AppModel {
         }
     }
 
+    func pdfReportData() -> Data? {
+        guard let def = definition, let compare, hasBin else { return nil }
+        return PDFReport.generate(definition: def, bin: bin, compare: compare,
+                                  xdfName: xdfURL?.lastPathComponent ?? "—",
+                                  binName: binURL?.lastPathComponent ?? "—",
+                                  compareName: compareName)
+    }
+
+    func exportPDFReport() {
+        guard let data = pdfReportData() else { return }
+        let p = NSSavePanel()
+        p.allowedContentTypes = [.pdf]
+        p.nameFieldStringValue = (binURL?.deletingPathExtension().lastPathComponent ?? "MacTuner") + String(localized: " – Bericht") + ".pdf"
+        p.directoryURL = binURL?.deletingLastPathComponent()
+        guard p.runModal() == .OK, let url = p.url else { return }
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            alert = String(localized: "Speichern fehlgeschlagen:\n\(error.localizedDescription)")
+        }
+    }
+
+    func printChangeReport() {
+        guard let data = pdfReportData() else { return }
+        PDFReport.printPDF(data, jobTitle: (binURL?.lastPathComponent ?? "MacTuner") + " — Änderungsbericht")
+    }
+
     // MARK: Editing
 
     func apply(_ op: EditOp, item: XDFItem, cells: Set<Cell>) {
-        commit(BinCodec.patches(op, item: item, cells: cells, bin: bin, compare: compare))
+        let patches = BinCodec.patches(op, item: item, cells: cells, bin: bin, compare: compare)
+        guard !patches.isEmpty else { return }
+        let summary = describeEdit(op, item: item, cells: cells, patchCount: patches.count)
+        commit(patches)
+        recordHistory(item: item, summary: summary)
+    }
+
+    private func describeEdit(_ op: EditOp, item: XDFItem, cells: Set<Cell>, patchCount: Int) -> String {
+        let l = item.data, s = item.scaling
+        if cells.count == 1, let c = cells.first {
+            let old = text(l, s, c)
+            let targetDesc: String
+            switch op {
+            case .set(let v): targetDesc = s.format(v)
+            case .add(let d):
+                let cur = raw(l, c).map(s.value(raw:)) ?? 0
+                targetDesc = s.format(cur + d)
+            case .scale(let p):
+                let cur = raw(l, c).map(s.value(raw:)) ?? 0
+                targetDesc = s.format(cur * (1 + p / 100))
+            case .values(let m): targetDesc = m[c].map(s.format) ?? "—"
+            case .restore: targetDesc = text(l, s, c, original: true)
+            }
+            let coord = item.isTable ? "[\(c.r),\(c.c)] " : ""
+            return "\(coord)\(old) → \(targetDesc)"
+        }
+        switch op {
+        case .set(let v): return "\(patchCount) Zellen → \(s.format(v))"
+        case .add(let d): return "\(patchCount) Zellen (\(d >= 0 ? "+" : "")\(s.format(d)))"
+        case .scale(let p): return "\(patchCount) Zellen (\(Changes.percent(p)))"
+        case .values: return "\(patchCount) Zellen bearbeitet"
+        case .restore: return "\(patchCount) Zellen zurückgesetzt"
+        }
     }
 
     private func commit(_ patches: [Patch]) {

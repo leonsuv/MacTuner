@@ -116,11 +116,11 @@ and ideas and pull requests are welcome in [Issues](../../issues).
 ### Comparing and tracking changes
 - [x] One list of every changed map and value, changed axes, bytes changed outside the XDF ([#1](../../issues/1))
 - [x] BIN / comparison / Δ / Δ % view per table, jump from change to change, change list export
-- [ ] Compare three or more files side by side (stock, stage 1, stage 2 …)
-- [ ] Whole-file hex diff with the XDF items drawn over it
-- [ ] Change history per map: every edit with time, old → new and a note, across sessions
-- [ ] Snapshots of a BIN with names ("before launch control"), restore or compare any two
-- [ ] Printable / PDF change report with charts, for customers and documentation
+- [x] Compare three or more files side by side (stock, stage 1, stage 2 …)
+- [x] Whole-file hex diff with the XDF items drawn over it (including live U8/U16 LE/BE byte inspector, diff-only filter, jump to address & copy hex)
+- [x] Change history per map: every edit with time, old → new and a note, across sessions (plus global searchable history & CSV export)
+- [x] Snapshots of a BIN with names ("before launch control"), restore or compare any two (plus export snapshot as BIN)
+- [x] Printable / PDF change report with charts, for customers and documentation
 
 ### Editing
 - [x] Copy and paste as tab-separated text, interpolation, selection statistics
