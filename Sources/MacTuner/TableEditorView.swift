@@ -108,8 +108,12 @@ struct TableEditorView: View {
         let lo = flat.min() ?? 0, hi = flat.max() ?? 0
         let deltas = shownMode == .delta || shownMode == .percent ? self.deltas(values) : []
         let maxDelta = deltas.flatMap { $0 }.compactMap { $0 }.map(abs).max() ?? 0
+        let logTrace = computeLogTrace()
 
         VStack(alignment: .leading, spacing: 8) {
+            if let log = model.datalog {
+                inlineLogBar(log)
+            }
             HStack(spacing: 10) {
                 EditControls(scaling: s, enabled: !selection.isEmpty && !isCompareView && !model.isLocked(item),
                              canRestore: selection.contains { model.isChanged(l, $0) } && !model.isLocked(item),
@@ -179,7 +183,8 @@ struct TableEditorView: View {
             .controlSize(.small)
 
             ScrollView([.horizontal, .vertical]) {
-                grid(xs: xs, ys: ys, values: shown, deltas: deltas, lo: lo, hi: hi, maxDelta: maxDelta)
+                grid(xs: xs, ys: ys, values: shown, deltas: deltas, lo: lo, hi: hi, maxDelta: maxDelta,
+                     activeLogCell: logTrace.activeCell, hitCounts: logTrace.hits, maxHits: logTrace.maxHits)
                     .padding(10)
             }
             .focusable()
@@ -497,8 +502,41 @@ struct TableEditorView: View {
         }
     }
 
+    private func computeLogTrace() -> (activeCell: Cell?, hits: [Cell: Int], maxHits: Int) {
+        guard let log = model.datalog else { return (nil, [:], 0) }
+        let xv = model.axisValues(x, count: l.cols), yv = model.axisValues(y, count: l.rows)
+        let xc = model.logXChannel ?? log.guessChannel(forUnit: x.scaling.units)
+        let yc = model.logYChannel ?? log.guessChannel(forUnit: y.scaling.units)
+        let active = log.activeCell(frame: model.logFrame, xChannel: xc, yChannel: yc, xAxis: xv, yAxis: yv)
+        let hits = model.showHitOverlay ? log.hitCounts(xChannel: xc, yChannel: yc, xAxis: xv, yAxis: yv) : [:]
+        return (active, hits, hits.values.max() ?? 0)
+    }
+
+    private func inlineLogBar(_ log: Datalog) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "waveform.path.ecg").foregroundStyle(.cyan)
+            Text(log.name).font(.caption.weight(.semibold)).lineLimit(1)
+            Button { model.toggleLogPlayback() } label: {
+                Image(systemName: model.isLogPlaying ? "pause.fill" : "play.fill")
+            }
+            .disabled(log.frameCount <= 1)
+            Slider(value: Binding(get: { Double(model.logFrame) }, set: { model.logFrame = Int($0.rounded()) }),
+                   in: 0 ... Double(max(1, log.frameCount - 1)))
+                .frame(maxWidth: 220)
+            Text("\(model.logFrame + 1)/\(log.frameCount)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+            Toggle("Treffer", isOn: Binding(get: { model.showHitOverlay }, set: { model.showHitOverlay = $0 }))
+                .toggleStyle(.checkbox)
+            Spacer()
+            Button("Vorschläge …") { model.selection = AppModel.datalogSelection }
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .background(Color.cyan.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+    }
+
     private func grid(xs: [String], ys: [String], values: [[Double?]], deltas: [[Double?]],
-                      lo: Double, hi: Double, maxDelta: Double) -> some View {
+                      lo: Double, hi: Double, maxDelta: Double,
+                      activeLogCell: Cell?, hitCounts: [Cell: Int], maxHits: Int) -> some View {
         let xChanged = axisChanges(x, count: l.cols), yChanged = axisChanges(y, count: l.rows)
         let colLabels: [String], rowLabels: [String], colUnits: String, rowUnits: String
         let colChanged: [Bool], rowChanged: [Bool]
@@ -572,7 +610,8 @@ struct TableEditorView: View {
                     ForEach(0..<displayCols, id: \.self) { j in
                         if let c = cell(i, j) {
                             cellView(c, value: values[c.r][c.c], delta: deltas.isEmpty ? nil : deltas[c.r][c.c],
-                                     lo: lo, hi: hi, maxDelta: maxDelta)
+                                     lo: lo, hi: hi, maxDelta: maxDelta,
+                                     isLogActive: activeLogCell == c, hits: hitCounts[c] ?? 0, maxHits: maxHits)
                         } else {
                             Color.clear.frame(width: Self.cellWidth, height: Self.cellHeight)
                         }
@@ -605,7 +644,8 @@ struct TableEditorView: View {
                   : (editable ? String(localized: "Klick = Zeile/Spalte · ⌥-Klick oder Rechtsklick = Achse bearbeiten") : ""))
     }
 
-    private func cellView(_ c: Cell, value: Double?, delta: Double?, lo: Double, hi: Double, maxDelta: Double) -> some View {
+    private func cellView(_ c: Cell, value: Double?, delta: Double?, lo: Double, hi: Double, maxDelta: Double,
+                          isLogActive: Bool, hits: Int, maxHits: Int) -> some View {
         let changed = model.isChanged(l, c)
         let selected = selection.contains(c)
         let colors: (bg: Color, fg: Color)
@@ -639,15 +679,29 @@ struct TableEditorView: View {
                         .offset(x: 2, y: -2)
                 }
             }
+            .overlay(alignment: .bottomLeading) {
+                if hits > 0 {
+                    Text("\(hits)")
+                        .font(.system(size: 8, weight: .bold).monospacedDigit())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 3)
+                        .background(Color.cyan.opacity(0.45 + 0.55 * (maxHits > 0 ? Double(hits) / Double(maxHits) : 1)),
+                                    in: Capsule())
+                        .offset(x: 2, y: -1)
+                }
+            }
             .overlay {
-                if selected {
+                if isLogActive {
+                    shape.strokeBorder(Color.cyan, lineWidth: 2.5)
+                        .shadow(color: .cyan.opacity(0.7), radius: 4)
+                } else if selected {
                     shape.strokeBorder(Color.primary, lineWidth: 2)
                         .shadow(color: .black.opacity(0.35), radius: 2)
                 } else if !isCompareView && model.isOutOfSafeRange(item, cell: c) {
                     shape.strokeBorder(Color.red, lineWidth: 2)
                 }
             }
-            .zIndex(selected ? 1 : 0)
+            .zIndex((selected || isLogActive) ? 2 : 0)
             .contentShape(shape)
             .help(changed ? (isCompareView ? "BIN: \(model.text(l, s, c))" : String(localized: "Vergleich: \(model.text(l, s, c, original: true))")) : "")
             .onTapGesture { click(c) }

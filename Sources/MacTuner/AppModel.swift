@@ -127,6 +127,7 @@ final class AppModel {
     static let batchTunerSelection = -8
     static let diagnosticsSelection = -9
     static let checksumSelection = -10
+    static let datalogSelection = -11
 
     private(set) var definition: XDFDefinition?
     private(set) var xdfURL: URL?
@@ -143,6 +144,14 @@ final class AppModel {
     /// Named snapshots of the current BIN.
     private(set) var snapshots: [BinSnapshotMeta] = []
     private(set) var checksumPluginID: String?
+    // Datalog state
+    private(set) var datalog: Datalog?
+    var logFrame = 0
+    var logXChannel: Int?
+    var logYChannel: Int?
+    var showHitOverlay = true
+    private(set) var isLogPlaying = false
+    @ObservationIgnored private var logTimer: Timer?
     private var openedSnapshot: [UInt8] = []
     private(set) var dirty = false
     var selection: Int?
@@ -203,6 +212,51 @@ final class AppModel {
         let patches = plugin.correct(bin: bin)
         guard !patches.isEmpty else { return }
         commit(patches)
+    }
+
+    // MARK: Datalogging
+
+    func openDatalogPanel() {
+        guard let url = chooseFile(String(localized: "Datalog öffnen (CSV / ADX)"), types: ["csv", "adx", "txt"]) else { return }
+        loadDatalog(url)
+    }
+
+    func loadDatalog(_ url: URL) {
+        do {
+            let log = try DatalogParser.load(url)
+            stopLogPlayback()
+            datalog = log
+            logFrame = 0
+            logXChannel = nil
+            logYChannel = nil
+            showHitOverlay = true
+        } catch {
+            alert = String(localized: "Datalog konnte nicht geladen werden:\n\(error.localizedDescription)")
+        }
+    }
+
+    func clearDatalog() {
+        stopLogPlayback()
+        datalog = nil
+        logFrame = 0
+    }
+
+    func toggleLogPlayback() {
+        if isLogPlaying { stopLogPlayback(); return }
+        guard let log = datalog, log.frameCount > 1 else { return }
+        isLogPlaying = true
+        logTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let log = self.datalog else { return }
+                self.logFrame = (self.logFrame + 1) % log.frameCount
+            }
+        }
+    }
+
+    func stopLogPlayback() {
+        logTimer?.invalidate()
+        logTimer = nil
+        isLogPlaying = false
     }
 
     var diagnosticFindings: [MapDiagnostics.Finding] {

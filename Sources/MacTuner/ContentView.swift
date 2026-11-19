@@ -83,6 +83,8 @@ struct ContentView: View {
             DiagnosticsView()
         } else if model.selection == AppModel.checksumSelection, model.hasBin {
             ChecksumAndFlashView()
+        } else if model.selection == AppModel.datalogSelection {
+            DatalogView()
         } else if let item = model.selectedItem {
             if model.hasBin {
                 ItemDetailView(item: item).id(item.id)
@@ -212,6 +214,9 @@ struct ToolsMenu: View {
             }
             Button { model.selection = AppModel.checksumSelection } label: {
                 Label("Prüfsummen & Flashen", systemImage: "checkmark.shield")
+            }
+            Button { model.selection = AppModel.datalogSelection } label: {
+                Label("Datalogging", systemImage: "waveform.path.ecg")
             }
             Divider()
             Button { model.exportPDFReport() } label: {

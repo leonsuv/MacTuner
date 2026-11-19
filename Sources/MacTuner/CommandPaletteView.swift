@@ -155,6 +155,7 @@ struct CommandPaletteView: View {
             Entry(id: "act.batch", title: "Batch-Tuning", subtitle: "Änderungsliste auf mehrere Dateien anwenden", icon: "square.stack.3d.up", shortcut: nil) { model.selection = AppModel.batchTunerSelection },
             Entry(id: "act.diag", title: "Kennfeld-Diagnose", subtitle: "Nicht-monotone Achsen, Ausreißer & abgeschnittene Kurven", icon: "stethoscope", shortcut: nil) { model.selection = AppModel.diagnosticsSelection },
             Entry(id: "act.chk", title: "Prüfsummen & Flashen", subtitle: "Bosch ME7/MED17/EDC17, Siemens, Temic DQ250 & Flash-Tool-Export", icon: "checkmark.shield", shortcut: nil) { model.selection = AppModel.checksumSelection },
+            Entry(id: "act.log", title: "Datalogging", subtitle: "CSV/ADX-Logs laden, Live-Trace, Treffer-Overlay & Korrekturvorschläge", icon: "waveform.path.ecg", shortcut: nil) { model.selection = AppModel.datalogSelection },
             Entry(id: "act.pdf", title: "PDF-Bericht exportieren …", subtitle: "Druckbarer Änderungsbericht mit Diagrammen", icon: "doc.richtext", shortcut: "⇧⌘E") { model.exportPDFReport() },
             Entry(id: "act.print", title: "Änderungsbericht drucken …", subtitle: "Direkt drucken", icon: "printer", shortcut: "⌘P") { model.printChangeReport() },
             Entry(id: "act.txt", title: "Änderungsliste exportieren …", subtitle: "Als Textdatei sichern", icon: "doc.plaintext", shortcut: "⌘E") { model.exportChangeReport() },

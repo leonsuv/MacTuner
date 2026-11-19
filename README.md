@@ -152,9 +152,9 @@ and ideas and pull requests are welcome in [Issues](../../issues).
 - [x] Hand-off to common flash tools (KESS, KTAG/Bench, PCMFlash, Flex, CMDFlash, MPPS), with the right file layout, padding, changelog sidecar and name
 
 ### Datalogging
-- [ ] Load logs (CSV, ADX) and trace the visited cells live in the heatmap
-- [ ] Hit-count overlay: which cells the engine actually uses, over a whole log
-- [ ] Log-based suggestions, e.g. for fuel or shift maps from measured values
+- [x] Load logs (CSV, ADX) and trace the visited cells live in the heatmap (with inline playback scrubber & auto-channel matching)
+- [x] Hit-count overlay: which cells the engine actually uses, over a whole log
+- [x] Log-based suggestions, e.g. for fuel (multiplicative) or shift/boost maps (additive) from measured values with min-hits & damping control
 
 ### Workflow and macOS
 - [x] Favorites, recent files, overview page, search by address
