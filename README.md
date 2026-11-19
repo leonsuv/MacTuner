@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
 </p>
 
-![MacTuner 2.0: Heatmap, interactive 3D surface and 2D chart side by side](docs/v2.0-hero-map.png)
+![MacTuner 2.0: Map sidebar, heatmap, interactive 3D surface and 2D chart side by side](docs/v2.0-hero-sidebar.png)
 
 TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI tuning workbench built from the ground up for macOS. When saving a binary, only the exact bytes of edited values change.
 
