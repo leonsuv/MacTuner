@@ -103,6 +103,12 @@ struct SafeRange: Codable, Hashable {
     }
 }
 
+struct XDFEditorRequest: Identifiable {
+    let id = UUID()
+    var existingItem: XDFItem?
+    var presetRange: Range<Int>?
+}
+
 enum SidebarScope: String {
     case all, changed, favorites
 }
@@ -136,12 +142,18 @@ final class AppModel {
     var selection: Int?
     var alert: String?
     var showCommandPalette = false
+    var xdfEditorRequest: XDFEditorRequest?
+    private(set) var xdfDirty = false
     var scope: SidebarScope = .all {
         didSet { UserDefaults.standard.set(scope.rawValue, forKey: "scope") }
     }
     var unitSystem: UnitSystem = .original {
         didSet { UserDefaults.standard.set(unitSystem.rawValue, forKey: "unitSystem") }
     }
+    var translationMode: XDFTranslationMode = .original {
+        didSet { UserDefaults.standard.set(translationMode.rawValue, forKey: "translationMode") }
+    }
+    private(set) var mapNotes = MapNotesStore.Payload()
     private(set) var favorites: Set<String> = []
     private(set) var lockedItems: Set<String> = []
     private(set) var safeRanges: [String: SafeRange] = [:]
@@ -165,6 +177,7 @@ final class AppModel {
         let fm = FileManager.default
         scope = d.string(forKey: "scope").flatMap(SidebarScope.init) ?? .all
         unitSystem = d.string(forKey: "unitSystem").flatMap(UnitSystem.init) ?? .original
+        translationMode = d.string(forKey: "translationMode").flatMap(XDFTranslationMode.init) ?? .original
         recentXDFs = Self.recent("recentXDF")
         recentBins = Self.recent("recentBin")
         if let p = d.string(forKey: "xdfPath"), fm.fileExists(atPath: p) { loadXDF(URL(fileURLWithPath: p)) }
@@ -192,20 +205,46 @@ final class AppModel {
     // MARK: Files
 
     func open(_ url: URL) {
-        if url.pathExtension.lowercased() == "xdf" { loadXDF(url) } else { openBin(url) }
+        let ext = url.pathExtension.lowercased()
+        if ext == "xdf" {
+            loadXDF(url)
+        } else if ext == "a2l" || ext == "kp" {
+            importDefinition(url)
+        } else {
+            openBin(url)
+        }
     }
 
     func openXDFPanel() { if let u = chooseFile(String(localized: "XDF öffnen"), types: ["xdf"]) { loadXDF(u) } }
+    func importDefinitionPanel() { if let u = chooseFile(String(localized: "A2L / WinOLS .kp importieren"), types: ["a2l", "kp", "csv"]) { importDefinition(u) } }
     func openBinPanel() { if let u = chooseFile(String(localized: "BIN öffnen"), types: ["bin"]) { openBin(u) } }
     func openComparePanel() { if let u = chooseFile(String(localized: "Vergleichs-BIN öffnen"), types: ["bin"]) { loadCompare(u) } }
+
+    func importDefinition(_ url: URL) {
+        do {
+            let def = try DefinitionImporter.load(url)
+            definition = def
+            xdfURL = nil
+            xdfDirty = true
+            selection = nil
+            covered = Changes.coverage(def)
+            mapNotes = MapNotesStore.Payload()
+            touch()
+            checkSize()
+        } catch {
+            alert = String(localized: "Import fehlgeschlagen:\n\(error.localizedDescription)")
+        }
+    }
 
     func loadXDF(_ url: URL) {
         do {
             let def = try XDFParser.load(url)
             definition = def
             xdfURL = url
+            xdfDirty = false
             selection = nil
             covered = Changes.coverage(def)
+            mapNotes = MapNotesStore.load(for: url)
             favorites = Set((UserDefaults.standard.dictionary(forKey: "favorites")?[url.path] as? [String]) ?? [])
             lockedItems = Set((UserDefaults.standard.dictionary(forKey: "lockedItems")?[url.path] as? [String]) ?? [])
             if let rawData = (UserDefaults.standard.dictionary(forKey: "safeRanges")?[url.path] as? Data),
@@ -221,6 +260,194 @@ final class AppModel {
         } catch {
             alert = String(localized: "XDF konnte nicht geladen werden:\n\(error.localizedDescription)")
         }
+    }
+
+    // MARK: XDF Editor & Save
+
+    func ensureDefinitionForEdit() {
+        if definition == nil {
+            definition = XDFDefinition(title: binURL?.deletingPathExtension().lastPathComponent ?? "Neue Definition",
+                                       description: "", categories: [:], items: [], regionSize: hasBin ? bin.count : nil)
+        }
+    }
+
+    @discardableResult
+    func addXDFCategory(_ name: String) -> Int {
+        ensureDefinitionForEdit()
+        guard var def = definition else { return -1 }
+        let nextID = (def.categories.keys.max() ?? -1) + 1
+        def.categories[nextID] = name
+        definition = def
+        xdfDirty = true
+        return nextID
+    }
+
+    func upsertXDFItem(_ item: XDFItem, existingID: Int?) {
+        ensureDefinitionForEdit()
+        guard var def = definition else { return }
+        var updated = item
+        if let idx = existingID, idx >= 0, idx < def.items.count {
+            updated.id = idx
+            def.items[idx] = updated
+            selection = idx
+        } else {
+            updated.id = def.items.count
+            def.items.append(updated)
+            selection = updated.id
+        }
+        definition = def
+        covered = Changes.coverage(def)
+        xdfDirty = true
+        touch()
+    }
+
+    func deleteXDFItem(id: Int) {
+        guard var def = definition, id >= 0, id < def.items.count else { return }
+        def.items.remove(at: id)
+        for i in 0..<def.items.count { def.items[i].id = i }
+        definition = def
+        if selection == id { selection = nil }
+        else if let s = selection, s > id { selection = s - 1 }
+        covered = Changes.coverage(def)
+        xdfDirty = true
+        touch()
+    }
+
+    func saveXDF() {
+        guard let xdfURL else { saveXDFAs(); return }
+        writeXDF(to: xdfURL)
+    }
+
+    func saveXDFAs() {
+        guard let def = definition else { return }
+        let p = NSSavePanel()
+        p.allowedContentTypes = [UTType(filenameExtension: "xdf") ?? .xml]
+        p.nameFieldStringValue = (xdfURL?.lastPathComponent ?? "\(def.title).xdf")
+        p.directoryURL = xdfURL?.deletingLastPathComponent() ?? binURL?.deletingLastPathComponent()
+        guard p.runModal() == .OK, let url = p.url else { return }
+        writeXDF(to: url)
+        xdfURL = url
+        UserDefaults.standard.set(url.path, forKey: "xdfPath")
+        recentXDFs = Self.remember(url, in: "recentXDF")
+    }
+
+    private func writeXDF(to url: URL) {
+        guard let def = definition else { return }
+        let xml = XDFWriter.serialize(def)
+        do {
+            try xml.write(to: url, atomically: true, encoding: .utf8)
+            xdfDirty = false
+        } catch {
+            alert = String(localized: "XDF speichern fehlgeschlagen:\n\(error.localizedDescription)")
+        }
+    }
+
+    // MARK: Map Notes & Translation
+
+    func note(for item: XDFItem) -> String {
+        let key = favoriteID(item)
+        if let n = mapNotes.byKey[key], !n.isEmpty { return n }
+        let titleKey = item.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return mapNotes.byTitle[titleKey] ?? ""
+    }
+
+    func setNote(_ text: String, for item: XDFItem) {
+        let key = favoriteID(item)
+        let titleKey = item.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty {
+            mapNotes.byKey.removeValue(forKey: key)
+            mapNotes.byTitle.removeValue(forKey: titleKey)
+        } else {
+            mapNotes.byKey[key] = clean
+            mapNotes.byTitle[titleKey] = clean
+        }
+        if let xdfURL {
+            MapNotesStore.save(mapNotes, for: xdfURL)
+        }
+    }
+
+    func displayTitle(_ item: XDFItem) -> String {
+        XDFTranslator.translate(item.title, mode: translationMode)
+    }
+
+    func displayDescription(_ item: XDFItem) -> String {
+        XDFTranslator.translate(item.description, mode: translationMode)
+    }
+
+    // MARK: Flags & Patches
+
+    func flagValue(_ item: XDFItem, original: Bool = false) -> Bool {
+        guard case .flag(let mask, let invert) = item.kind,
+              let r = raw(item.data, Cell(r: 0, c: 0), original: original) else { return false }
+        let bits = UInt64(bitPattern: Int64(r))
+        let isSet = (bits & mask) == mask
+        return invert ? !isSet : isSet
+    }
+
+    func setFlag(_ on: Bool, item: XDFItem) {
+        guard !isLocked(item) else {
+            alert = String(localized: "„\(item.title)“ ist gesperrt.")
+            return
+        }
+        guard case .flag(let mask, let invert) = item.kind else { return }
+        let l = item.data, cell = Cell(r: 0, c: 0)
+        let o = l.offset(cell), n = l.elementBytes
+        guard o >= 0, o + n <= bin.count, let r = raw(l, cell) else { return }
+        let current = UInt64(bitPattern: Int64(r))
+        let wantSet = invert ? !on : on
+        let updated = wantSet ? (current | mask) : (current & ~mask)
+        let newBytes = BinCodec.encode(l, raw: Double(updated))
+        let oldBytes = Array(bin[o ..< o + n])
+        guard newBytes != oldBytes else { return }
+        commit([Patch(offset: o, old: oldBytes, new: newBytes)])
+        recordHistory(item: item, summary: on ? "EIN (0x\(String(mask, radix: 16, uppercase: true)))" : "AUS (0x\(String(mask, radix: 16, uppercase: true)))")
+    }
+
+    func isPatchApplied(_ item: XDFItem) -> Bool {
+        guard case .patch(let entries) = item.kind, !entries.isEmpty else { return false }
+        return entries.allSatisfy { e in
+            let r = e.address ..< (e.address + e.patchData.count)
+            return r.lowerBound >= 0 && r.upperBound <= bin.count && Array(bin[r]) == e.patchData
+        }
+    }
+
+    func applyPatch(_ item: XDFItem) {
+        guard !isLocked(item) else { alert = String(localized: "„\(item.title)“ ist gesperrt."); return }
+        guard case .patch(let entries) = item.kind else { return }
+        var patches: [Patch] = []
+        for e in entries {
+            let r = e.address ..< (e.address + e.patchData.count)
+            guard r.lowerBound >= 0, r.upperBound <= bin.count else { continue }
+            let old = Array(bin[r])
+            if old != e.patchData { patches.append(Patch(offset: e.address, old: old, new: e.patchData)) }
+        }
+        guard !patches.isEmpty else { return }
+        commit(patches)
+        recordHistory(item: item, summary: String(localized: "Patch angewendet (\(patches.count) Blöcke)"))
+    }
+
+    func revertPatch(_ item: XDFItem) {
+        guard !isLocked(item) else { alert = String(localized: "„\(item.title)“ ist gesperrt."); return }
+        guard case .patch(let entries) = item.kind else { return }
+        var patches: [Patch] = []
+        for e in entries {
+            let targetBytes: [UInt8]
+            if !e.baseData.isEmpty {
+                targetBytes = e.baseData
+            } else if let cmp = compare, e.address >= 0, e.address + e.patchData.count <= cmp.count {
+                targetBytes = Array(cmp[e.address ..< (e.address + e.patchData.count)])
+            } else {
+                continue
+            }
+            let r = e.address ..< (e.address + targetBytes.count)
+            guard r.lowerBound >= 0, r.upperBound <= bin.count else { continue }
+            let old = Array(bin[r])
+            if old != targetBytes { patches.append(Patch(offset: e.address, old: old, new: targetBytes)) }
+        }
+        guard !patches.isEmpty else { return }
+        commit(patches)
+        recordHistory(item: item, summary: String(localized: "Patch zurückgesetzt"))
     }
 
     func openBin(_ url: URL) {

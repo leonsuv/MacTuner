@@ -24,6 +24,7 @@ struct MacTunerApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("XDF öffnen …") { model.openXDFPanel() }
                     .keyboardShortcut("o")
+                Button("A2L / WinOLS .kp importieren …") { model.importDefinitionPanel() }
                 Button("BIN öffnen …") { model.openBinPanel() }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
                 Divider()
@@ -45,6 +46,11 @@ struct MacTunerApp: App {
                 Button("BIN speichern unter …") { model.saveAs() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
                     .disabled(!model.hasBin)
+                Divider()
+                Button("XDF speichern") { model.saveXDF() }
+                    .disabled(model.definition == nil)
+                Button("XDF exportieren / speichern unter …") { model.saveXDFAs() }
+                    .disabled(model.definition == nil)
                 Divider()
                 Button("Änderungsliste exportieren …") { model.exportChangeReport() }
                     .keyboardShortcut("e")
@@ -93,6 +99,19 @@ struct MacTunerApp: App {
                         }
                     }
                 }
+                Menu("XDF-Übersetzung") {
+                    ForEach(XDFTranslationMode.allCases) { m in
+                        Button {
+                            model.translationMode = m
+                        } label: {
+                            if model.translationMode == m {
+                                Label(m.label, systemImage: "checkmark")
+                            } else {
+                                Text(m.label)
+                            }
+                        }
+                    }
+                }
                 Divider()
                 Button("Übersicht") { model.selection = nil }
                     .keyboardShortcut("0")
@@ -117,6 +136,15 @@ struct MacTunerApp: App {
                     .disabled(model.changedItems.isEmpty)
             }
             CommandMenu("Kennfeld") {
+                Button("Neues XDF-Element hinzufügen …") {
+                    model.xdfEditorRequest = XDFEditorRequest()
+                }
+                if let item = model.selectedItem {
+                    Button("XDF-Element bearbeiten …") {
+                        model.xdfEditorRequest = XDFEditorRequest(existingItem: item)
+                    }
+                }
+                Divider()
                 if let item = model.selectedItem, model.isFavorite(item) {
                     Button("Aus Favoriten entfernen") { model.toggleFavorite(item) }
                         .keyboardShortcut("d")

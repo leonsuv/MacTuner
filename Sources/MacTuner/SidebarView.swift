@@ -194,7 +194,7 @@ struct SidebarView: View {
     private func row(_ item: XDFItem) -> some View {
         HStack(spacing: 6) {
             ItemIcon(item: item)
-            Text(item.title).lineLimit(1)
+            Text(model.displayTitle(item)).lineLimit(1)
             Spacer(minLength: 4)
             if item.isTable {
                 Text(verbatim: "\(item.data.rows)×\(item.data.cols)")
@@ -224,7 +224,7 @@ struct SidebarView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             ItemIcon(item: item)
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.title).lineLimit(1)
+                Text(model.displayTitle(item)).lineLimit(1)
                 Text(model.changeSummary(item))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(Theme.changed)
@@ -262,13 +262,30 @@ struct ItemIcon: View {
 
     var body: some View {
         Image(systemName: name)
-            .foregroundStyle(item.isTable ? Color.accentColor : .purple)
+            .foregroundStyle(color)
             .frame(width: 16)
     }
 
     private var name: String {
-        guard item.isTable else { return "number" }
-        return item.data.rows > 1 && item.data.cols > 1 ? "tablecells" : "chart.xyaxis.line"
+        switch item.kind {
+        case .table:
+            return item.data.rows > 1 && item.data.cols > 1 ? "tablecells" : "chart.xyaxis.line"
+        case .constant:
+            return "number"
+        case .flag:
+            return "switch.2"
+        case .patch:
+            return "bandage"
+        }
+    }
+
+    private var color: Color {
+        switch item.kind {
+        case .table: return Color.accentColor
+        case .constant: return .purple
+        case .flag: return .green
+        case .patch: return .orange
+        }
     }
 }
 

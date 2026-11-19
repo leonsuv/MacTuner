@@ -127,12 +127,24 @@ struct Axis {
     }
 }
 
+struct XDFPatchEntry: Hashable, Identifiable {
+    var id: Int { address }
+    var address: Int
+    var name: String
+    var baseData: [UInt8]
+    var patchData: [UInt8]
+
+    var byteRange: Range<Int> { address ..< address + max(patchData.count, baseData.count) }
+}
+
 struct XDFItem: Identifiable {
     enum Kind {
         case table(x: Axis, y: Axis)
         case constant
+        case flag(mask: UInt64, invert: Bool)
+        case patch(entries: [XDFPatchEntry])
     }
-    let id: Int
+    var id: Int
     var title: String
     var description: String
     var categories: [Int]
@@ -141,6 +153,8 @@ struct XDFItem: Identifiable {
     var scaling: Scaling
 
     var isTable: Bool { if case .table = kind { return true } else { return false } }
+    var isFlag: Bool { if case .flag = kind { return true } else { return false } }
+    var isPatch: Bool { if case .patch = kind { return true } else { return false } }
 
     /// Axis data stored in the bin (x first, then y).
     var axisLayouts: [DataLayout] {
@@ -148,8 +162,18 @@ struct XDFItem: Identifiable {
         return [x.layout, y.layout].compactMap { $0 }
     }
 
-    /// Everything of this item that lives in the bin: the values and the axes.
-    var layouts: [DataLayout] { [data] + axisLayouts }
+    /// Everything of this item that lives in the bin: the values, axes, or patch byte ranges.
+    var layouts: [DataLayout] {
+        if case .patch(let entries) = kind {
+            return entries.compactMap { e in
+                let len = max(e.patchData.count, e.baseData.count)
+                guard len > 0 else { return nil }
+                return DataLayout(address: e.address, bits: 8, signed: false, lsbFirst: false,
+                                  columnMajor: false, isFloat: false, rows: 1, cols: len)
+            }
+        }
+        return [data] + axisLayouts
+    }
 }
 
 struct XDFDefinition {
@@ -254,6 +278,27 @@ enum XDFParser {
                 items.append(XDFItem(
                     id: items.count, title: title, description: desc, categories: cats,
                     kind: .constant, data: l, scaling: scaling(e)))
+            case "XDFFLAG":
+                guard let l = layout(e.child("EMBEDDEDDATA"), rows: 1, cols: 1) else { continue }
+                let maskVal = uint64(e.child("mask")?.stringValue) ?? 1
+                let invert = (int(e.attr("flags")) ?? 0) & 0x1 != 0
+                items.append(XDFItem(
+                    id: items.count, title: title, description: desc, categories: cats,
+                    kind: .flag(mask: maskVal, invert: invert), data: l, scaling: .identity))
+            case "XDFPATCH":
+                let entries: [XDFPatchEntry] = e.children("XDFPATCHENTRY").compactMap { pe in
+                    guard let addr = int(pe.attr("address")) else { return nil }
+                    let pData = parseHexBytes(pe.attr("patchdata"))
+                    let bData = parseHexBytes(pe.attr("basedata"))
+                    guard !pData.isEmpty else { return nil }
+                    return XDFPatchEntry(address: addr + base, name: pe.attr("name") ?? "", baseData: bData, patchData: pData)
+                }
+                guard let first = entries.first else { continue }
+                let dummy = DataLayout(address: first.address, bits: 8, signed: false, lsbFirst: false,
+                                       columnMajor: false, isFloat: false, rows: 1, cols: first.patchData.count)
+                items.append(XDFItem(
+                    id: items.count, title: title, description: desc, categories: cats,
+                    kind: .patch(entries: entries), data: dummy, scaling: .identity))
             default:
                 continue
             }
@@ -273,6 +318,24 @@ enum XDFParser {
         if t.hasPrefix("-") { neg = true; t.removeFirst() }
         let v = t.lowercased().hasPrefix("0x") ? Int(t.dropFirst(2), radix: 16) : Int(t)
         return v.map { neg ? -$0 : $0 }
+    }
+
+    static func uint64(_ s: String?) -> UInt64? {
+        guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        return t.lowercased().hasPrefix("0x") ? UInt64(t.dropFirst(2), radix: 16) : UInt64(t)
+    }
+
+    static func parseHexBytes(_ s: String?) -> [UInt8] {
+        guard let s else { return [] }
+        let hex = s.filter(\.isHexDigit)
+        var out: [UInt8] = []
+        var i = hex.startIndex
+        while i < hex.endIndex {
+            let next = hex.index(i, offsetBy: 2, limitedBy: hex.endIndex) ?? hex.endIndex
+            if let b = UInt8(hex[i..<next], radix: 16) { out.append(b) }
+            i = next
+        }
+        return out
     }
 }
 

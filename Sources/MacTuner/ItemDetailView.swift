@@ -9,6 +9,8 @@ struct ItemDetailView: View {
     @State private var showSafeRange = false
     @State private var safeMinText = ""
     @State private var safeMaxText = ""
+    @State private var showNotes = false
+    @State private var noteText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -18,6 +20,12 @@ struct ItemDetailView: View {
                 TableEditorView(item: item, x: x, y: y)
             case .constant:
                 ConstantEditorView(item: item)
+                Spacer(minLength: 0)
+            case .flag(let mask, let invert):
+                FlagEditorView(item: item, mask: mask, invert: invert)
+                Spacer(minLength: 0)
+            case .patch(let entries):
+                PatchEditorView(item: item, entries: entries)
                 Spacer(minLength: 0)
             }
         }
@@ -36,7 +44,7 @@ struct ItemDetailView: View {
                     .foregroundStyle(.tertiary)
             }
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(item.title)
+                Text(model.displayTitle(item))
                     .font(.system(size: 22, weight: .bold))
                     .textSelection(.enabled)
                 Button { model.toggleFavorite(item) } label: {
@@ -85,6 +93,48 @@ struct ItemDetailView: View {
 
                 copyFromMenu
 
+                let hasNote = !model.note(for: item).isEmpty
+                Button {
+                    noteText = model.note(for: item)
+                    showNotes.toggle()
+                } label: {
+                    Image(systemName: hasNote ? "note.text" : "note.text.badge.plus")
+                        .font(.title3)
+                        .foregroundStyle(hasNote ? Color.accentColor : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Notizen zu diesem Kennfeld (neben der XDF gespeichert)")
+                .popover(isPresented: $showNotes) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Notizen: \(item.title)").font(.headline).lineLimit(1)
+                        TextEditor(text: $noteText)
+                            .font(.body)
+                            .frame(width: 340, height: 140)
+                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
+                        HStack {
+                            Text("Wird neben der XDF gespeichert").font(.caption2).foregroundStyle(.tertiary)
+                            Spacer()
+                            Button("Speichern") {
+                                model.setNote(noteText, for: item)
+                                showNotes = false
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(12)
+                }
+
+                Button {
+                    model.xdfEditorRequest = XDFEditorRequest(existingItem: item)
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("XDF-Definition dieses Elements bearbeiten")
+
                 if info.isChanged {
                     Label(badge, systemImage: "pencil")
                         .font(.caption.weight(.semibold))
@@ -102,8 +152,9 @@ struct ItemDetailView: View {
             HStack(spacing: 6) {
                 ForEach(chips, id: \.0) { Chip(text: $0.0, icon: $0.1) }
             }
-            if !item.description.isEmpty {
-                Text(item.description)
+            let desc = model.displayDescription(item)
+            if !desc.isEmpty {
+                Text(desc)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineLimit(descriptionExpanded ? 20 : 2)
@@ -112,6 +163,19 @@ struct ItemDetailView: View {
                     .contentShape(Rectangle())
                     .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { descriptionExpanded.toggle() } }
                     .help(descriptionExpanded ? "" : String(localized: "Klicken für den ganzen Text"))
+            }
+            let userNote = model.note(for: item)
+            if !userNote.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "note.text").font(.caption).foregroundStyle(Color.accentColor)
+                    Text(userNote).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                .onTapGesture {
+                    noteText = userNote
+                    showNotes = true
+                }
             }
         }
     }
@@ -440,5 +504,124 @@ struct TableChart: View {
             .chartYAxis { AxisMarks(position: .leading) { AxisGridLine().foregroundStyle(.separator); AxisValueLabel() } }
         }
         .card(padding: 14)
+    }
+}
+
+// MARK: - Flag (XDFFLAG)
+
+struct FlagEditorView: View {
+    @Environment(AppModel.self) private var model
+    let item: XDFItem
+    let mask: UInt64
+    let invert: Bool
+
+    var body: some View {
+        let on = model.flagValue(item)
+        let cmpOn = model.flagValue(item, original: true)
+        let changed = on != cmpOn
+        let locked = model.isLocked(item)
+        let rawVal = model.raw(item.data, Cell(r: 0, c: 0)).map { UInt64(bitPattern: Int64($0)) } ?? 0
+
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 16) {
+                Toggle(isOn: Binding(get: { on }, set: { model.setFlag($0, item: item) })) {
+                    Text(on ? "Aktiviert (EIN)" : "Deaktiviert (AUS)")
+                        .font(.title2.bold())
+                        .foregroundStyle(changed ? Theme.changed : .primary)
+                }
+                .toggleStyle(.switch)
+                .disabled(locked)
+                Spacer()
+                if changed {
+                    Chip(text: "Vergleich: \(cmpOn ? "EIN" : "AUS")", icon: "arrow.left.arrow.right")
+                }
+            }
+            .card(padding: 18)
+
+            HStack(spacing: 10) {
+                infoTile("Bitmaske", String(format: "0x%X", mask))
+                infoTile("Rohwert", String(format: "0x%02X (%d)", rawVal, rawVal))
+                infoTile("Binär", binaryString(rawVal, bits: item.data.bits))
+                infoTile("Logik", invert ? "Invertiert (0 = EIN)" : "Normal (1 = EIN)")
+            }
+        }
+        .frame(maxWidth: 760, alignment: .leading)
+    }
+
+    private func infoTile(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(value).font(.body.weight(.semibold).monospaced())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
+    private func binaryString(_ val: UInt64, bits: Int) -> String {
+        let n = min(max(bits, 8), 32)
+        return String(val, radix: 2).leftPadded(to: n)
+    }
+}
+
+// MARK: - Patch (XDFPATCH)
+
+struct PatchEditorView: View {
+    @Environment(AppModel.self) private var model
+    let item: XDFItem
+    let entries: [XDFPatchEntry]
+
+    var body: some View {
+        let applied = model.isPatchApplied(item)
+        let locked = model.isLocked(item)
+
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Label(applied ? "Patch angewendet" : "Patch nicht angewendet",
+                      systemImage: applied ? "checkmark.circle.fill" : "circle.dashed")
+                    .font(.title3.bold())
+                    .foregroundStyle(applied ? Color.green : Color.secondary)
+                Spacer()
+                Button {
+                    model.applyPatch(item)
+                } label: {
+                    Label("Patch anwenden", systemImage: "bandage.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(applied || locked)
+
+                Button {
+                    model.revertPatch(item)
+                } label: {
+                    Label("Zurücksetzen", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!applied || locked)
+            }
+            .card(padding: 16)
+
+            Table(entries) {
+                TableColumn("Adresse") { e in
+                    Text(String(format: "0x%05X", e.address)).monospaced()
+                }
+                .width(min: 80, ideal: 95)
+                TableColumn("Größe") { e in
+                    Text("\(e.patchData.count) B").monospacedDigit()
+                }
+                .width(min: 50, ideal: 60)
+                TableColumn("Aktuell (BIN)") { e in
+                    let r = e.address ..< (e.address + e.patchData.count)
+                    let cur = (r.lowerBound >= 0 && r.upperBound <= model.bin.count) ? Changes.hex(model.bin[r]) : "—"
+                    Text(cur).monospaced()
+                }
+                TableColumn("Patch-Bytes") { e in
+                    Text(Changes.hex(e.patchData[...])).monospaced().foregroundStyle(Theme.changed)
+                }
+                TableColumn("Original-Bytes") { e in
+                    Text(e.baseData.isEmpty ? "—" : Changes.hex(e.baseData[...])).monospaced().foregroundStyle(.secondary)
+                }
+            }
+            .frame(minHeight: 160, maxHeight: 360)
+            .card(padding: 8)
+        }
+        .frame(maxWidth: 900, alignment: .leading)
     }
 }

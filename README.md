@@ -133,12 +133,12 @@ and ideas and pull requests are welcome in [Issues](../../issues).
 - [x] Command palette (⌘K) for every action and every map
 
 ### Definitions
-- [ ] `XDFFLAG` bitmasks as switches, `XDFPATCH` patches with apply / revert
-- [ ] Built-in XDF editor: add and change maps, axes, formulas and categories, save the XDF
-- [ ] Create a map straight from a selected address range
-- [ ] Import A2L / DAMOS and WinOLS map packs (`.kp`), export them as XDF
-- [ ] Notes per map that are stored next to the XDF and survive XDF updates
-- [ ] Translate map names and descriptions of foreign-language XDFs on the fly
+- [x] `XDFFLAG` bitmasks as switches, `XDFPATCH` patches with apply / revert
+- [x] Built-in XDF editor: add and change maps, axes, formulas and categories, save the XDF
+- [x] Create a map straight from a selected address range (in Hex-Diff or Outside-XDF changes)
+- [x] Import A2L / DAMOS and WinOLS map packs (`.kp` / `.csv`), export them as XDF
+- [x] Notes per map that are stored next to the XDF and survive XDF updates
+- [x] Translate map names and descriptions of foreign-language XDFs on the fly (including Bosch/Siemens ECU acronym glossary)
 
 ### Finding maps
 - [ ] Map finder: detect tables and axes in unknown binaries by their structure, like WinOLS

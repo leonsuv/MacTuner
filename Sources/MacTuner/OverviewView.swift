@@ -262,6 +262,13 @@ struct OutsideChangesView: View {
                     .width(min: 50, ideal: 60)
                 TableColumn("Vergleich") { row in Text(hex(compare, row.range)).monospaced().foregroundStyle(.secondary) }
                 TableColumn("BIN") { row in Text(hex(model.bin, row.range)).monospaced().foregroundStyle(Theme.changed) }
+                TableColumn("Aktion") { row in
+                    Button("Kennfeld erstellen") {
+                        model.xdfEditorRequest = XDFEditorRequest(presetRange: row.range)
+                    }
+                    .controlSize(.mini)
+                }
+                .width(min: 110, ideal: 120)
             }
             .overlay {
                 if ranges.isEmpty { ContentUnavailableView("Keine Änderungen", systemImage: "checkmark.circle") }

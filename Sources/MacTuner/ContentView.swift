@@ -54,13 +54,19 @@ struct ContentView: View {
                 CommandPaletteView(isPresented: Binding(get: { model.showCommandPalette }, set: { model.showCommandPalette = $0 }))
             }
         }
+        .sheet(item: Binding(get: { model.xdfEditorRequest }, set: { model.xdfEditorRequest = $0 })) { req in
+            XDFItemEditorSheet(existingItem: req.existingItem, presetRange: req.presetRange)
+                .environment(model)
+        }
     }
 
     @ViewBuilder private var detail: some View {
         if model.selection == AppModel.outsideSelection, model.hasBin, model.definition != nil {
             OutsideChangesView()
         } else if model.selection == AppModel.hexDiffSelection, model.hasBin {
-            HexDiffView()
+            HexDiffView { range in
+                model.xdfEditorRequest = XDFEditorRequest(presetRange: range)
+            }
         } else if model.selection == AppModel.multiCompareSelection, model.hasBin {
             MultiCompareView()
         } else if model.selection == AppModel.snapshotsSelection, model.hasBin {
@@ -132,6 +138,7 @@ struct OpenMenu: View {
     var body: some View {
         Menu {
             Button("XDF öffnen …") { model.openXDFPanel() }
+            Button("A2L / WinOLS .kp importieren …") { model.importDefinitionPanel() }
             Button("BIN öffnen …") { model.openBinPanel() }
             Button("Vergleichs-BIN öffnen …") { model.openComparePanel() }
             Button("Weitere Vergleichs-BIN hinzufügen …") { model.addExtraComparePanel() }
