@@ -519,6 +519,23 @@ struct HexDiffView: View {
                     let selRange = selectedRange
                     let palette = model.heatmapPalette
 
+                    // Batched fill paths (reduces ~1000 GPU fill calls per frame to ~10)
+                    var stripePath = Path()
+                    var mapPaths = Array(repeating: Path(), count: XDFAddressIndex.palette.count)
+                    var axisPaths = Array(repeating: Path(), count: XDFAddressIndex.palette.count)
+                    var unmappedDiffPath = Path()
+                    var selPath = Path()
+                    var diffBarPath = Path()
+
+                    struct CellDraw {
+                        let text: String
+                        let style: UInt8 // 0 = primary, 1 = selected white, 2 = diff bold orange
+                        let fontSize: CGFloat
+                        let center: CGPoint
+                    }
+                    var cellDraws: [CellDraw] = []
+                    cellDraws.reserveCapacity(visibleRows * columns)
+
                     for r in 0..<visibleRows {
                         let y = headerH + CGFloat(r) * rowHeight
                         let rowBase = startAddr + r * rowStride
@@ -526,7 +543,7 @@ struct HexDiffView: View {
                         let rowEnd = min(bin.count, rowBase + rowStride)
 
                         if r % 2 == 1 {
-                            ctx.fill(Path(CGRect(x: 0, y: y, width: size.width, height: rowHeight)), with: .color(.primary.opacity(0.025)))
+                            stripePath.addRect(CGRect(x: 0, y: y, width: size.width, height: rowHeight))
                         }
 
                         // Address label
@@ -542,36 +559,42 @@ struct HexDiffView: View {
                             let off = rowBase + c * elemBytes
                             guard off + elemBytes <= bin.count else { break }
                             let rect = CGRect(x: addrWidth + CGFloat(c) * cellW + 1, y: y + 1, width: max(12, cellW - 2), height: rowHeight - 2)
-                            let isDiff = off + elemBytes <= cmp.count && bin[off ..< (off + elemBytes)] != cmp[off ..< (off + elemBytes)]
+                            let isDiff: Bool = {
+                                guard off + elemBytes <= cmp.count else { return false }
+                                if elemBytes == 1 { return bin[off] != cmp[off] }
+                                for k in 0..<elemBytes where bin[off + k] != cmp[off + k] { return true }
+                                return false
+                            }()
                             let isSel = selRange?.overlaps(off ..< (off + elemBytes)) ?? false
                             let span = rowSpans.first { $0.range.contains(off) }
 
-                            // Keep XDF map color continuous; never replace it with diff/selection fill
                             if let span {
-                                ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(XDFAddressIndex.color(for: span)))
+                                let ci = span.colorIndex % XDFAddressIndex.palette.count
+                                if span.isAxis {
+                                    axisPaths[ci].addRoundedRect(in: rect, cornerSize: CGSize(width: 3, height: 3))
+                                } else {
+                                    mapPaths[ci].addRoundedRect(in: rect, cornerSize: CGSize(width: 3, height: 3))
+                                }
                             } else if isDiff {
-                                ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(Theme.changed.opacity(0.10)))
+                                unmappedDiffPath.addRoundedRect(in: rect, cornerSize: CGSize(width: 3, height: 3))
                             }
 
                             if isSel {
-                                ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(Color.accentColor.opacity(0.28)))
-                                ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(Color.white.opacity(0.08)))
+                                selPath.addRoundedRect(in: rect, cornerSize: CGSize(width: 3, height: 3))
                             }
 
-                            // Crisp bottom bar for edited/diff bytes (preserves XDF map background)
                             if isDiff {
                                 let barRect = CGRect(x: rect.minX + 3, y: rect.maxY - 2.5, width: max(4, rect.width - 6), height: 2)
-                                ctx.fill(Path(roundedRect: barRect, cornerRadius: 1), with: .color(Theme.changed))
+                                diffBarPath.addRoundedRect(in: barRect, cornerSize: CGSize(width: 1, height: 1))
                             }
 
                             let text = formatElement(bin, at: off)
-                            let fg: Color = isDiff ? Theme.changed : (isSel ? .white : .primary)
-                            let weight: Font.Weight = isDiff ? .bold : (isSel ? .semibold : .regular)
+                            let style: UInt8 = isDiff ? 2 : (isSel ? 1 : 0)
                             let cellFontSize: CGFloat = numberBase == .bin
                                 ? min(10.0, max(6.0, (rect.width - 4) / (CGFloat(max(2, text.count)) * 0.62)))
                                 : 10.5
-                            ctx.draw(Text(text).font(.system(size: cellFontSize, weight: weight, design: .monospaced)).foregroundStyle(fg),
-                                     at: CGPoint(x: rect.midX, y: rect.midY), anchor: .center)
+                            cellDraws.append(CellDraw(text: text, style: style, fontSize: cellFontSize,
+                                                      center: CGPoint(x: rect.midX, y: rect.midY)))
 
                             // WinOLS per-row bar-graph on the right!
                             if showBars, let v = readElement(bin, at: off) {
@@ -623,6 +646,37 @@ struct HexDiffView: View {
                                          at: CGPoint(x: pill.midX, y: pill.midY), anchor: .center)
                             }
                         }
+                    }
+
+                    // Flush batched fills in ~10 calls instead of ~1000
+                    if !stripePath.isEmpty { ctx.fill(stripePath, with: .color(.primary.opacity(0.025))) }
+                    for ci in 0..<XDFAddressIndex.palette.count {
+                        if !mapPaths[ci].isEmpty { ctx.fill(mapPaths[ci], with: .color(XDFAddressIndex.palette[ci].opacity(0.30))) }
+                        if !axisPaths[ci].isEmpty { ctx.fill(axisPaths[ci], with: .color(XDFAddressIndex.palette[ci].opacity(0.20))) }
+                    }
+                    if !unmappedDiffPath.isEmpty { ctx.fill(unmappedDiffPath, with: .color(Theme.changed.opacity(0.10))) }
+                    if !selPath.isEmpty {
+                        ctx.fill(selPath, with: .color(Color.accentColor.opacity(0.28)))
+                        ctx.fill(selPath, with: .color(Color.white.opacity(0.08)))
+                    }
+                    if !diffBarPath.isEmpty { ctx.fill(diffBarPath, with: .color(Theme.changed)) }
+
+                    // Cached ResolvedText blitting (each unique byte value laid out once per frame!)
+                    var glyphCache: [String: GraphicsContext.ResolvedText] = [:]
+                    glyphCache.reserveCapacity(128)
+                    for item in cellDraws {
+                        let key = "\(item.style):\(item.text)"
+                        let resolved: GraphicsContext.ResolvedText
+                        if let cached = glyphCache[key] {
+                            resolved = cached
+                        } else {
+                            let fg: Color = item.style == 2 ? Theme.changed : (item.style == 1 ? .white : .primary)
+                            let weight: Font.Weight = item.style == 2 ? .bold : (item.style == 1 ? .semibold : .regular)
+                            let r = ctx.resolve(Text(item.text).font(.system(size: item.fontSize, weight: weight, design: .monospaced)).foregroundStyle(fg))
+                            glyphCache[key] = r
+                            resolved = r
+                        }
+                        ctx.draw(resolved, at: item.center, anchor: .center)
                     }
 
                     // Crisp continuous perimeter border around the selected byte range
@@ -1572,14 +1626,36 @@ struct HexDiffView: View {
         return min(max(0, rowBase > clamped ? rowBase - rowStride : rowBase), max(0, model.bin.count - 1))
     }
 
+    private static let hexByteTable: [String] = (0..<256).map { String(format: "%02X", $0) }
+
     private func readElement(_ bytes: [UInt8], at off: Int) -> Double? {
         guard off >= 0, off + elemBytes <= bytes.count else { return nil }
-        let l = DataLayout(address: off, bits: dataFormat.bits, signed: isSigned, lsbFirst: lsbFirst,
-                           columnMajor: false, isFloat: dataFormat.isFloat, rows: 1, cols: 1)
-        return BinCodec.raw(l, Cell(r: 0, c: 0), in: bytes)
+        switch dataFormat {
+        case .u8:
+            let b = bytes[off]
+            return isSigned ? Double(Int8(bitPattern: b)) : Double(b)
+        case .u16:
+            let u: UInt16 = lsbFirst
+                ? (UInt16(bytes[off]) | (UInt16(bytes[off + 1]) << 8))
+                : ((UInt16(bytes[off]) << 8) | UInt16(bytes[off + 1]))
+            return isSigned ? Double(Int16(bitPattern: u)) : Double(u)
+        case .u32:
+            let u: UInt32 = lsbFirst
+                ? (UInt32(bytes[off]) | (UInt32(bytes[off + 1]) << 8) | (UInt32(bytes[off + 2]) << 16) | (UInt32(bytes[off + 3]) << 24))
+                : ((UInt32(bytes[off]) << 24) | (UInt32(bytes[off + 1]) << 16) | (UInt32(bytes[off + 2]) << 8) | UInt32(bytes[off + 3]))
+            return isSigned ? Double(Int32(bitPattern: u)) : Double(u)
+        case .f32:
+            let u: UInt32 = lsbFirst
+                ? (UInt32(bytes[off]) | (UInt32(bytes[off + 1]) << 8) | (UInt32(bytes[off + 2]) << 16) | (UInt32(bytes[off + 3]) << 24))
+                : ((UInt32(bytes[off]) << 24) | (UInt32(bytes[off + 1]) << 16) | (UInt32(bytes[off + 2]) << 8) | UInt32(bytes[off + 3]))
+            return Double(Float(bitPattern: u))
+        }
     }
 
     private func formatElement(_ bytes: [UInt8], at off: Int) -> String {
+        if dataFormat == .u8 && numberBase == .hex && off >= 0 && off < bytes.count {
+            return Self.hexByteTable[Int(bytes[off])]
+        }
         guard let v = readElement(bytes, at: off) else { return "—" }
         if dataFormat.isFloat { return String(format: "%.2f", v) }
         let bits = elemBytes * 8
