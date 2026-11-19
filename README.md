@@ -5,7 +5,7 @@
 <h1 align="center">MacTuner</h1>
 
 <p align="center">
-  A native macOS editor for TunerPro XDF definitions: open the definition, then edit maps and values in the binary.
+  A native macOS ECU &amp; TCU tuning workbench: edit TunerPro XDF definitions (v1.60 XML &amp; legacy v1.11), A2L/DAMOS and WinOLS map packs, inspect binaries in 60-FPS Hex / 2D / 3D, compare files, log data, and verify checksums — no Wine, no VM, zero dependencies.
 </p>
 
 <p align="center">
@@ -17,38 +17,24 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
 </p>
 
-![Changed tab: every changed map in one list, next to a map with heatmap and chart](docs/v1.2-changed.png)
+![MacTuner 2.0: Heatmap, interactive 3D surface and 2D chart side by side](docs/v2.0-hero-map.png)
 
-TunerPro only runs on Windows. MacTuner is a native SwiftUI app that runs without Wine, a VM or any dependencies.
-It reads the same XDF files. When it saves the binary, only the bytes of the values you edited change.
+TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI tuning workbench built from the ground up for macOS. When saving a binary, only the exact bytes of edited values change.
 
-## Features
+## Highlights
 
-- **Maps as heatmaps.** Axes are read from the binary or shown as labels. Long 1×N tables wrap into rows, and 2D maps can be transposed.
-- **Charts.** Every row is drawn as a line, with the comparison drawn dashed underneath.
-- **Comparison with a second binary**, such as the stock file. Without one, the app compares against the state when the file was opened.
-  - **Changed** tab in the sidebar: one flat list of every changed map and value, with how many cells changed and the largest deviation.
-    Changed axes count as changes, and bytes that changed outside the XDF (checksums, undefined maps) get their own entry.
-  - Switch a table between **BIN · Comparison · Δ · Δ %**, or flip between BIN and comparison with Tab.
-    The comparison view is read-only and framed in teal; Δ shows each cell's difference to the comparison.
-  - Swap BIN and comparison to edit the other file.
-  - Jump from change to change (⌥⌘↓ / ⌥⌘↑), reset a whole map to the comparison, or export the change list as text (⌘E).
-- **Spreadsheet-style editing:**
-  - Select a range, type a number and press ↩ to set it.
-  - **+ / −** changes the selection by the step size. You can also change it by a percentage or reset it to the original.
-  - **Copy and paste** (⌘C / ⌘V) as tab-separated text, compatible with Excel, Numbers and TunerPro. One value fills the whole selection.
-  - **Interpolate** the selection horizontally, vertically or across the area from its four corners, using the axis values.
-  - Min, max and average of the selection. Undo and redo.
-- **Constants** with a large value display, raw value, step size and valid range.
-- **Search** across titles, descriptions and addresses. Categories come from the XDF.
-- **Favorites** (⌘D) for the maps you edit most, and an overview page with every change at a glance.
-- Remembers the XDF, the binary, the comparison and the selection between launches, with a list of recent files. Files can also be dropped onto the window.
+- **Heatmap, 2D Charts &amp; Interactive 3D Surface.** Edit 1D curves and 2D maps with color-blind-friendly palettes (Classic, Viridis, Cividis, Plasma, High Contrast), drag vertices live in 3D with camera-facing X/Y/Z axes and comparison wireframe overlays, wrap long 1×N tables, or transpose rows and columns.
+- **WinOLS-Class 60-FPS Binary Analyzer.** Windowed GPU-backed Hexdump with `8 / 16 / 32 / Float`, `LoHi / HiLo`, `Hex / Dec`, `Signed / Unsigned`, adjustable column width, element-aligned &amp; odd-byte offset shifting, inline per-row 2D bar-graphs, zoomable 2D waveform with drag-to-select &amp; offset-sync slider, live 3D preview, whole-file minimap + Shannon entropy map, wildcard (`??`) search, bookmarks, twin-map detector, and double-click to jump straight to any XDF map.
+- **Multi-File Compare, Snapshots &amp; History.** Compare 3+ binaries side by side (Stock, Stage 1, Stage 2, Snapshots), inspect **BIN · Comparison · Δ · Δ %** per table, save named snapshots, track per-map edit history with notes across sessions, and export printable multi-page **PDF reports with charts** (`⌘P` / `⇧⌘E`).
+- **Spreadsheet-Style Editing &amp; Safety.** Type values directly, step with `+ / −`, scale by `%`, copy/paste TSV (`⌘C / ⌘V`), interpolate horizontally/vertically/bilinearly, axis-aware smooth, fill down/up/right/left, flatten, clamp, edit axes inline with live monotonicity checks, lock maps (`⌘L`), set safe min/max ranges, and convert units on the fly (`°C/°F`, `Nm/lb-ft`, `bar/kPa/psi`, `km/h/mph`, `λ/AFR`).
+- **Definitions &amp; Map Finding.** Reads **XDF 1.60 XML**, **legacy XDF v1.11 text**, **A2L / DAMOS**, and **WinOLS `.kp` / `.csv`** map packs — including `XDFTABLE`, `XDFCONSTANT`, `XDFFLAG` switches, and `XDFPATCH` apply/revert. Includes a built-in XDF editor, create-map-from-selection, sidecar map notes, on-the-fly ECU glossary translation, structure-based Map Finder, cross-version tune porting, `.mtpatch` batch tuning, and automatic map diagnostics.
+- **Checksums, Datalogging &amp; Automation.** Built-in checksum plugins (Bosch ME7 / MED17 / EDC17, Siemens MS4x/SIMOS, Temic DQ250, generic CRC-32) with open/pre-save verification and flash-tool export presets (KESS, KTAG, PCMFlash, Flex, CMDFlash, MPPS); CSV/ADX/ADS datalog playback with live heatmap trace, hit-count overlay &amp; tuning suggestions; `.mtproj` projects, multi-window tabs, `⌘K` Command Palette, `mactuner` CLI, Shortcuts/AppleScript, and JavaScript plugins (`JavaScriptCore`).
 
-| Overview of all changes | Difference to the comparison (Δ) |
+| WinOLS-class Hexdump, 2D Bar-Graph &amp; Waveform | Overview &amp; Workbench |
 |---|---|
-| ![Overview](docs/v1.2-overview.png) | ![Difference view](docs/v1.2-delta.png) |
-| **Comparison view (read-only, Tab)** | **Constant** |
-| ![Comparison view](docs/v1.2-compare.png) | ![Constant](docs/v1.2-constant.png) |
+| ![Hexdump & 2D Waveform](docs/v2.0-hexdump.png) | ![Overview](docs/v2.0-overview.png) |
+| **Difference view (Δ)** | **Multi-File Compare (3+ binaries)** |
+| ![Difference view](docs/v2.0-delta.png) | ![Multi-File Compare](docs/v2.0-multicompare.png) |
 
 ## Languages
 
@@ -57,56 +43,60 @@ Slovenian, Croatian, Serbian, Romanian, Hungarian, Bulgarian, Greek, Turkish, Al
 Chinese (Simplified and Traditional), Japanese and Korean.
 
 MacTuner follows the system language and falls back to English. To use a different language for MacTuner only, go to
-**System Settings → General → Language & Region → Applications**. Map names, descriptions and categories come from
-the XDF and stay in the XDF's language.
+**System Settings → General → Language &amp; Region → Applications**. Map names, descriptions and categories come from
+the XDF and can optionally be translated on the fly via the built-in ECU glossary.
 
 All UI strings live in [`Localization/translations.py`](Localization/translations.py). After editing it, run
-`python3 Localization/translations.py Localization`. This regenerates the `.strings` files and checks that every
-language has all keys and matching placeholders.
+`python3 Localization/translations.py Localization`.
 
 ## Installation
 
-1. Download `MacTuner-x.y.z.zip` from [Releases](../../releases/latest) and unzip it. It contains a universal app for Apple Silicon and Intel.
+1. Download `MacTuner-2.0.0.zip` from [Releases](../../releases/latest) and unzip it (universal binary for Apple Silicon &amp; Intel).
 2. Move `MacTuner.app` to `/Applications`.
-3. The app is not notarized, so macOS blocks the first launch. Allow it under **System Settings → Privacy & Security → Open Anyway**, or run:
+3. Because the release is unsigned/not notarized, allow the first launch under **System Settings → Privacy &amp; Security → Open Anyway**, or run:
    ```sh
    xattr -dr com.apple.quarantine /Applications/MacTuner.app
    ```
 
-## Usage
+A Homebrew Cask formula is also included in [`Casks/mactuner.rb`](Casks/mactuner.rb).
+
+## Shortcuts &amp; CLI
 
 | Shortcut | Action |
 |---|---|
-| ⌘O / ⇧⌘O / ⌥⌘O | Open XDF / binary / comparison binary |
-| ⌘S / ⇧⌘S | Save / Save As |
-| ⌘Z / ⇧⌘Z | Undo / Redo |
-| ⌘1 / ⌘2 / ⌘3 | Sidebar: all / changed / favorites |
-| ⌥⌘↓ / ⌥⌘↑ | Next / previous change |
-| ⌘0 | Overview |
-| ⌘D | Add to / remove from favorites |
-| ⌘E / ⇧⌘C | Export / copy the change list |
-| Click, ⇧-click, ⌘-click | Select a cell, a range, individual cells |
-| Click an axis / the corner, ⌘A | Select a whole row or column / everything |
-| Arrow keys (with ⇧) | Move (extend) the selection |
-| Type a number + ↩ | Set the value |
-| + / − | Change by the step size |
-| ⌘C / ⌘V | Copy / paste cells |
-| Tab | Table: BIN ⇄ comparison |
+| `⌘K` | Command Palette (search every map, address &amp; action) |
+| `⌘O` / `⇧⌘O` / `⌥⌘O` | Open XDF / binary / comparison binary |
+| `⌘S` / `⇧⌘S` | Save / Save As |
+| `⌘Z` / `⇧⌘Z` | Undo / Redo |
+| `⌘0` / `⌘4` / `⌘5` / `⌘6` / `⌘7` | Overview / Multi-Compare / Hex-Diff / Snapshots / History |
+| `⌘1` / `⌘2` / `⌘3` | Sidebar: All / Changed / Favorites |
+| `⌥⌘↓` / `⌥⌘↑` | Next / previous changed map |
+| `⌘D` / `⌘L` | Toggle favorite / toggle write-lock |
+| `⌘E` / `⇧⌘E` / `⌘P` | Export text report / export PDF report / print |
+| `Tab` | Table: BIN ⇄ Comparison |
+| Click, `⇧`-click, `⌘`-click, `⌘A` | Select cell, range, individual cells, or all |
+| Type number + `↩`, `+` / `−`, `⌘C` / `⌘V` | Set value, step, copy/paste TSV |
+
+The bundled [`scripts/mactuner`](scripts/mactuner) CLI exposes headless automation:
+```sh
+mactuner diff <xdf> <bin> <compare>
+mactuner export <xdf> <bin> <compare> <report.pdf|report.txt>
+mactuner apply <xdf> <tune.mtpatch> <in.bin> <out.bin> [--mode absolute|delta|percent]
+mactuner checksum <bin> [--plugin bosch-me7|bosch-med17|siemens-simos|temic-dq250] [--fix out.bin]
+mactuner convert <in.a2l|in.kp> <out.xdf>
+mactuner info <xdf>
+```
 
 > [!WARNING]
-> **MacTuner does not correct checksums.** Let your flashing tool fix the checksum before you flash.
-> Wrong values can damage the engine or transmission. Use at your own risk.
+> **Always verify checksums with your flashing tool before flashing.**
+> Wrong calibration values or checksums can damage the engine or transmission. Use at your own risk.
 
-## Supported XDF features
+## Supported Formats
 
-MacTuner supports the parts of the TunerPro XDF 1.60 format that typical definitions use:
-
-- `XDFTABLE` with X, Y and Z axes, `XDFCONSTANT`, categories and descriptions.
-- Data types: 8, 16 and 32 bit, signed and unsigned, little and big endian, column-major, float.
-- Conversion formulas in `X` with `+ - * / ^` and parentheses. When you edit a value, MacTuner inverts the formula, falling back to a numeric bisection if needed.
-- Output as a number or as hex. Axes come from the binary or from labels, or default to plain indices.
-
-Flags/bitmasks (`XDFFLAG`), patches, checksum plugins and ADX/datalogging are not supported.
+- **Definitions:** TunerPro XDF 1.60 XML (`XDFTABLE`, `XDFCONSTANT`, `XDFFLAG`, `XDFPATCH`), legacy TunerPro XDF v1.11 text format, ASAP2 `.a2l` / DAMOS, and WinOLS `.kp` / `.csv` map packs.
+- **Data types:** 8, 16 and 32 bit, signed and unsigned, little and big endian, column-major, 32-bit IEEE float, hex output, embedded &amp; label axes, and arbitrary `X` equations (`+ - * / ^ ()`) with exact linear inversion and numeric bisection fallback.
+- **Datalogs:** CSV (auto-delimiter), TunerPro v5 `.adx`, and legacy TunerPro v4 `.ads`.
+- **Projects &amp; Patches:** Single-file `.mtproj` projects and `.mtpatch` batch tune packages.
 
 ## Roadmap
 

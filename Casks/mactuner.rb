@@ -1,5 +1,5 @@
 cask "mactuner" do
-  version "1.2.0"
+  version "2.0.0"
   sha256 :no_check
 
   url "https://github.com/leonsuv/MacTuner/releases/download/v#{version}/MacTuner-#{version}.zip"

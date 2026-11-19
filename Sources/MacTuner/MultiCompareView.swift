@@ -67,7 +67,9 @@ struct MultiCompareView: View {
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
-            if selectedItemID == nil { selectedItemID = model.selectedItem?.id }
+            if selectedItemID == nil {
+                selectedItemID = model.selectedItem?.id ?? model.changedItems.first?.id ?? model.definition?.items.first?.id
+            }
         }
     }
 

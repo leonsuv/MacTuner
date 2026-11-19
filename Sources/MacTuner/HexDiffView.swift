@@ -1170,12 +1170,22 @@ struct HexDiffView: View {
     }
 
     private func consumeJumpTarget() {
-        guard let target = model.hexJumpTarget else { return }
-        model.hexJumpTarget = nil
-        byteShift = target.lowerBound % rowStride
-        viewportOffset = max(0, target.lowerBound - rowStride * 2)
-        selectedStart = target.lowerBound
-        selectedEnd = max(target.lowerBound, target.upperBound - elemBytes)
+        if let target = model.hexJumpTarget {
+            model.hexJumpTarget = nil
+            byteShift = target.lowerBound % rowStride
+            viewportOffset = max(0, target.lowerBound - rowStride * 2)
+            selectedStart = target.lowerBound
+            selectedEnd = max(target.lowerBound, target.upperBound - elemBytes)
+            return
+        }
+        // If starting at 0x00000 in an empty header, jump to first XDF map (or first diff if no XDF)
+        if viewportOffset == 0 {
+            if let firstSpan = cachedIndex.spans.first {
+                viewportOffset = max(0, firstSpan.range.lowerBound - rowStride * 2)
+            } else if let firstDiff = cachedDiffOffsets.first {
+                viewportOffset = max(0, firstDiff - rowStride * 2)
+            }
+        }
     }
 
     private func jumpToAddress() {

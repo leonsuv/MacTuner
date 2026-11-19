@@ -18,7 +18,7 @@ struct TableEditorView: View {
     @State private var input = ""
     @State private var mode: Mode
     @State private var showChart: Bool
-    @State private var show3D = false
+    @AppStorage("show3D") private var show3D = false
     @State private var axisEditMode = false
     @State private var editingAxis: AxisEditTarget?
     @State private var axisInput = ""
