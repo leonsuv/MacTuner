@@ -32,7 +32,7 @@ TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI tuning
 
 | WinOLS-class Hexdump, 2D Bar-Graph &amp; Waveform | Overview &amp; Workbench |
 |---|---|
-| ![Hexdump & 2D Waveform](docs/v2.0-hexdump.png) | ![Overview](docs/v2.0-overview.png) |
+| ![Hexdump & 2D Waveform](docs/v2.1-hexdump.png) | ![Overview](docs/v2.0-overview.png) |
 | **Difference view (Δ)** | **Multi-File Compare (3+ binaries)** |
 | ![Difference view](docs/v2.0-delta.png) | ![Multi-File Compare](docs/v2.0-multicompare.png) |
 
