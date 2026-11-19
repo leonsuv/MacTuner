@@ -24,21 +24,39 @@ struct XDFAddressIndex {
         var raw: [Span] = []
         var nextID = 0
         for item in def.items {
-            let colorIdx = abs(item.id) % 8
             if item.data.byteRange.lowerBound >= 0 && !item.data.byteRange.isEmpty {
                 raw.append(Span(id: nextID, range: item.data.byteRange, itemID: item.id,
-                                title: item.title, isAxis: false, colorIndex: colorIdx))
+                                title: item.title, isAxis: false, colorIndex: 0))
                 nextID += 1
             }
             for al in item.axisLayouts where al.byteRange.lowerBound >= 0 && !al.byteRange.isEmpty {
                 raw.append(Span(id: nextID, range: al.byteRange, itemID: item.id,
-                                title: item.title, isAxis: true, colorIndex: colorIdx))
+                                title: item.title, isAxis: true, colorIndex: 0))
                 nextID += 1
             }
         }
         raw.sort { ($0.range.lowerBound, $0.range.upperBound) < ($1.range.lowerBound, $1.range.upperBound) }
-        self.spans = raw
-        self.starts = raw.map(\.range.lowerBound)
+        // Assign colors in sorted binary address order so neighboring maps never share a similar hue.
+        var assigned: [Span] = []
+        assigned.reserveCapacity(raw.count)
+        var colorCursor = 0
+        var prevItemID: Int?
+        var prevColor = -1
+        for s in raw {
+            let c: Int
+            if s.itemID == prevItemID && prevColor >= 0 {
+                c = prevColor
+            } else {
+                c = colorCursor % Self.palette.count
+                colorCursor += 1
+            }
+            prevItemID = s.itemID
+            prevColor = c
+            assigned.append(Span(id: s.id, range: s.range, itemID: s.itemID,
+                                 title: s.title, isAxis: s.isAxis, colorIndex: c))
+        }
+        self.spans = assigned
+        self.starts = assigned.map(\.range.lowerBound)
     }
 
     func spansOverlapping(_ rowStart: Int, _ rowEnd: Int) -> [Span] {
@@ -66,10 +84,22 @@ struct XDFAddressIndex {
         spansOverlapping(offset, offset + 1).first
     }
 
-    static let palette: [Color] = [.blue, .purple, .teal, .green, .indigo, .pink, .mint, .cyan]
+    /// Alternating warm/cool complementary hues so adjacent maps in binary address order always pop apart.
+    static let palette: [Color] = [
+        Color(red: 0.18, green: 0.56, blue: 0.96), // vivid blue
+        Color(red: 0.92, green: 0.34, blue: 0.48), // rose / crimson
+        Color(red: 0.16, green: 0.76, blue: 0.46), // emerald green
+        Color(red: 0.68, green: 0.38, blue: 0.95), // violet
+        Color(red: 0.88, green: 0.62, blue: 0.14), // amber gold
+        Color(red: 0.12, green: 0.74, blue: 0.82), // cyan-teal
+    ]
 
     static func color(for span: Span) -> Color {
-        palette[span.colorIndex % palette.count].opacity(span.isAxis ? 0.20 : 0.30)
+        palette[span.colorIndex % palette.count].opacity(span.isAxis ? 0.18 : 0.27)
+    }
+
+    static func borderColor(for span: Span) -> Color {
+        palette[span.colorIndex % palette.count].opacity(span.isAxis ? 0.55 : 0.78)
     }
 }
 
@@ -138,11 +168,17 @@ struct HexDiffView: View {
         var isFloat: Bool { self == .f32 }
     }
 
+    enum NumberBase: String, CaseIterable {
+        case hex = "Hex"
+        case dec = "Dec"
+        case bin = "Bin"
+    }
+
     @State private var viewMode: ViewMode = .text
     @State private var dataFormat: DataFormat = .u8
     @State private var lsbFirst = true
     @State private var isSigned = false
-    @State private var isHex = true
+    @State private var numberBase: NumberBase = .hex
     @State private var columns = 16
     @State private var byteShift = 0
     @State private var showBars = true
@@ -284,19 +320,26 @@ struct HexDiffView: View {
             .fixedSize()
             .help("Datenbreite: 8-Bit, 16-Bit, 32-Bit oder Float")
 
-            // LoHi / HiLo
-            Button { lsbFirst.toggle() } label: {
-                Text(lsbFirst ? "LoHi" : "HiLo").font(.caption.monospaced().weight(.semibold))
+            // LoHi / HiLo (Low-High vs. High-Low)
+            Picker("Byte-Reihenfolge", selection: $lsbFirst) {
+                Text("LoHi").tag(true)
+                Text("HiLo").tag(false)
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
             .disabled(dataFormat == .u8)
-            .help("Byte-Reihenfolge: LoHi (Intel/LE) vs. HiLo (Motorola/BE)")
+            .help("Byte-Reihenfolge: LoHi (Low-High / Intel LE) vs. HiLo (High-Low / Motorola BE)")
 
-            // Hex / Dec
-            Button { isHex.toggle() } label: {
-                Text(isHex ? "FF" : "255").font(.caption.monospaced().weight(.semibold))
+            // Hex / Dec / Bin
+            Picker("Zahlensystem", selection: $numberBase) {
+                ForEach(NumberBase.allCases, id: \.self) { b in Text(b.rawValue).tag(b) }
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
             .disabled(dataFormat.isFloat)
-            .help("Zahlensystem: Hexadezimal (FF) vs. Dezimal (255)")
+            .help("Zahlensystem: Hex (FF) · Dec (255) · Bin (11111111)")
 
             // Signed / Unsigned
             Toggle(isOn: $isSigned) {
@@ -523,7 +566,10 @@ struct HexDiffView: View {
                             let text = formatElement(bin, at: off)
                             let fg: Color = isDiff ? Theme.changed : (isSel ? .white : .primary)
                             let weight: Font.Weight = isDiff ? .bold : (isSel ? .semibold : .regular)
-                            ctx.draw(Text(text).font(.system(size: 10.5, weight: weight, design: .monospaced)).foregroundStyle(fg),
+                            let cellFontSize: CGFloat = numberBase == .bin
+                                ? min(10.0, max(6.0, (rect.width - 4) / (CGFloat(max(2, text.count)) * 0.62)))
+                                : 10.5
+                            ctx.draw(Text(text).font(.system(size: cellFontSize, weight: weight, design: .monospaced)).foregroundStyle(fg),
                                      at: CGPoint(x: rect.midX, y: rect.midY), anchor: .center)
 
                             // WinOLS per-row bar-graph on the right!
@@ -575,6 +621,51 @@ struct HexDiffView: View {
                                     .foregroundStyle(.secondary),
                                          at: CGPoint(x: pill.midX, y: pill.midY), anchor: .center)
                             }
+                        }
+                    }
+
+                    // Crisp colored perimeter borders around each XDF map so adjacent maps always separate cleanly
+                    let visSpans = cachedIndex.spansOverlapping(max(0, startAddr - rowStride), min(bin.count, startAddr + (visibleRows + 1) * rowStride))
+                    if !visSpans.isEmpty {
+                        func spanIDAt(_ rr: Int, _ cc: Int) -> Int? {
+                            guard cc >= 0, cc < columns else { return nil }
+                            let off = startAddr + rr * rowStride + cc * elemBytes
+                            guard off >= 0, off < bin.count else { return nil }
+                            return visSpans.first { $0.range.contains(off) }?.id
+                        }
+                        var pathsBySpan: [Int: (span: XDFAddressIndex.Span, path: Path)] = [:]
+                        for r in 0..<visibleRows {
+                            let y = headerH + CGFloat(r) * rowHeight
+                            for c in 0..<columns {
+                                let off = startAddr + r * rowStride + c * elemBytes
+                                guard off < bin.count, let sp = visSpans.first(where: { $0.range.contains(off) }) else { continue }
+                                var entry = pathsBySpan[sp.id] ?? (sp, Path())
+                                let x0 = addrWidth + CGFloat(c) * cellW + 0.5
+                                let x1 = addrWidth + CGFloat(c + 1) * cellW - 0.5
+                                let y0 = y + 0.5
+                                let y1 = y + rowHeight - 0.5
+                                if spanIDAt(r - 1, c) != sp.id {
+                                    entry.path.move(to: CGPoint(x: x0, y: y0))
+                                    entry.path.addLine(to: CGPoint(x: x1, y: y0))
+                                }
+                                if spanIDAt(r + 1, c) != sp.id {
+                                    entry.path.move(to: CGPoint(x: x0, y: y1))
+                                    entry.path.addLine(to: CGPoint(x: x1, y: y1))
+                                }
+                                if spanIDAt(r, c - 1) != sp.id {
+                                    entry.path.move(to: CGPoint(x: x0, y: y0))
+                                    entry.path.addLine(to: CGPoint(x: x0, y: y1))
+                                }
+                                if spanIDAt(r, c + 1) != sp.id {
+                                    entry.path.move(to: CGPoint(x: x1, y: y0))
+                                    entry.path.addLine(to: CGPoint(x: x1, y: y1))
+                                }
+                                pathsBySpan[sp.id] = entry
+                            }
+                        }
+                        for (_, entry) in pathsBySpan where !entry.path.isEmpty {
+                            ctx.stroke(entry.path, with: .color(XDFAddressIndex.borderColor(for: entry.span)),
+                                       style: StrokeStyle(lineWidth: 1.15, lineCap: .square, lineJoin: .miter))
                         }
                     }
 
@@ -1412,7 +1503,7 @@ struct HexDiffView: View {
         return HStack(spacing: 12) {
             if activeOff < bin.count {
                 Text(String(format: "0x%05X", activeOff)).font(.caption.bold().monospaced())
-                Text("U8: \(bin[activeOff])").font(.caption.monospacedDigit())
+                Text("U8: \(bin[activeOff]) · Bin: \(String(bin[activeOff], radix: 2).leftPadded(to: 8))").font(.caption.monospaced())
                 if activeOff + 2 <= bin.count {
                     let u16le = UInt16(bin[activeOff]) | (UInt16(bin[activeOff + 1]) << 8)
                     let u16be = (UInt16(bin[activeOff]) << 8) | UInt16(bin[activeOff + 1])
@@ -1512,13 +1603,17 @@ struct HexDiffView: View {
     private func formatElement(_ bytes: [UInt8], at off: Int) -> String {
         guard let v = readElement(bytes, at: off) else { return "—" }
         if dataFormat.isFloat { return String(format: "%.2f", v) }
-        if isHex {
-            let bits = UInt64(elemBytes * 8)
-            let mask: UInt64 = bits >= 64 ? .max : (1 << bits) - 1
-            let u = UInt64(bitPattern: Int64(v)) & mask
+        let bits = elemBytes * 8
+        let mask: UInt64 = bits >= 64 ? .max : (1 << UInt64(bits)) - 1
+        let u = UInt64(bitPattern: Int64(v)) & mask
+        switch numberBase {
+        case .hex:
             return String(u, radix: 16, uppercase: true).leftPadded(to: elemBytes * 2)
+        case .dec:
+            return String(Int64(v.rounded()))
+        case .bin:
+            return String(u, radix: 2).leftPadded(to: bits)
         }
-        return String(Int64(v.rounded()))
     }
 
     private func rebuildCaches() {
