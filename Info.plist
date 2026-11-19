@@ -58,10 +58,6 @@
 			<string>Alternate</string>
 		</dict>
 	</array>
-	<key>NSAppleScriptEnabled</key>
-	<true/>
-	<key>OSAScriptingDefinition</key>
-	<string>MacTuner.sdef</string>
 	<key>CFBundleExecutable</key>
 	<string>MacTuner</string>
 	<key>CFBundleIconFile</key>
@@ -101,12 +97,16 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.1.0</string>
+	<string>2.1.1</string>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>8</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>NSAppleScriptEnabled</key>
+	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>OSAScriptingDefinition</key>
+	<string>MacTuner.sdef</string>
 </dict>
 </plist>
