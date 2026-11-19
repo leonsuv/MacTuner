@@ -206,6 +206,8 @@ struct HexDiffView: View {
     final class HexHoverState {
         var hex: HexHoverInfo?
         var wave: WaveHoverInfo?
+        @ObservationIgnored var hexScrollAccum: CGFloat = 0
+        @ObservationIgnored var waveScrollAccum: CGFloat = 0
     }
 
     struct HexHoverInfo: Equatable {
@@ -799,8 +801,14 @@ struct HexDiffView: View {
                         let step = dy > 0 ? 1 : -1
                         columns = min(32, max(4, columns + step))
                     } else {
-                        let deltaRows = Int((-dy / 16.0).rounded())
+                        let stepPx: CGFloat = 14.0
+                        if (hoverState.hexScrollAccum > 0 && -dy < 0) || (hoverState.hexScrollAccum < 0 && -dy > 0) {
+                            hoverState.hexScrollAccum = 0
+                        }
+                        hoverState.hexScrollAccum += -dy
+                        let deltaRows = Int(hoverState.hexScrollAccum / stepPx)
                         if deltaRows != 0 {
+                            hoverState.hexScrollAccum -= CGFloat(deltaRows) * stepPx
                             let maxOff = max(0, bin.count - rowStride)
                             viewportOffset = min(max(0, viewportOffset + deltaRows * rowStride), maxOff)
                         }
@@ -1290,9 +1298,18 @@ struct HexDiffView: View {
                             if dy > 0 { waveWindowElements = max(64, Int(Double(waveWindowElements) * 0.8)) }
                             else if dy < 0 { waveWindowElements = min(16384, Int(Double(waveWindowElements) * 1.25)) }
                         } else {
-                            let delta = Int((-dy / 10.0) * Double(max(1, waveWindowElements / 32))) * elemBytes
-                            let maxOff = max(0, bin.count - rowStride)
-                            viewportOffset = min(max(0, viewportOffset + delta), maxOff)
+                            let stepPx: CGFloat = 10.0
+                            if (hoverState.waveScrollAccum > 0 && -dy < 0) || (hoverState.waveScrollAccum < 0 && -dy > 0) {
+                                hoverState.waveScrollAccum = 0
+                            }
+                            hoverState.waveScrollAccum += -dy
+                            let steps = Int(hoverState.waveScrollAccum / stepPx)
+                            if steps != 0 {
+                                hoverState.waveScrollAccum -= CGFloat(steps) * stepPx
+                                let delta = steps * max(1, waveWindowElements / 32) * elemBytes
+                                let maxOff = max(0, bin.count - rowStride)
+                                viewportOffset = min(max(0, viewportOffset + delta), maxOff)
+                            }
                         }
                     }
                     .allowsHitTesting(false)
