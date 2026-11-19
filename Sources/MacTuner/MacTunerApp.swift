@@ -77,6 +77,23 @@ struct MacTunerApp: App {
                 Button("Favoriten") { model.scope = .favorites }
                     .keyboardShortcut("3")
                 Divider()
+                Button("Befehlspalette …") { model.showCommandPalette.toggle() }
+                    .keyboardShortcut("k")
+                Divider()
+                Menu("Einheiten") {
+                    ForEach(UnitSystem.allCases) { sys in
+                        Button {
+                            model.unitSystem = sys
+                        } label: {
+                            if model.unitSystem == sys {
+                                Label(sys.label, systemImage: "checkmark")
+                            } else {
+                                Text(sys.label)
+                            }
+                        }
+                    }
+                }
+                Divider()
                 Button("Übersicht") { model.selection = nil }
                     .keyboardShortcut("0")
                     .disabled(model.definition == nil)
@@ -108,8 +125,14 @@ struct MacTunerApp: App {
                         .keyboardShortcut("d")
                         .disabled(model.selectedItem == nil)
                 }
+                if let item = model.selectedItem {
+                    Button(model.isLocked(item) ? "Kennfeld entsperren" : "Kennfeld sperren") {
+                        model.toggleLock(item)
+                    }
+                    .keyboardShortcut("l")
+                }
                 Button("Auf Vergleich zurücksetzen") { if let item = model.selectedItem { model.restore(item) } }
-                    .disabled(!(model.selectedItem.map(model.isChanged) ?? false))
+                    .disabled(!(model.selectedItem.map { model.isChanged($0) && !model.isLocked($0) } ?? false))
             }
         }
     }

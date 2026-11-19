@@ -124,13 +124,13 @@ and ideas and pull requests are welcome in [Issues](../../issues).
 
 ### Editing
 - [x] Copy and paste as tab-separated text, interpolation, selection statistics
-- [ ] 3D surface view of 2D maps, rotatable, editable by dragging points
-- [ ] Smooth the selection, fill down / right, flatten to a value, set to the average
-- [ ] Edit the axes like values, with a check that they stay monotonic
-- [ ] Copy a whole map from another file or another map with the same layout
-- [ ] Lock maps that must not change, and warn when values leave a safe range
-- [ ] Unit conversion (°C/°F, Nm/lb-ft, bar/psi) per user preference
-- [ ] Command palette (⌘K) for every action and every map
+- [x] 3D surface view of 2D maps, rotatable, editable by dragging points (with comparison ghost wireframe overlay)
+- [x] Smooth the selection, fill down / up / right / left, flatten to a value, set to the average, clamp to min/max
+- [x] Edit the axes like values, with a check that they stay monotonic
+- [x] Copy a whole map from another file or another map with the same layout
+- [x] Lock maps that must not change, and warn when values leave a safe range
+- [x] Unit conversion (°C/°F, Nm/lb-ft, bar/kPa/psi, km/h/mph, λ/AFR) per user preference
+- [x] Command palette (⌘K) for every action and every map
 
 ### Definitions
 - [ ] `XDFFLAG` bitmasks as switches, `XDFPATCH` patches with apply / revert

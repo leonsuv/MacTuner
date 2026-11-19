@@ -18,8 +18,22 @@ struct TableEditorView: View {
     @State private var input = ""
     @State private var mode: Mode
     @State private var showChart: Bool
+    @State private var show3D = false
+    @State private var editingAxis: AxisEditTarget?
+    @State private var axisInput = ""
+    @State private var showFlattenPopover = false
+    @State private var flattenInput = ""
+    @State private var showClampPopover = false
+    @State private var clampMinInput = ""
+    @State private var clampMaxInput = ""
     @AppStorage("valueMode") private var valueMode: ValueMode = .values
     @FocusState private var gridFocused: Bool
+
+    private struct AxisEditTarget: Identifiable {
+        let id = UUID()
+        let isX: Bool
+        let index: Int
+    }
 
     init(item: XDFItem, x: Axis, y: Axis) {
         self.item = item
@@ -97,19 +111,35 @@ struct TableEditorView: View {
 
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                EditControls(scaling: s, enabled: !selection.isEmpty && !isCompareView,
-                             canRestore: selection.contains { model.isChanged(l, $0) },
-                             input: $input, status: selectionText) { op in apply(op, cells: selection) }
+                EditControls(scaling: s, enabled: !selection.isEmpty && !isCompareView && !model.isLocked(item),
+                             canRestore: selection.contains { model.isChanged(l, $0) } && !model.isLocked(item),
+                             input: $input, status: selectionText) { op in applyDisplayOp(op, cells: selection) }
                 actionsMenu
             }
 
             HStack(spacing: 10) {
+                if model.isLocked(item) {
+                    Label("Gesperrt (⌘L)", systemImage: "lock.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(Color.red.opacity(0.14), in: Capsule())
+                        .fixedSize()
+                }
                 if isCompareView {
                     Label("Vergleich – nur Ansicht (Tab: zurück zur BIN)", systemImage: "eye")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Theme.compare)
                         .padding(.horizontal, 8).padding(.vertical, 2)
                         .background(Theme.compare.opacity(0.15), in: Capsule())
+                        .fixedSize()
+                }
+                if !axesMonotonic {
+                    Label("Achse nicht monoton!", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.16), in: Capsule())
                         .fixedSize()
                 }
                 Text(summary(shown))
@@ -137,7 +167,11 @@ struct TableEditorView: View {
                     }
                     .help(canWrap ? String(localized: "In Zeilen zu \(Self.wrapWidth) Werten umbrechen") : String(localized: "Zeilen/Spalten tauschen"))
                     Toggle(isOn: $showChart) { Image(systemName: "chart.xyaxis.line") }
-                        .help("Diagramm anzeigen")
+                        .help("2D-Diagramm anzeigen")
+                    if l.rows > 1 && l.cols > 1 && s.output != .hex {
+                        Toggle(isOn: $show3D) { Image(systemName: "cube") }
+                            .help("3D-Oberfläche anzeigen (drehbar & Punkte ziehbar)")
+                    }
                 }
                 .toggleStyle(.button)
                 .fixedSize()
@@ -162,18 +196,50 @@ struct TableEditorView: View {
             .frame(maxHeight: CGFloat(displayRows + 1) * (Self.cellHeight + Self.gap) + 22)
             .layoutPriority(1)
 
+            if show3D && l.rows > 1 && l.cols > 1 && s.output != .hex {
+                Surface3DView(item: item, x: x, y: y, readOnly: isCompareView)
+            }
+
             if showChart {
                 TableChart(points: chartPoints(values: shown, ys: ys), seriesCount: l.rows, dashedIsBin: isCompareView,
-                           units: s.units, xUnits: mode == .wrapped || x.scaling.units.isEmpty ? "" : x.scaling.units)
+                           units: model.displayUnit(s.units), xUnits: mode == .wrapped || x.scaling.units.isEmpty ? "" : model.displayUnit(x.scaling.units))
                     .frame(minHeight: 200, maxHeight: 380)
             }
             Spacer(minLength: 0)
         }
         .onAppear { gridFocused = true }
+        .sheet(item: $editingAxis) { target in
+            axisEditSheet(target)
+        }
+        .sheet(isPresented: $showFlattenPopover) {
+            flattenSheet
+        }
+        .sheet(isPresented: $showClampPopover) {
+            clampSheet
+        }
+    }
+
+    private var axesMonotonic: Bool {
+        let xOk = x.layout == nil || TableOps.isMonotonic(model.axisValues(x, count: l.cols))
+        let yOk = y.layout == nil || TableOps.isMonotonic(model.axisValues(y, count: l.rows))
+        return xOk && yOk
+    }
+
+    private func applyDisplayOp(_ op: EditOp, cells: Set<Cell>) {
+        let converted: EditOp
+        switch op {
+        case .set(let v):
+            converted = .set(s.output == .hex ? v : model.toNativeValue(v, xdfUnit: s.units))
+        case .add(let d):
+            converted = .add(s.output == .hex ? d : UnitConverter.deltaToNative(d, xdfUnit: s.units, system: model.unitSystem))
+        default:
+            converted = op
+        }
+        apply(converted, cells: cells)
     }
 
     private func apply(_ op: EditOp, cells: Set<Cell>) {
-        guard !cells.isEmpty, !isCompareView else { return }
+        guard !cells.isEmpty, !isCompareView, !model.isLocked(item) else { return }
         withAnimation(.easeOut(duration: 0.12)) { model.apply(op, item: item, cells: cells) }
         gridFocused = true
     }
@@ -182,6 +248,7 @@ struct TableEditorView: View {
 
     private var actionsMenu: some View {
         let changed = changedCells
+        let canTransform = !selection.isEmpty && s.output != .hex && !isCompareView && !model.isLocked(item)
         return Menu {
             Button("Alles auswählen") { selectAll() }
             Button("Geänderte Zellen auswählen") { selection = changed; anchor = changed.min { ($0.r, $0.c) < ($1.r, $1.c) } }
@@ -192,20 +259,145 @@ struct TableEditorView: View {
                 Button("Vertikal") { interpolate(.vertical) }
                 Button("Flächig (aus den vier Ecken)") { interpolate(.bilinear) }
             }
-            .disabled(selection.count < 3 || s.output == .hex || isCompareView)
+            .disabled(selection.count < 3 || !canTransform)
+            Section("Bearbeiten") {
+                Button("Glätten (3×3)") { runTransform { TableOps.smooth($0, value: $1) } }
+                    .disabled(selection.count < 2 || !canTransform)
+                Button("Auf Durchschnitt setzen") { runTransform { TableOps.setToAverage($0, value: $1) } }
+                    .disabled(selection.count < 2 || !canTransform)
+                Button("Abflachen auf Wert …") { flattenInput = ""; showFlattenPopover = true }
+                    .disabled(!canTransform)
+                Button("Auf Bereich begrenzen (Clamp) …") { clampMinInput = ""; clampMaxInput = ""; showClampPopover = true }
+                    .disabled(!canTransform)
+                Menu("Füllen") {
+                    Button("Nach unten füllen") { runTransform { TableOps.fillDown($0, value: $1) } }
+                    Button("Nach oben füllen") { runTransform { TableOps.fillUp($0, value: $1) } }
+                    Button("Nach rechts füllen") { runTransform { TableOps.fillRight($0, value: $1) } }
+                    Button("Nach links füllen") { runTransform { TableOps.fillLeft($0, value: $1) } }
+                }
+                .disabled(selection.count < 2 || !canTransform)
+            }
             Divider()
             Button("Kopieren") { if let t = copyText() { setClipboard(t) } }
                 .disabled(selection.isEmpty)
             Button("Kopieren mit Achsen") { setClipboard(copyTextWithAxes()) }
             Button("Einfügen") { pasteFromClipboard() }
-                .disabled(selection.isEmpty || isCompareView)
+                .disabled(selection.isEmpty || isCompareView || model.isLocked(item))
         } label: {
             Image(systemName: "ellipsis.circle")
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Auswahl, Interpolieren, Kopieren und Einfügen (⌘C / ⌘V)")
+        .help("Auswahl, Glätten, Füllen, Interpolieren, Kopieren und Einfügen (⌘C / ⌘V)")
+    }
+
+    private func runTransform(_ fn: (Set<Cell>, (Cell) -> Double?) -> [Cell: Double]) {
+        let disp = Set(selection.map { c -> Cell in let (i, j) = display(c); return Cell(r: i, c: j) })
+        let result = fn(disp) { d in
+            cell(d.r, d.c).flatMap { model.raw(l, $0) }.map(s.value(raw:))
+        }
+        var values: [Cell: Double] = [:]
+        for (d, v) in result { if let c = cell(d.r, d.c) { values[c] = v } }
+        apply(.values(values), cells: Set(values.keys))
+    }
+
+    private var flattenSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Auswahl abflachen").font(.headline)
+            Text("Setzt alle \(selection.count) ausgewählten Zellen auf einen einheitlichen Wert.")
+                .font(.caption).foregroundStyle(.secondary)
+            TextField("Wert (\(model.displayUnit(s.units)))", text: $flattenInput)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(commitFlatten)
+            HStack {
+                Spacer()
+                Button("Abbrechen") { showFlattenPopover = false }
+                Button("Anwenden", action: commitFlatten)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(s.parse(flattenInput) == nil)
+            }
+        }
+        .padding(16)
+        .frame(width: 300)
+    }
+
+    private func commitFlatten() {
+        guard let v = s.parse(flattenInput) else { return }
+        applyDisplayOp(.set(v), cells: selection)
+        showFlattenPopover = false
+    }
+
+    private var clampSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Werte begrenzen (Clamp)").font(.headline)
+            Text("Begrenzt die \(selection.count) ausgewählten Zellen auf Min / Max (leer = unbegrenzt).")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                TextField("Min", text: $clampMinInput).textFieldStyle(.roundedBorder)
+                Text("…")
+                TextField("Max", text: $clampMaxInput).textFieldStyle(.roundedBorder)
+            }
+            HStack {
+                Spacer()
+                Button("Abbrechen") { showClampPopover = false }
+                Button("Anwenden") {
+                    let lo = s.parse(clampMinInput).map { model.toNativeValue($0, xdfUnit: s.units) }
+                    let hi = s.parse(clampMaxInput).map { model.toNativeValue($0, xdfUnit: s.units) }
+                    runTransform { TableOps.clamp($0, min: lo, max: hi, value: $1) }
+                    showClampPopover = false
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(16)
+        .frame(width: 320)
+    }
+
+    private func axisEditSheet(_ target: AxisEditTarget) -> some View {
+        let axis = target.isX ? x : y
+        let count = target.isX ? l.cols : l.rows
+        let axisName = target.isX ? "X" : "Y"
+        let currentVals = model.axisValues(axis, count: count)
+        let parsed = axis.scaling.parse(axisInput)
+        let proposedNative = parsed.map { model.toNativeValue($0, xdfUnit: axis.scaling.units) }
+        let wouldBeMonotonic: Bool = {
+            guard let nv = proposedNative, target.index < currentVals.count else { return true }
+            var copy = currentVals
+            copy[target.index] = nv
+            return TableOps.isMonotonic(copy)
+        }()
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Achse \(axisName) [\(target.index)] bearbeiten").font(.headline)
+            TextField("Wert (\(model.displayUnit(axis.scaling.units)))", text: $axisInput)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit {
+                    if let nv = proposedNative {
+                        model.applyAxis(nv, item: item, axis: axis, axisName: axisName, index: target.index)
+                        editingAxis = nil
+                    }
+                }
+            if !wouldBeMonotonic {
+                Label("Achtung: Dieser Wert macht die Achse nicht-monoton!", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            HStack {
+                Spacer()
+                Button("Abbrechen") { editingAxis = nil }
+                Button("Speichern") {
+                    if let nv = proposedNative {
+                        model.applyAxis(nv, item: item, axis: axis, axisName: axisName, index: target.index)
+                        editingAxis = nil
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(proposedNative == nil)
+            }
+        }
+        .padding(16)
+        .frame(width: 340)
     }
 
     private var changedCells: Set<Cell> {
@@ -333,14 +525,50 @@ struct TableEditorView: View {
                     .contentShape(Rectangle())
                     .onTapGesture { selectAll() }
                 ForEach(0..<displayCols, id: \.self) { j in
-                    header(colLabels[j], changed: colChanged[j])
-                        .onTapGesture { select((0..<displayRows).compactMap { cell($0, j) }) }
+                    let isXAxis = mode == .normal
+                    let axisObj = isXAxis ? x : y
+                    let editable = mode != .wrapped && axisObj.layout != nil && !isCompareView && !model.isLocked(item)
+                    header(colLabels[j], changed: colChanged[j], editable: editable)
+                        .onTapGesture {
+                            if editable && NSEvent.modifierFlags.contains(.option) {
+                                axisInput = colLabels[j]
+                                editingAxis = AxisEditTarget(isX: isXAxis, index: j)
+                            } else {
+                                select((0..<displayRows).compactMap { cell($0, j) })
+                            }
+                        }
+                        .contextMenu {
+                            if editable {
+                                Button("Achsenwert bearbeiten …") {
+                                    axisInput = colLabels[j]
+                                    editingAxis = AxisEditTarget(isX: isXAxis, index: j)
+                                }
+                            }
+                        }
                 }
             }
             ForEach(0..<displayRows, id: \.self) { i in
                 GridRow {
-                    header(rowLabels[i], changed: rowChanged[i])
-                        .onTapGesture { select((0..<displayCols).compactMap { cell(i, $0) }) }
+                    let isXAxis = mode == .transposed
+                    let axisObj = isXAxis ? x : y
+                    let editable = mode != .wrapped && axisObj.layout != nil && !isCompareView && !model.isLocked(item)
+                    header(rowLabels[i], changed: rowChanged[i], editable: editable)
+                        .onTapGesture {
+                            if editable && NSEvent.modifierFlags.contains(.option) {
+                                axisInput = rowLabels[i]
+                                editingAxis = AxisEditTarget(isX: isXAxis, index: i)
+                            } else {
+                                select((0..<displayCols).compactMap { cell(i, $0) })
+                            }
+                        }
+                        .contextMenu {
+                            if editable {
+                                Button("Achsenwert bearbeiten …") {
+                                    axisInput = rowLabels[i]
+                                    editingAxis = AxisEditTarget(isX: isXAxis, index: i)
+                                }
+                            }
+                        }
                     ForEach(0..<displayCols, id: \.self) { j in
                         if let c = cell(i, j) {
                             cellView(c, value: values[c.r][c.c], delta: deltas.isEmpty ? nil : deltas[c.r][c.c],
@@ -364,7 +592,7 @@ struct TableEditorView: View {
         return "\(rowUnits.isEmpty ? "–" : rowUnits) ↓ \(colUnits.isEmpty ? "–" : colUnits) →"
     }
 
-    private func header(_ text: String, changed: Bool) -> some View {
+    private func header(_ text: String, changed: Bool, editable: Bool = false) -> some View {
         Text(text)
             .font(.system(size: 11, weight: changed ? .bold : .semibold).monospacedDigit())
             .foregroundStyle(changed ? Theme.changed : .secondary)
@@ -372,7 +600,9 @@ struct TableEditorView: View {
             .frame(minWidth: Self.cellWidth, minHeight: Self.cellHeight)
             .background(changed ? Theme.changed.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             .contentShape(Rectangle())
-            .help(changed ? String(localized: "Achse geändert") : "")
+            .help(changed
+                  ? String(localized: "Achse geändert") + (editable ? " · ⌥-Klick oder Rechtsklick zum Bearbeiten" : "")
+                  : (editable ? String(localized: "Klick = Zeile/Spalte · ⌥-Klick oder Rechtsklick = Achse bearbeiten") : ""))
     }
 
     private func cellView(_ c: Cell, value: Double?, delta: Double?, lo: Double, hi: Double, maxDelta: Double) -> some View {
@@ -413,6 +643,8 @@ struct TableEditorView: View {
                 if selected {
                     shape.strokeBorder(Color.primary, lineWidth: 2)
                         .shadow(color: .black.opacity(0.35), radius: 2)
+                } else if !isCompareView && model.isOutOfSafeRange(item, cell: c) {
+                    shape.strokeBorder(Color.red, lineWidth: 2)
                 }
             }
             .zIndex(selected ? 1 : 0)
@@ -520,7 +752,9 @@ struct TableEditorView: View {
             input = ""
             return .handled
         case .return:
-            if !isCompareView, let v = s.parse(input), !selection.isEmpty { model.apply(.set(v), item: item, cells: selection) }
+            if !isCompareView, !model.isLocked(item), let v = s.parse(input), !selection.isEmpty {
+                applyDisplayOp(.set(v), cells: selection)
+            }
             input = ""
             return .handled
         case .escape:

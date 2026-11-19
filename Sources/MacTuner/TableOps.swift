@@ -75,4 +75,100 @@ enum TableOps {
         while let last = rows.last, last.allSatisfy(\.isEmpty) { rows.removeLast() }
         return rows
     }
+
+    /// 3×3 weighted Gaussian smooth over selected cells (display coordinates).
+    static func smooth(_ sel: Set<Cell>, value: (Cell) -> Double?) -> [Cell: Double] {
+        var out: [Cell: Double] = [:]
+        for cell in sel {
+            var sum = 0.0
+            var weightSum = 0.0
+            for dr in -1...1 {
+                for dc in -1...1 {
+                    let neighbor = Cell(r: cell.r + dr, c: cell.c + dc)
+                    guard let v = value(neighbor), v.isFinite else { continue }
+                    let w: Double = (dr == 0 && dc == 0) ? 4.0 : ((dr == 0 || dc == 0) ? 2.0 : 1.0)
+                    sum += v * w
+                    weightSum += w
+                }
+            }
+            if weightSum > 0 { out[cell] = sum / weightSum }
+        }
+        return out
+    }
+
+    /// Copies the topmost selected cell in each column downward to all selected cells in that column.
+    static func fillDown(_ sel: Set<Cell>, value: (Cell) -> Double?) -> [Cell: Double] {
+        let byCol = Dictionary(grouping: sel, by: \.c)
+        var out: [Cell: Double] = [:]
+        for (_, cells) in byCol {
+            guard let top = cells.min(by: { $0.r < $1.r }), let v = value(top) else { continue }
+            for c in cells { out[c] = v }
+        }
+        return out
+    }
+
+    /// Copies the bottommost selected cell in each column upward.
+    static func fillUp(_ sel: Set<Cell>, value: (Cell) -> Double?) -> [Cell: Double] {
+        let byCol = Dictionary(grouping: sel, by: \.c)
+        var out: [Cell: Double] = [:]
+        for (_, cells) in byCol {
+            guard let bottom = cells.max(by: { $0.r < $1.r }), let v = value(bottom) else { continue }
+            for c in cells { out[c] = v }
+        }
+        return out
+    }
+
+    /// Copies the leftmost selected cell in each row rightward.
+    static func fillRight(_ sel: Set<Cell>, value: (Cell) -> Double?) -> [Cell: Double] {
+        let byRow = Dictionary(grouping: sel, by: \.r)
+        var out: [Cell: Double] = [:]
+        for (_, cells) in byRow {
+            guard let left = cells.min(by: { $0.c < $1.c }), let v = value(left) else { continue }
+            for c in cells { out[c] = v }
+        }
+        return out
+    }
+
+    /// Copies the rightmost selected cell in each row leftward.
+    static func fillLeft(_ sel: Set<Cell>, value: (Cell) -> Double?) -> [Cell: Double] {
+        let byRow = Dictionary(grouping: sel, by: \.r)
+        var out: [Cell: Double] = [:]
+        for (_, cells) in byRow {
+            guard let right = cells.max(by: { $0.c < $1.c }), let v = value(right) else { continue }
+            for c in cells { out[c] = v }
+        }
+        return out
+    }
+
+    /// Sets every selected cell to the arithmetic mean of the selection.
+    static func setToAverage(_ sel: Set<Cell>, value: (Cell) -> Double?) -> [Cell: Double] {
+        let vals = sel.compactMap(value).filter(\.isFinite)
+        guard !vals.isEmpty else { return [:] }
+        let avg = vals.reduce(0, +) / Double(vals.count)
+        return Dictionary(uniqueKeysWithValues: sel.map { ($0, avg) })
+    }
+
+    /// Clamps every selected cell into `[lo, hi]`.
+    static func clamp(_ sel: Set<Cell>, min lo: Double?, max hi: Double?, value: (Cell) -> Double?) -> [Cell: Double] {
+        var out: [Cell: Double] = [:]
+        for c in sel {
+            guard var v = value(c), v.isFinite else { continue }
+            if let lo { v = max(v, lo) }
+            if let hi { v = min(v, hi) }
+            out[c] = v
+        }
+        return out
+    }
+
+    /// True if values are strictly increasing or strictly decreasing (or have <= 1 elements).
+    static func isMonotonic(_ values: [Double]) -> Bool {
+        guard values.count > 1 else { return true }
+        var increasing = true
+        var decreasing = true
+        for i in 1..<values.count {
+            if values[i] <= values[i - 1] { increasing = false }
+            if values[i] >= values[i - 1] { decreasing = false }
+        }
+        return increasing || decreasing
+    }
 }

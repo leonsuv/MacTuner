@@ -91,6 +91,18 @@ enum EditOp {
     case restore
 }
 
+struct SafeRange: Codable, Hashable {
+    var min: Double?
+    var max: Double?
+
+    var isEmpty: Bool { min == nil && max == nil }
+    func contains(_ v: Double) -> Bool {
+        if let lo = min, v < lo { return false }
+        if let hi = max, v > hi { return false }
+        return true
+    }
+}
+
 enum SidebarScope: String {
     case all, changed, favorites
 }
@@ -123,10 +135,16 @@ final class AppModel {
     private(set) var dirty = false
     var selection: Int?
     var alert: String?
+    var showCommandPalette = false
     var scope: SidebarScope = .all {
         didSet { UserDefaults.standard.set(scope.rawValue, forKey: "scope") }
     }
+    var unitSystem: UnitSystem = .original {
+        didSet { UserDefaults.standard.set(unitSystem.rawValue, forKey: "unitSystem") }
+    }
     private(set) var favorites: Set<String> = []
+    private(set) var lockedItems: Set<String> = []
+    private(set) var safeRanges: [String: SafeRange] = [:]
     private(set) var recentXDFs: [URL] = []
     private(set) var recentBins: [URL] = []
 
@@ -146,6 +164,7 @@ final class AppModel {
         let d = UserDefaults.standard
         let fm = FileManager.default
         scope = d.string(forKey: "scope").flatMap(SidebarScope.init) ?? .all
+        unitSystem = d.string(forKey: "unitSystem").flatMap(UnitSystem.init) ?? .original
         recentXDFs = Self.recent("recentXDF")
         recentBins = Self.recent("recentBin")
         if let p = d.string(forKey: "xdfPath"), fm.fileExists(atPath: p) { loadXDF(URL(fileURLWithPath: p)) }
@@ -188,6 +207,13 @@ final class AppModel {
             selection = nil
             covered = Changes.coverage(def)
             favorites = Set((UserDefaults.standard.dictionary(forKey: "favorites")?[url.path] as? [String]) ?? [])
+            lockedItems = Set((UserDefaults.standard.dictionary(forKey: "lockedItems")?[url.path] as? [String]) ?? [])
+            if let rawData = (UserDefaults.standard.dictionary(forKey: "safeRanges")?[url.path] as? Data),
+               let decoded = try? JSONDecoder().decode([String: SafeRange].self, from: rawData) {
+                safeRanges = decoded
+            } else {
+                safeRanges = [:]
+            }
             UserDefaults.standard.set(url.path, forKey: "xdfPath")
             recentXDFs = Self.remember(url, in: "recentXDF")
             touch()
@@ -473,6 +499,63 @@ final class AppModel {
         UserDefaults.standard.set(all, forKey: "favorites")
     }
 
+    // MARK: Locks & Safe Ranges
+
+    func isLocked(_ item: XDFItem) -> Bool { lockedItems.contains(favoriteID(item)) }
+
+    func toggleLock(_ item: XDFItem) {
+        let id = favoriteID(item)
+        if lockedItems.contains(id) { lockedItems.remove(id) } else { lockedItems.insert(id) }
+        guard let xdfURL else { return }
+        var all = UserDefaults.standard.dictionary(forKey: "lockedItems") ?? [:]
+        all[xdfURL.path] = lockedItems.sorted()
+        UserDefaults.standard.set(all, forKey: "lockedItems")
+    }
+
+    func safeRange(for item: XDFItem) -> SafeRange {
+        safeRanges[favoriteID(item)] ?? SafeRange()
+    }
+
+    func setSafeRange(_ range: SafeRange, for item: XDFItem) {
+        let id = favoriteID(item)
+        if range.isEmpty { safeRanges.removeValue(forKey: id) } else { safeRanges[id] = range }
+        guard let xdfURL, let data = try? JSONEncoder().encode(safeRanges) else { return }
+        var all = UserDefaults.standard.dictionary(forKey: "safeRanges") ?? [:]
+        all[xdfURL.path] = data
+        UserDefaults.standard.set(all, forKey: "safeRanges")
+    }
+
+    func isOutOfSafeRange(_ item: XDFItem, cell: Cell) -> Bool {
+        let range = safeRange(for: item)
+        guard !range.isEmpty, item.scaling.output != .hex,
+              let v = raw(item.data, cell).map(item.scaling.value(raw:)) else { return false }
+        return !range.contains(v)
+    }
+
+    func outOfSafeRangeCount(_ item: XDFItem) -> Int {
+        let range = safeRange(for: item)
+        guard !range.isEmpty, item.scaling.output != .hex else { return 0 }
+        var n = 0
+        for r in 0..<item.data.rows {
+            for c in 0..<item.data.cols where isOutOfSafeRange(item, cell: Cell(r: r, c: c)) { n += 1 }
+        }
+        return n
+    }
+
+    // MARK: Units
+
+    func displayUnit(_ xdfUnit: String) -> String {
+        UnitConverter.displayUnit(xdfUnit, system: unitSystem)
+    }
+
+    func toDisplayValue(_ nativeValue: Double, xdfUnit: String) -> Double {
+        UnitConverter.toDisplay(nativeValue, xdfUnit: xdfUnit, system: unitSystem)
+    }
+
+    func toNativeValue(_ displayValue: Double, xdfUnit: String) -> Double {
+        UnitConverter.toNative(displayValue, xdfUnit: xdfUnit, system: unitSystem)
+    }
+
     // MARK: Values
 
     func raw(_ l: DataLayout, _ cell: Cell, original: Bool = false) -> Double? {
@@ -484,11 +567,23 @@ final class AppModel {
     }
 
     func text(_ l: DataLayout, _ s: Scaling, _ cell: Cell, original: Bool = false) -> String {
-        raw(l, cell, original: original).map { s.display(raw: $0, layout: l) } ?? "—"
+        guard let r = raw(l, cell, original: original) else { return "—" }
+        if s.output == .hex { return s.display(raw: r, layout: l) }
+        let v = toDisplayValue(s.value(raw: r), xdfUnit: s.units)
+        return s.format(v)
     }
 
     func axisLabels(_ a: Axis, count: Int) -> [String] {
-        BinCodec.axisLabels(a, count: count, in: bin)
+        if case .data(let l) = a.source, a.scaling.output != .hex, unitSystem != .original,
+           UnitConverter.conversion(for: a.scaling.units, system: unitSystem) != nil {
+            var out = (0..<l.cols).map { c -> String in
+                guard let r = raw(l, Cell(r: 0, c: c)) else { return "—" }
+                return a.scaling.format(toDisplayValue(a.scaling.value(raw: r), xdfUnit: a.scaling.units))
+            }
+            if out.count < count { out += (out.count..<count).map(String.init) }
+            return Array(out.prefix(count))
+        }
+        return BinCodec.axisLabels(a, count: count, in: bin)
     }
 
     func axisValues(_ a: Axis, count: Int) -> [Double] {
@@ -563,6 +658,10 @@ final class AppModel {
 
     /// Resets values and axes of the item to the comparison (one undo step).
     func restore(_ item: XDFItem) {
+        guard !isLocked(item) else {
+            alert = String(localized: "„\(item.title)“ ist gesperrt. Erst entsperren (⌘L), um es zu bearbeiten.")
+            return
+        }
         let beforeCount = undoStack.count
         restore(ranges: item.layouts.map(\.byteRange))
         if undoStack.count > beforeCount {
@@ -639,11 +738,112 @@ final class AppModel {
     // MARK: Editing
 
     func apply(_ op: EditOp, item: XDFItem, cells: Set<Cell>) {
+        guard !isLocked(item) else {
+            alert = String(localized: "„\(item.title)“ ist gesperrt. Erst entsperren (⌘L), um es zu bearbeiten.")
+            return
+        }
         let patches = BinCodec.patches(op, item: item, cells: cells, bin: bin, compare: compare)
         guard !patches.isEmpty else { return }
+
+        // Check safe range before committing
+        let range = safeRange(for: item)
+        if !range.isEmpty && item.scaling.output != .hex {
+            var tempBin = bin
+            for p in patches { tempBin.replaceSubrange(p.offset ..< p.offset + p.new.count, with: p.new) }
+            var violations = 0
+            for c in cells {
+                if let v = BinCodec.raw(item.data, c, in: tempBin).map(item.scaling.value(raw:)), !range.contains(v) {
+                    violations += 1
+                }
+            }
+            if violations > 0 {
+                let a = NSAlert()
+                a.alertStyle = .warning
+                a.messageText = String(localized: "Sicherheitsbereich überschritten")
+                let loStr = range.min.map(item.scaling.format) ?? "−∞"
+                let hiStr = range.max.map(item.scaling.format) ?? "+∞"
+                a.informativeText = String(localized: "\(violations) Zelle(n) in „\(item.title)“ liegen außerhalb des definierten Sicherheitsbereichs (\(loStr) … \(hiStr) \(item.scaling.units)). Trotzdem anwenden?")
+                a.addButton(withTitle: String(localized: "Trotzdem anwenden"))
+                a.addButton(withTitle: String(localized: "Abbrechen"))
+                if a.runModal() != .alertFirstButtonReturn { return }
+            }
+        }
+
         let summary = describeEdit(op, item: item, cells: cells, patchCount: patches.count)
         commit(patches)
         recordHistory(item: item, summary: summary)
+    }
+
+    /// Edits a single axis value stored in the BIN.
+    func applyAxis(_ nativeValue: Double, item: XDFItem, axis: Axis, axisName: String, index: Int) {
+        guard !isLocked(item) else {
+            alert = String(localized: "„\(item.title)“ ist gesperrt.")
+            return
+        }
+        guard let al = axis.layout, index >= 0, index < al.cols else { return }
+        let cell = Cell(r: 0, c: index)
+        let o = al.offset(cell), n = al.elementBytes
+        guard o >= 0, o + n <= bin.count else { return }
+        guard let r = axis.scaling.raw(for: nativeValue, layout: al) else { return }
+        let old = Array(bin[o ..< o + n])
+        let new = BinCodec.encode(al, raw: r)
+        guard new != old else { return }
+        let oldStr = BinCodec.raw(al, cell, in: bin).map { axis.scaling.display(raw: $0, layout: al) } ?? "—"
+        let newStr = axis.scaling.display(raw: r, layout: al)
+        commit([Patch(offset: o, old: old, new: new)])
+        recordHistory(item: item, summary: "Achse \(axisName) [\(index)]: \(oldStr) → \(newStr)")
+    }
+
+    /// Copies all values from another binary (at the same layout) or from another XDF item with matching dimensions.
+    func copyMap(into target: XDFItem, fromBytes sourceBytes: [UInt8], sourceLayout: DataLayout,
+                 sourceScaling: Scaling, sourceName: String, includeAxes: Bool = false) {
+        guard !isLocked(target) else {
+            alert = String(localized: "„\(target.title)“ ist gesperrt.")
+            return
+        }
+        let tl = target.data, ts = target.scaling
+        guard tl.rows == sourceLayout.rows, tl.cols == sourceLayout.cols else { return }
+        var patches: [Patch] = []
+        let sameFormat = tl.bits == sourceLayout.bits && tl.signed == sourceLayout.signed
+            && tl.lsbFirst == sourceLayout.lsbFirst && tl.isFloat == sourceLayout.isFloat
+            && ts.equation == sourceScaling.equation
+
+        for r in 0..<tl.rows {
+            for c in 0..<tl.cols {
+                let cell = Cell(r: r, c: c)
+                let to = tl.offset(cell), tn = tl.elementBytes
+                guard to >= 0, to + tn <= bin.count else { continue }
+                let old = Array(bin[to ..< to + tn])
+                let new: [UInt8]
+                if sameFormat {
+                    let so = sourceLayout.offset(cell)
+                    guard so >= 0, so + tn <= sourceBytes.count else { continue }
+                    new = Array(sourceBytes[so ..< so + tn])
+                } else {
+                    guard let sRaw = BinCodec.raw(sourceLayout, cell, in: sourceBytes) else { continue }
+                    let phys = sourceScaling.value(raw: sRaw)
+                    guard let tRaw = ts.raw(for: phys, layout: tl) else { continue }
+                    new = BinCodec.encode(tl, raw: tRaw)
+                }
+                if new != old { patches.append(Patch(offset: to, old: old, new: new)) }
+            }
+        }
+        if includeAxes {
+            for al in target.axisLayouts {
+                let r = al.byteRange
+                if r.lowerBound >= 0, r.upperBound <= bin.count, r.upperBound <= sourceBytes.count, bin[r] != sourceBytes[r] {
+                    patches.append(Patch(offset: r.lowerBound, old: Array(bin[r]), new: Array(sourceBytes[r])))
+                }
+            }
+        }
+        guard !patches.isEmpty else { return }
+        commit(patches)
+        recordHistory(item: target, summary: String(localized: "Kopiert von \(sourceName) (\(patches.count) Änderungen)"))
+    }
+
+    func matchingLayoutItems(for item: XDFItem) -> [XDFItem] {
+        guard let def = definition else { return [] }
+        return def.items.filter { $0.id != item.id && $0.data.rows == item.data.rows && $0.data.cols == item.data.cols }
     }
 
     private func describeEdit(_ op: EditOp, item: XDFItem, cells: Set<Cell>, patchCount: Int) -> String {

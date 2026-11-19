@@ -18,6 +18,8 @@ struct ContentView: View {
             ToolbarItemGroup {
                 OpenMenu()
                 ToolsMenu()
+                Button { model.showCommandPalette.toggle() } label: { Label("Befehlspalette", systemImage: "command") }
+                    .help("Befehlspalette öffnen (⌘K)")
                 ControlGroup {
                     Button { model.selectChange(-1) } label: { Label("Vorherige Änderung", systemImage: "chevron.up") }
                         .help("Vorherige Änderung (⌥⌘↑)")
@@ -47,6 +49,11 @@ struct ContentView: View {
             Text(model.alert ?? "")
         }
         .onChange(of: model.selection) { model.rememberSelection() }
+        .overlay {
+            if model.showCommandPalette {
+                CommandPaletteView(isPresented: Binding(get: { model.showCommandPalette }, set: { model.showCommandPalette = $0 }))
+            }
+        }
     }
 
     @ViewBuilder private var detail: some View {

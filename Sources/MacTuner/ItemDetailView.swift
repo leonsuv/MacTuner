@@ -6,6 +6,9 @@ struct ItemDetailView: View {
     let item: XDFItem
     @State private var descriptionExpanded = false
     @State private var showHistory = false
+    @State private var showSafeRange = false
+    @State private var safeMinText = ""
+    @State private var safeMaxText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -53,6 +56,35 @@ struct ItemDetailView: View {
                 .popover(isPresented: $showHistory) {
                     ItemHistoryPopover(item: item)
                 }
+                Button { model.toggleLock(item) } label: {
+                    Image(systemName: model.isLocked(item) ? "lock.fill" : "lock.open")
+                        .font(.title3)
+                        .foregroundStyle(model.isLocked(item) ? Color.red : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(model.isLocked(item) ? "Kennfeld entsperren (⌘L)" : "Kennfeld gegen Änderungen sperren (⌘L)")
+
+                if item.scaling.output != .hex {
+                    let sr = model.safeRange(for: item)
+                    let violations = model.outOfSafeRangeCount(item)
+                    Button {
+                        safeMinText = sr.min.map(item.scaling.format) ?? ""
+                        safeMaxText = sr.max.map(item.scaling.format) ?? ""
+                        showSafeRange.toggle()
+                    } label: {
+                        Image(systemName: violations > 0 ? "exclamationmark.shield.fill" : (sr.isEmpty ? "shield" : "checkmark.shield.fill"))
+                            .font(.title3)
+                            .foregroundStyle(violations > 0 ? Color.red : (sr.isEmpty ? Color.secondary : Color.green))
+                    }
+                    .buttonStyle(.plain)
+                    .help(violations > 0 ? "\(violations) Zelle(n) außerhalb des Sicherheitsbereichs" : "Sicherheitsbereich (Min/Max) festlegen")
+                    .popover(isPresented: $showSafeRange) {
+                        safeRangePopover
+                    }
+                }
+
+                copyFromMenu
+
                 if info.isChanged {
                     Label(badge, systemImage: "pencil")
                         .font(.caption.weight(.semibold))
@@ -100,10 +132,81 @@ struct ItemDetailView: View {
         var out: [(String, String?)] = [(String(format: "0x%05X", l.address), "number")]
         if item.isTable { out.append(("\(l.rows) × \(l.cols)", "square.grid.3x3")) }
         out.append((l.typeDescription, "memorychip"))
-        if !s.units.isEmpty { out.append((s.units, "ruler")) }
+        let dispUnit = model.displayUnit(s.units)
+        if !dispUnit.isEmpty { out.append((dispUnit, "ruler")) }
         if s.equation != "X" { out.append((s.equation, "function")) }
         if s.output == .hex { out.append(("hex", "textformat")) }
         return out
+    }
+
+    private var safeRangePopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Sicherheitsbereich (\(item.scaling.units))").font(.headline)
+            Text("Warnt beim Bearbeiten und markiert Zellen außerhalb dieses Bereichs rot.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                TextField("Min", text: $safeMinText).textFieldStyle(.roundedBorder)
+                Text("…")
+                TextField("Max", text: $safeMaxText).textFieldStyle(.roundedBorder)
+            }
+            HStack {
+                Button("Löschen") {
+                    model.setSafeRange(SafeRange(), for: item)
+                    showSafeRange = false
+                }
+                Spacer()
+                Button("Speichern") {
+                    let lo = item.scaling.parse(safeMinText)
+                    let hi = item.scaling.parse(safeMaxText)
+                    model.setSafeRange(SafeRange(min: lo, max: hi), for: item)
+                    showSafeRange = false
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(14)
+        .frame(width: 300)
+    }
+
+    private var copyFromMenu: some View {
+        let matching = model.matchingLayoutItems(for: item)
+        return Menu {
+            if let cmp = model.compare {
+                Button("Von aktivem Vergleich (\(model.compareName))") {
+                    model.copyMap(into: item, fromBytes: cmp, sourceLayout: item.data,
+                                  sourceScaling: item.scaling, sourceName: model.compareName, includeAxes: true)
+                }
+            }
+            if !model.extraCompares.isEmpty {
+                Section("Weitere Vergleichsdateien") {
+                    ForEach(model.extraCompares) { extra in
+                        Button(extra.name) {
+                            model.copyMap(into: item, fromBytes: extra.bytes, sourceLayout: item.data,
+                                          sourceScaling: item.scaling, sourceName: extra.name, includeAxes: true)
+                        }
+                    }
+                }
+            }
+            if !matching.isEmpty {
+                Section("Anderes Kennfeld mit gleichem Layout (\(item.data.rows)×\(item.data.cols))") {
+                    ForEach(matching.prefix(30)) { other in
+                        Button(other.title) {
+                            model.copyMap(into: item, fromBytes: model.bin, sourceLayout: other.data,
+                                          sourceScaling: other.scaling, sourceName: other.title, includeAxes: false)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "doc.on.doc")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(model.isLocked(item))
+        .help("Ganzes Kennfeld aus anderer Datei oder anderem Kennfeld kopieren")
     }
 }
 
@@ -229,7 +332,7 @@ struct ConstantEditorView: View {
                     .foregroundStyle(changed ? Theme.changed : .primary)
                     .contentTransition(.numericText())
                     .textSelection(.enabled)
-                Text(s.units)
+                Text(model.displayUnit(s.units))
                     .font(.title2.weight(.medium))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -243,8 +346,14 @@ struct ConstantEditorView: View {
                 tile("Bereich", "\(s.format(s.value(raw: l.rawRange.lowerBound))) … \(s.format(s.value(raw: l.rawRange.upperBound)))")
             }
 
-            EditControls(scaling: s, enabled: true, canRestore: changed, input: $input) { op in
-                withAnimation(.snappy) { model.apply(op, item: item, cells: [cell]) }
+            EditControls(scaling: s, enabled: !model.isLocked(item), canRestore: changed && !model.isLocked(item), input: $input) { op in
+                let converted: EditOp
+                switch op {
+                case .set(let v): converted = .set(s.output == .hex ? v : model.toNativeValue(v, xdfUnit: s.units))
+                case .add(let d): converted = .add(s.output == .hex ? d : UnitConverter.deltaToNative(d, xdfUnit: s.units, system: model.unitSystem))
+                default: converted = op
+                }
+                withAnimation(.snappy) { model.apply(converted, item: item, cells: [cell]) }
             }
         }
         .frame(maxWidth: 760, alignment: .leading)

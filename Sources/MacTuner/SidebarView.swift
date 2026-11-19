@@ -201,6 +201,18 @@ struct SidebarView: View {
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
             }
+            if model.isLocked(item) {
+                Image(systemName: "lock.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .help("Gesperrt")
+            }
+            if model.hasBin, model.outOfSafeRangeCount(item) > 0 {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .help("Außerhalb des Sicherheitsbereichs")
+            }
             if model.hasBin, model.isChanged(item) {
                 Circle().fill(Theme.changed).frame(width: 7, height: 7).help("Geändert gegenüber Vergleich")
             }
@@ -271,8 +283,9 @@ struct ItemContextMenu: View {
         } else {
             Button("Zu Favoriten hinzufügen") { model.toggleFavorite(item) }
         }
+        Button(model.isLocked(item) ? "Entsperren" : "Sperren") { model.toggleLock(item) }
         Button("Auf Vergleich zurücksetzen") { model.restore(item) }
-            .disabled(!model.isChanged(item))
+            .disabled(!model.isChanged(item) || model.isLocked(item))
         Divider()
         Button("Namen kopieren") {
             NSPasteboard.general.clearContents()
