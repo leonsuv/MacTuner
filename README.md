@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
 </p>
 
-![MacTuner 2.0: Map sidebar, heatmap, interactive 3D surface and 2D chart side by side](docs/v2.0-hero-sidebar.png)
+![MacTuner: Map sidebar, heatmap, interactive 3D surface and 2D chart side by side](docs/v2.0-hero-sidebar.png)
 
 TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI tuning workbench built from the ground up for macOS. When saving a binary, only the exact bytes of edited values change.
 
@@ -51,7 +51,7 @@ All UI strings live in [`Localization/translations.py`](Localization/translation
 
 ## Installation
 
-1. Download `MacTuner-2.0.0.zip` from [Releases](../../releases/latest) and unzip it (universal binary for Apple Silicon &amp; Intel).
+1. Download `MacTuner-2.2.0.zip` from [Releases](../../releases/latest) and unzip it (universal binary for Apple Silicon &amp; Intel).
 2. Move `MacTuner.app` to `/Applications`.
 3. Because the release is unsigned/not notarized, allow the first launch under **System Settings → Privacy &amp; Security → Open Anyway**, or run:
    ```sh
