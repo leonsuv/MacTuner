@@ -333,7 +333,7 @@ final class AppModel {
             loadProject(url)
         } else if ext == "xdf" {
             loadXDF(url)
-        } else if ext == "a2l" || ext == "kp" {
+        } else if ext == "a2l" || ext == "kp" || ext == "ols" {
             importDefinition(url)
         } else if ext == "csv" || ext == "adx" {
             loadDatalog(url)
@@ -445,7 +445,7 @@ final class AppModel {
     }
 
     func openXDFPanel() { if let u = chooseFile(String(localized: "XDF öffnen"), types: ["xdf"]) { loadXDF(u) } }
-    func importDefinitionPanel() { if let u = chooseFile(String(localized: "A2L / WinOLS .kp importieren"), types: ["a2l", "kp", "csv"]) { importDefinition(u) } }
+    func importDefinitionPanel() { if let u = chooseFile(String(localized: "A2L / WinOLS .kp importieren"), types: ["a2l", "ols", "kp", "csv"]) { importDefinition(u) } }
     func openBinPanel() { if let u = chooseFile(String(localized: "BIN öffnen"), types: ["bin"]) { openBin(u) } }
     func openComparePanel() { if let u = chooseFile(String(localized: "Vergleichs-BIN öffnen"), types: ["bin"]) { loadCompare(u) } }
 

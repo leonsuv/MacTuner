@@ -1,6 +1,7 @@
+import Compression
 import Foundation
 
-/// Imports ASAP2 (`.a2l` / DAMOS) and WinOLS map packs (`.kp` / `.csv`) into `XDFDefinition`.
+/// Imports ASAP2 (`.a2l` / DAMOS) and WinOLS projects / map packs (`.ols` / `.kp` / `.csv`) into `XDFDefinition`.
 enum DefinitionImporter {
     enum ImportError: LocalizedError {
         case unreadable(String)
@@ -18,7 +19,7 @@ enum DefinitionImporter {
         switch ext {
         case "a2l":
             return try parseA2L(url)
-        case "kp", "csv":
+        case "ols", "kp", "csv":
             return try parseWinOLSMapPack(url)
         default:
             if let def = try? parseA2L(url), !def.items.isEmpty { return def }
@@ -262,21 +263,36 @@ enum DefinitionImporter {
                              categories: categories, items: items, regionSize: nil)
     }
 
-    // MARK: - WinOLS Map Pack (.kp / .csv) Importer
+    // MARK: - WinOLS Project / Map Pack (.ols / .kp / .csv) Importer
 
     static func parseWinOLSMapPack(_ url: URL) throws -> XDFDefinition {
         let data = try Data(contentsOf: url)
-        // Try text / CSV map pack first (WinOLS CSV export or text .kp)
-        if let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1),
+        let bytes = [UInt8](data)
+
+        // 1. Native WinOLS binary format ("WinOLS File" magic at byte 4)
+        if isWinOLSBinary(bytes) {
+            // WinOLS v4/v5 .kp map packs embed a ZIP archive containing an "intern" map table
+            if let zipStart = findZipHeader(in: bytes, limit: min(bytes.count, 8192)),
+               let intern = extractZipEntry(from: bytes, zipStart: zipStart, named: "intern") {
+                let kpDef = parseWinOLSBinaryStream(intern, isKPIntern: true, fileName: url.lastPathComponent)
+                if !kpDef.items.isEmpty { return kpDef }
+            }
+            // Native uncompressed WinOLS .ols project file
+            let olsDef = parseWinOLSBinaryStream(bytes, isKPIntern: false, fileName: url.lastPathComponent)
+            if !olsDef.items.isEmpty { return olsDef }
+            throw ImportError.empty(url.lastPathComponent)
+        }
+
+        // 2. Text / CSV map pack (ONLY if file is genuinely text — no NUL bytes in header)
+        let headerProbe = bytes.prefix(512)
+        if !headerProbe.contains(0),
+           let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1),
            text.contains(";") || text.contains(",") {
             let parsed = parseWinOLSCsv(text, fileName: url.lastPathComponent)
             if !parsed.items.isEmpty { return parsed }
         }
-        // Binary WinOLS .kp heuristic record scanner:
-        // Extracts printable ASCII map descriptors with nearby offset/dimension metadata.
-        let binParsed = parseWinOLSBinaryKP([UInt8](data), fileName: url.lastPathComponent)
-        guard !binParsed.items.isEmpty else { throw ImportError.empty(url.lastPathComponent) }
-        return binParsed
+
+        throw ImportError.empty(url.lastPathComponent)
     }
 
     private static func parseWinOLSCsv(_ text: String, fileName: String) -> XDFDefinition {
@@ -348,42 +364,324 @@ enum DefinitionImporter {
                              categories: categories, items: items, regionSize: nil)
     }
 
-    private static func parseWinOLSBinaryKP(_ bytes: [UInt8], fileName: String) -> XDFDefinition {
-        // WinOLS .kp binary stores length-prefixed ASCII map names followed by 32-bit LE metadata fields
-        // (address, cols, rows, bits). We scan for structured map blocks safely without crashing on variants.
-        var items: [XDFItem] = []
-        var i = 0
+    // MARK: - Native WinOLS Binary (.ols & .kp intern) Parser
+
+    private static func isWinOLSBinary(_ bytes: [UInt8]) -> Bool {
+        guard bytes.count >= 16 else { return false }
+        // Bytes 4..<15 == "WinOLS File"
+        let magic: [UInt8] = [0x57, 0x69, 0x6E, 0x4F, 0x4C, 0x53, 0x20, 0x46, 0x69, 0x6C, 0x65]
+        for i in 0..<magic.count where bytes[4 + i] != magic[i] { return false }
+        return true
+    }
+
+    private static func findZipHeader(in bytes: [UInt8], limit: Int) -> Int? {
+        guard limit >= 4 else { return nil }
+        for i in 0...(limit - 4) {
+            if bytes[i] == 0x50 && bytes[i + 1] == 0x4B && bytes[i + 2] == 0x03 && bytes[i + 3] == 0x04 {
+                return i
+            }
+        }
+        return nil
+    }
+
+    /// Minimal zero-dependency ZIP local-file extractor using Apple's built-in `Compression` framework.
+    private static func extractZipEntry(from bytes: [UInt8], zipStart: Int, named targetName: String) -> [UInt8]? {
+        var pos = zipStart
+        while pos + 30 <= bytes.count {
+            guard bytes[pos] == 0x50, bytes[pos + 1] == 0x4B, bytes[pos + 2] == 0x03, bytes[pos + 3] == 0x04 else { break }
+            let method = Int(bytes[pos + 8]) | (Int(bytes[pos + 9]) << 8)
+            let compSize = Int(u32LE(bytes, at: pos + 18))
+            let uncompSize = Int(u32LE(bytes, at: pos + 22))
+            let nameLen = Int(bytes[pos + 26]) | (Int(bytes[pos + 27]) << 8)
+            let extraLen = Int(bytes[pos + 28]) | (Int(bytes[pos + 29]) << 8)
+            let nameStart = pos + 30
+            let dataStart = nameStart + nameLen + extraLen
+            guard dataStart + compSize <= bytes.count else { break }
+            let entryName = String(bytes: bytes[nameStart..<(nameStart + nameLen)], encoding: .utf8) ?? ""
+            if entryName == targetName {
+                if method == 0 {
+                    return Array(bytes[dataStart..<(dataStart + compSize)])
+                } else if method == 8 && uncompSize > 0 && uncompSize < 64_000_000 {
+                    var dst = [UInt8](repeating: 0, count: uncompSize)
+                    let decoded = bytes[dataStart..<(dataStart + compSize)].withUnsafeBytes { srcBuf -> Int in
+                        guard let srcPtr = srcBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return 0 }
+                        return dst.withUnsafeMutableBufferPointer { dstBuf in
+                            guard let dstPtr = dstBuf.baseAddress else { return 0 }
+                            return compression_decode_buffer(dstPtr, uncompSize, srcPtr, compSize, nil, COMPRESSION_ZLIB)
+                        }
+                    }
+                    return decoded > 0 ? Array(dst.prefix(decoded)) : nil
+                }
+            }
+            pos = dataStart + compSize
+        }
+        return nil
+    }
+
+    private static func u32LE(_ b: [UInt8], at i: Int) -> UInt32 {
+        UInt32(b[i]) | (UInt32(b[i + 1]) << 8) | (UInt32(b[i + 2]) << 16) | (UInt32(b[i + 3]) << 24)
+    }
+
+    private static func f64LE(_ b: [UInt8], at i: Int) -> Double {
+        let lo = UInt64(u32LE(b, at: i))
+        let hi = UInt64(u32LE(b, at: i + 4))
+        return Double(bitPattern: lo | (hi << 32))
+    }
+
+    private static func winOLSOrg(_ code: UInt32) -> (bits: Int, lsbFirst: Bool, isFloat: Bool) {
+        switch code {
+        case 1: return (8, true, false)
+        case 2: return (16, false, false)
+        case 3: return (16, true, false)
+        case 4: return (32, false, false)
+        case 5: return (32, true, false)
+        case 6: return (32, false, true)
+        case 7: return (32, true, true)
+        default: return (16, true, false)
+        }
+    }
+
+    private static func parseWinOLSBinaryStream(_ bytes: [UInt8], isKPIntern: Bool, fileName: String) -> XDFDefinition {
         let n = bytes.count
-        while i + 24 < n {
-            // Look for 4-byte LE string length between 3 and 80 followed by printable ASCII
-            let len = Int(bytes[i]) | (Int(bytes[i + 1]) << 8) | (Int(bytes[i + 2]) << 16) | (Int(bytes[i + 3]) << 24)
-            if len >= 3 && len <= 80 && i + 4 + len + 16 < n {
-                let slice = bytes[(i + 4)..<(i + 4 + len)]
-                if slice.allSatisfy({ $0 >= 32 && $0 < 127 }),
-                   let name = String(bytes: slice, encoding: .ascii),
-                   name.contains(where: \.isLetter) {
-                    let meta = i + 4 + len
-                    let addr = Int(bytes[meta]) | (Int(bytes[meta + 1]) << 8) | (Int(bytes[meta + 2]) << 16) | (Int(bytes[meta + 3]) << 24)
-                    let cols = Int(bytes[meta + 4]) | (Int(bytes[meta + 5]) << 8)
-                    let rows = Int(bytes[meta + 6]) | (Int(bytes[meta + 7]) << 8)
-                    if addr > 0 && addr < 0x1000000 && cols >= 1 && cols <= 64 && rows >= 1 && rows <= 64 {
-                        let dl = DataLayout(address: addr, bits: 16, signed: false, lsbFirst: true,
-                                            columnMajor: false, isFloat: false, rows: rows, cols: cols)
-                        let kind: XDFItem.Kind = (rows == 1 && cols == 1)
-                            ? .constant
-                            : .table(x: Axis(source: .none, count: cols, scaling: .identity),
-                                     y: Axis(source: .none, count: rows, scaling: .identity))
-                        items.append(XDFItem(id: items.count, title: name, description: "WinOLS .kp Import",
-                                             categories: [], kind: kind, data: dl, scaling: .identity))
-                        i = meta + 8
-                        continue
+
+        func readCStr(_ pos: inout Int) -> String? {
+            guard pos + 4 <= n else { return nil }
+            let ln = u32LE(bytes, at: pos)
+            if ln == 0xFFFF_FFFF { pos += 4; return "" }
+            if ln == 0 {
+                pos += (isKPIntern && pos + 4 < n && bytes[pos + 4] == 0) ? 5 : 4
+                return ""
+            }
+            let count = Int(ln)
+            guard count <= 4096, pos + 4 + count <= n else { return nil }
+            let s = String(bytes: bytes[(pos + 4)..<(pos + 4 + count)], encoding: .isoLatin1) ?? ""
+            pos += 4 + count
+            if pos < n && bytes[pos] == 0 { pos += 1 }
+            return s
+        }
+
+        func readRawStr(_ pos: inout Int) -> String? {
+            guard pos + 4 <= n else { return nil }
+            let ln = u32LE(bytes, at: pos)
+            if ln == 0xFFFF_FFFF || ln == 0 { pos += 4; return "" }
+            let count = Int(ln)
+            guard count <= 4096, pos + 4 + count <= n else { return nil }
+            let s = String(bytes: bytes[(pos + 4)..<(pos + 4 + count)], encoding: .isoLatin1) ?? ""
+            pos += 4 + count
+            return s
+        }
+
+        func readMLTail(_ pos: inout Int, pad: Int) -> Bool {
+            guard pos + pad + 4 <= n else { return false }
+            pos += pad
+            let cnt = Int(u32LE(bytes, at: pos))
+            pos += 4
+            guard cnt >= 0 && cnt < 32 else { return false }
+            for _ in 0..<cnt {
+                guard readRawStr(&pos) != nil, pos + 4 <= n else { return false }
+                pos += 4 // langID
+            }
+            return true
+        }
+
+        // Locate start of map table & expected record count
+        var pos = 0
+        var maxRecords = 0
+        if isKPIntern {
+            guard n > 0x1B else {
+                return XDFDefinition(title: fileName + " (WinOLS)", description: "", categories: [:], items: [], regionSize: nil)
+            }
+            maxRecords = Int(u32LE(bytes, at: 1))
+            pos = 0x1B
+        } else {
+            // Find WinOLS map-list sentinel 0x00118833 (33 88 11 00) in header
+            let scanLimit = min(n - 32, 65536)
+            var sentinelPos: Int?
+            if scanLimit > 16 {
+                for i in 16..<scanLimit {
+                    if bytes[i] == 0x33 && bytes[i + 1] == 0x88 && bytes[i + 2] == 0x11 && bytes[i + 3] == 0x00 {
+                        sentinelPos = i
+                        break
                     }
                 }
             }
-            i += 1
+            guard let sp = sentinelPos else {
+                return XDFDefinition(title: fileName + " (WinOLS)", description: "", categories: [:], items: [], regionSize: nil)
+            }
+            maxRecords = Int(u32LE(bytes, at: sp + 4))
+            // Advance past 4B sentinel + 4B count + 10B header padding to first entry ("Hexdump" dummy or first map)
+            pos = sp + 18
+            // If first entry is the "Hexdump" placeholder record, skip it cleanly
+            var probe = pos
+            if let firstTitle = readCStr(&probe), firstTitle == "Hexdump" {
+                // Skip past the "Hexdump" record (type == 1) to the first real map
+                // In WinOLS v303, "Hexdump" record starts at 0x592 and first real map is at 0x77f (493 bytes later)
+                // Walk it dynamically via the same record structure:
+                var p = probe
+                if p + 24 <= n {
+                    p += 24
+                    _ = readCStr(&p)
+                    p += 117 + 20
+                    _ = readCStr(&p)
+                    _ = readCStr(&p)
+                    p += 16 + 8 + 32
+                    for _ in 0..<2 {
+                        _ = readCStr(&p)
+                        _ = readCStr(&p)
+                        p += 16 + 20 + 31
+                    }
+                    p += 90
+                    if p < n {
+                        pos = p
+                        maxRecords = max(0, maxRecords - 1)
+                    }
+                }
+            }
         }
-        return XDFDefinition(title: fileName + " (WinOLS .kp)", description: "Importiert aus \(fileName)",
-                             categories: [:], items: items, regionSize: nil)
+
+        var categories: [Int: String] = [:]
+        var catMap: [String: Int] = [:]
+        var items: [XDFItem] = []
+        items.reserveCapacity(min(maxRecords, 65536))
+
+        func categoryID(for name: String) -> Int {
+            if let existing = catMap[name] { return existing }
+            let id = categories.count
+            categories[id] = name
+            catMap[name] = id
+            return id
+        }
+
+        for _ in 0..<maxRecords {
+            guard pos + 64 < n else { break }
+            guard let rawName = readCStr(&pos) else { break }
+            if isKPIntern {
+                guard readMLTail(&pos, pad: 7) else { break }
+            }
+            guard pos + 24 <= n else { break }
+            let mtype = u32LE(bytes, at: pos)
+            // Valid WinOLS map types: 1 = Hexdump, 2 = Single value, 3 = 1D/2D curve, 4 = 2D/3D map, 5 = Axis/special
+            guard mtype >= 1 && mtype <= 5 else { break }
+            let dataOrgCode = u32LE(bytes, at: pos + 8)
+            pos += 24
+
+            guard let idName = readCStr(&pos) else { break }
+            let preColsSkip = isKPIntern ? 116 : 117
+            guard pos + preColsSkip + 20 <= n else { break }
+            pos += preColsSkip
+            let cols = max(1, Int(u32LE(bytes, at: pos)))
+            let rows = max(1, Int(u32LE(bytes, at: pos + 4)))
+            pos += 20
+
+            let vdesc: String
+            let vunit: String
+            if isKPIntern {
+                guard let d = readRawStr(&pos), let u = readRawStr(&pos) else { break }
+                vdesc = d; vunit = u
+            } else {
+                guard let d = readCStr(&pos), let u = readCStr(&pos) else { break }
+                vdesc = d; vunit = u
+            }
+            guard pos + 16 + 8 + 32 <= n else { break }
+            let vFactor = f64LE(bytes, at: pos)
+            let vOffset = f64LE(bytes, at: pos + 8)
+            pos += 16
+            let startAddr = Int(u32LE(bytes, at: pos))
+            pos += 8 + 32
+
+            // Parse X and Y axes
+            struct ParsedAxis {
+                let unit: String
+                let factor: Double
+                let offset: Double
+                let src: UInt32
+                let addr: Int
+                let dorg: UInt32
+            }
+            var parsedAxes: [ParsedAxis] = []
+            var axisOK = true
+            for _ in 0..<2 {
+                let aUnit: String
+                if isKPIntern {
+                    guard readRawStr(&pos) != nil, readMLTail(&pos, pad: 8), let u = readRawStr(&pos) else {
+                        axisOK = false; break
+                    }
+                    aUnit = u
+                } else {
+                    guard readCStr(&pos) != nil, let u = readCStr(&pos) else {
+                        axisOK = false; break
+                    }
+                    aUnit = u
+                }
+                let axisTail = isKPIntern ? 43 : 31
+                guard pos + 16 + 20 + axisTail <= n else { axisOK = false; break }
+                let aFac = f64LE(bytes, at: pos)
+                let aOff = f64LE(bytes, at: pos + 8)
+                pos += 16
+                let aSrc = u32LE(bytes, at: pos)
+                let aAddr = Int(u32LE(bytes, at: pos + 4))
+                let aDorg = u32LE(bytes, at: pos + 8)
+                pos += 20 + axisTail
+                parsedAxes.append(ParsedAxis(unit: aUnit == "-" ? "" : aUnit, factor: aFac, offset: aOff,
+                                             src: aSrc, addr: aAddr, dorg: aDorg))
+            }
+            guard axisOK else { break }
+
+            let trailer = isKPIntern ? 170 : 90
+            guard pos + trailer <= n else { break }
+            pos += trailer
+
+            // Skip placeholder/empty records
+            guard mtype != 1, startAddr >= 0, cols <= 512, rows <= 512 else { continue }
+
+            let cleanName = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanID = idName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = cleanName.isEmpty ? (cleanID.isEmpty ? String(format: "Map 0x%05X", startAddr) : cleanID) : cleanName
+            let cleanUnit = vunit == "-" ? "" : vunit
+
+            // Derive category from Bosch DAMOS idName prefix (e.g. "DATA_GEC_CoCtlCehByp.xxx" -> "GEC_CoCtlCehByp")
+            var cats: [Int] = []
+            if let dot = cleanID.firstIndex(of: ".") {
+                var group = String(cleanID[..<dot])
+                if group.hasPrefix("DATA_") { group = String(group.dropFirst(5)) }
+                if !group.isEmpty { cats = [categoryID(for: group)] }
+            }
+
+            let org = winOLSOrg(dataOrgCode)
+            let safeFactor = vFactor.isFinite && vFactor != 0 ? vFactor : 1.0
+            let safeOffset = vOffset.isFinite ? vOffset : 0.0
+            let eq = formatLinearEquation(slope: safeFactor, offset: safeOffset)
+            let scaling = Scaling(equation: eq, expr: Expr.parse(eq) ?? .x, units: cleanUnit, decimals: 2, output: .float)
+            let dl = DataLayout(address: startAddr, bits: org.bits, signed: false, lsbFirst: org.lsbFirst,
+                                columnMajor: false, isFloat: org.isFloat, rows: rows, cols: cols)
+
+            func buildAxis(_ pa: ParsedAxis, count: Int) -> Axis {
+                let af = pa.factor.isFinite && pa.factor != 0 ? pa.factor : 1.0
+                let ao = pa.offset.isFinite ? pa.offset : 0.0
+                let aEq = formatLinearEquation(slope: af, offset: ao)
+                let aSc = Scaling(equation: aEq, expr: Expr.parse(aEq) ?? .x, units: pa.unit, decimals: 2, output: .float)
+                if pa.src == 1 && pa.addr > 0 && count > 1 {
+                    let aOrg = winOLSOrg(pa.dorg)
+                    let al = DataLayout(address: pa.addr, bits: aOrg.bits, signed: false, lsbFirst: aOrg.lsbFirst,
+                                        columnMajor: false, isFloat: aOrg.isFloat, rows: 1, cols: count)
+                    return Axis(source: .data(al), count: count, scaling: aSc)
+                }
+                return Axis(source: .none, count: count, scaling: aSc)
+            }
+
+            let kind: XDFItem.Kind = (rows <= 1 && cols <= 1)
+                ? .constant
+                : .table(x: buildAxis(parsedAxes[0], count: cols),
+                         y: buildAxis(parsedAxes[1], count: rows))
+            let desc = [cleanID, vdesc].filter { !$0.isEmpty && $0 != "-" }.joined(separator: "\n")
+            items.append(XDFItem(id: items.count, title: title,
+                                 description: desc.isEmpty ? "WinOLS Import" : desc,
+                                 categories: cats, kind: kind, data: dl, scaling: scaling))
+        }
+
+        return XDFDefinition(title: fileName + " (WinOLS)",
+                             description: "Importiert aus \(fileName) (\(items.count) Kennfelder)",
+                             categories: categories, items: items, regionSize: nil)
     }
 
     // MARK: - Helpers
