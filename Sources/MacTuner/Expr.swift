@@ -86,6 +86,14 @@ indirect enum Expr {
             if c == "X" || c == "x" { i += 1; return .x }
             var j = i
             while j < chars.count, chars[j].isNumber || chars[j] == "." { j += 1 }
+            // Support scientific notation (e.g. 6.103515625e-05, 1E+3)
+            if j > i, j < chars.count, chars[j] == "e" || chars[j] == "E" {
+                var k = j + 1
+                if k < chars.count, chars[k] == "+" || chars[k] == "-" { k += 1 }
+                let digitStart = k
+                while k < chars.count, chars[k].isNumber { k += 1 }
+                if k > digitStart { j = k }
+            }
             guard j > i, let v = Double(String(chars[i..<j])) else { return nil }
             i = j
             return .num(v)
