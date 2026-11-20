@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Deblochează harta";
 "Kennfeld sperren" = "Blochează harta";
 "Entsperren" = "Deblochează";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Auto-aliniere (Experimental)";
+"Trotzdem ausrichten" = "Aliniază oricum";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Auto-alinierea încearcă să găsească hărți dintr-o altă versiune software folosind tipare de octeți, axe și offset-uri de modul.\n\nRezultatul NU este 100 %% sigur — mai ales constantele 1×1 și comutatoarele. Fiecare hartă primește un procent de siguranță; verifică întotdeauna valorile și axele înainte de editare.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Se auto-aliniază hărțile la BIN-ul încărcat …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Auto-aliniat (nu 100 %% sigur): %lld ridicat (≥85%%) · %lld mediu (55–84%%) · %lld nesigur — verifică valorile și axele înainte de editare!";
+"Rückgängig" = "Anulează";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "Proiectul WinOLS provine dintr-o altă versiune BIN — adresele s-ar putea să nu corespundă.";
+"Auto-Ausrichten …" = "Auto-aliniere …";
+"Definition an BIN auto-ausrichten …" = "Auto-aliniază definiția la BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Alege BIN-ul original de referință";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Auto-aliniere: %lld%% siguranță (%@, offset %@) — verifică vizual înainte de editare";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Auto-aliniere: %lld%% (%@, offset %@)";

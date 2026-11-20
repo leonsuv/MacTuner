@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Ξεκλείδωμα χάρτη";
 "Kennfeld sperren" = "Κλείδωμα χάρτη";
 "Entsperren" = "Ξεκλείδωμα";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Αυτόματη ευθυγράμμιση (Πειραματικό)";
+"Trotzdem ausrichten" = "Ευθυγράμμιση ούτως ή άλλως";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Η αυτόματη ευθυγράμμιση προσπαθεί να εντοπίσει χάρτες από άλλη έκδοση λογισμικού με μοτίβα byte, άξονες και μετατοπίσεις.\n\nΤο αποτέλεσμα ΔΕΝ είναι 100 %% σίγουρο — ειδικά για σταθερές 1×1. Κάθε χάρτης λαμβάνει ποσοστό βεβαιότητας· ελέγχετε πάντα τιμές και άξονες πριν την επεξεργασία.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Αυτόματη ευθυγράμμιση χαρτών στο φορτωμένο BIN …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Αυτόματα ευθυγραμμισμένο (όχι 100 %% σίγουρο): %lld υψηλή (≥85%%) · %lld μέτρια (55–84%%) · %lld αβέβαιο — ελέγξτε πριν την επεξεργασία!";
+"Rückgängig" = "Αναίρεση";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "Το έργο WinOLS προέρχεται από διαφορετική έκδοση BIN — οι διευθύνσεις ενδέχεται να μην ταιριάζουν.";
+"Auto-Ausrichten …" = "Αυτόματη ευθυγράμμιση …";
+"Definition an BIN auto-ausrichten …" = "Αυτόματη ευθυγράμμιση ορισμού στο BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Επιλογή αρχικού BIN αναφοράς";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Αυτόματη ευθυγράμμιση: %lld%% βεβαιότητα (%@, offset %@) — ελέγξτε οπτικά πριν την επεξεργασία";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Αυτόματη ευθυγράμμιση: %lld%% (%@, offset %@)";

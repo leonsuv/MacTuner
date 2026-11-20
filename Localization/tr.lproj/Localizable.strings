@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Harita kilidini aç";
 "Kennfeld sperren" = "Haritayı kilitle";
 "Entsperren" = "Kilidi Aç";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Otomatik Hizalama (Deneysel)";
+"Trotzdem ausrichten" = "Yine de Hizala";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Otomatik Hizalama, bayt desenleri, eksenler ve modül ofsetlerini kullanarak farklı bir yazılım sürümündeki haritaları bulmaya çalışır.\n\nSonuç %%100 kesin DEĞİLDİR — özellikle 1×1 sabitler ve anahtarlar yanlış hizalanabilir. Her haritaya bir güven yüzdesi verilir; düzenlemeden önce değerleri ve eksenleri mutlaka kontrol edin.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Haritalar yüklü BIN dosyasına otomatik hizalanıyor …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Otomatik hizalandı (%%100 kesin değil): %lld yüksek (≥85%%) · %lld orta (55–84%%) · %lld belirsiz — düzenlemeden önce değerleri kontrol edin!";
+"Rückgängig" = "Geri Al";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "WinOLS projesi farklı bir BIN sürümüne ait — adresler yüklü BIN ile uyuşmayabilir.";
+"Auto-Ausrichten …" = "Otomatik Hizala …";
+"Definition an BIN auto-ausrichten …" = "Tanımı BIN'e Otomatik Hizala …";
+"Original-Referenz-BIN zur Definition wählen" = "Orijinal Referans BIN Seç";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Otomatik Hizalama: %%%lld güven (%@, ofset %@) — düzenlemeden önce görsel olarak kontrol edin";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Otomatik Hizalama: %%%lld (%@, ofset %@)";

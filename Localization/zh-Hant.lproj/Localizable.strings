@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "解除鎖定圖譜";
 "Kennfeld sperren" = "鎖定圖譜";
 "Entsperren" = "解除鎖定";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "自動對齊（實驗性）";
+"Trotzdem ausrichten" = "仍然對齊";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "自動對齊會嘗試透過位元組模式、座標軸與模組偏移從不同軟體版本中比對地圖。\n\n結果並非 100%% 準確 — 特別是 1×1 常數與開關可能會錯位。每個地圖都會顯示可信度百分比，編輯前請務必目視檢查數值與座標軸。";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "正在將地圖自動對齊至已載入的 BIN …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "已自動對齊（非 100%% 確定）：高 %lld (≥85%%) · 中 %lld (55–84%%) · 不確定 %lld — 編輯前請檢查數值與座標軸！";
+"Rückgängig" = "還原";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "WinOLS 專案來自不同的 BIN 版本 — 位址可能與目前 BIN 不符。";
+"Auto-Ausrichten …" = "自動對齊 …";
+"Definition an BIN auto-ausrichten …" = "將定義自動對齊至 BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "選擇定義對應的原始參考 BIN";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "自動對齊：可信度 %lld%%（%@，偏移 %@）— 編輯前請目視檢查";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "自動對齊：%lld%%（%@，偏移 %@）";

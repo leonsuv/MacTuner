@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Desbloquear mapa";
 "Kennfeld sperren" = "Bloquear mapa";
 "Entsperren" = "Desbloquear";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Auto-alinear (Experimental)";
+"Trotzdem ausrichten" = "Alinear de todos modos";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Auto-alinear intenta localizar mapas de otra versión de software mediante patrones de bytes, ejes y desplazamientos de módulo.\n\nEl resultado NO es 100 %% seguro — especialmente constantes 1×1 e interruptores. Cada mapa recibe un porcentaje de confianza; verifica siempre valores y ejes antes de editar.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Auto-alineando mapas con el BIN cargado …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Auto-alineado (no 100 %% seguro): %lld alto (≥85%%) · %lld medio (55–84%%) · %lld incierto — ¡verifica valores y ejes antes de editar!";
+"Rückgängig" = "Deshacer";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "El proyecto WinOLS proviene de otra versión de BIN — las direcciones pueden no coincidir.";
+"Auto-Ausrichten …" = "Auto-alinear …";
+"Definition an BIN auto-ausrichten …" = "Auto-alinear definición al BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Elegir BIN de referencia original";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Auto-alineación: %lld%% de confianza (%@, desplazamiento %@) — verificar antes de editar";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Auto-alineación: %lld%% (%@, desplazamiento %@)";

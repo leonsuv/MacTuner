@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Térkép feloldása";
 "Kennfeld sperren" = "Térkép zárolása";
 "Entsperren" = "Feloldás";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Automatikus igazítás (Kísérleti)";
+"Trotzdem ausrichten" = "Igazítás mégis";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Az automatikus igazítás bájtminták, tengelyek és modul-eltolások alapján próbálja megkeresni egy másik szoftververzió térképeit.\n\nAz eredmény NEM 100 %% biztos — különösen az 1×1 konstansoknál és kapcsolóknál. Minden térkép kap egy megbízhatósági százalékot; szerkesztés előtt mindig ellenőrizd az értékeket és tengelyeket.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Térképek automatikus igazítása a betöltött BIN-hez …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Automatikusan igazítva (nem 100 %% biztos): %lld magas (≥85%%) · %lld közepes (55–84%%) · %lld bizonytalan — szerkesztés előtt ellenőrizd!";
+"Rückgängig" = "Visszaállítás";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "A WinOLS projekt másik BIN verzióból származik — a címek nem biztos, hogy egyeznek.";
+"Auto-Ausrichten …" = "Auto-igazítás …";
+"Definition an BIN auto-ausrichten …" = "Definíció automatikus igazítása a BIN-hez …";
+"Original-Referenz-BIN zur Definition wählen" = "Eredeti referencia BIN kiválasztása";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Auto-igazítás: %lld%% megbízhatóság (%@, eltolás %@) — szerkesztés előtt ellenőrizd";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Auto-igazítás: %lld%% (%@, eltolás %@)";

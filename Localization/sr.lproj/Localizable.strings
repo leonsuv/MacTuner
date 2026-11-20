@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Откључај мапу";
 "Kennfeld sperren" = "Закључај мапу";
 "Entsperren" = "Откључај";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Automatsko poravnanje (Eksperimentalno)";
+"Trotzdem ausrichten" = "Ipak poravnaj";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Automatsko poravnanje pokušava da pronađe mape iz druge verzije softvera pomoću bajt obrazaca, osa i pomeraja modula.\n\nRezultat NIJE 100 %% siguran — naročito kod 1×1 konstanti i prekidača. Svaka mapa dobija procenat sigurnosti; uvek vizuelno proverite vrednosti i ose pre izmene.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Automatsko poravnavanje mapa na učitani BIN …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Automatski poravnato (nije 100 %% sigurno): %lld visoko (≥85%%) · %lld srednje (55–84%%) · %lld nesigurno — proverite pre izmene!";
+"Rückgängig" = "Poništi";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "WinOLS projekat potiče iz druge BIN verzije — adrese se možda ne poklapaju.";
+"Auto-Ausrichten …" = "Auto-poravnanje …";
+"Definition an BIN auto-ausrichten …" = "Auto-poravnaj definiciju na BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Izaberi originalni referentni BIN";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Auto-poravnanje: %lld%% sigurnosti (%@, pomeraj %@) — proveriti pre izmene";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Auto-poravnanje: %lld%% (%@, pomeraj %@)";

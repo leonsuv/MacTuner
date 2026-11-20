@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Kenveld ontgrendelen";
 "Kennfeld sperren" = "Kenveld vergrendelen";
 "Entsperren" = "Ontgrendelen";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Auto-uitlijnen (Experimenteel)";
+"Trotzdem ausrichten" = "Toch uitlijnen";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Auto-uitlijnen probeert mappen uit een andere softwareversie te vinden via bytepatronen, assen en module-offsets.\n\nHet resultaat is NIET 100 %% zeker — vooral 1×1-constanten en schakelaars. Elke map krijgt een zekerheidspercentage; controleer waarden en assen altijd visueel vóór bewerking.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Mappen worden automatisch uitgelijnd op de geladen BIN …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Automatisch uitgelijnd (niet 100 %% zeker): %lld hoog (≥85%%) · %lld gemiddeld (55–84%%) · %lld onzeker — controleer waarden & assen vóór bewerking!";
+"Rückgängig" = "Ongedaan maken";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "WinOLS-project komt van een andere BIN-versie — adressen komen mogelijk niet overeen.";
+"Auto-Ausrichten …" = "Auto-uitlijnen …";
+"Definition an BIN auto-ausrichten …" = "Definitie automatisch uitlijnen op BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Originele referentie-BIN kiezen";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Auto-uitlijning: %lld%% zekerheid (%@, offset %@) — visueel controleren vóór bewerking";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Auto-uitlijning: %lld%% (%@, offset %@)";

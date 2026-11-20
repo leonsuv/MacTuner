@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "맵 잠금 해제";
 "Kennfeld sperren" = "맵 잠금";
 "Entsperren" = "잠금 해제";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "자동 정렬 (실험적)";
+"Trotzdem ausrichten" = "계속 정렬";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "자동 정렬은 바이트 패턴, 축, 모듈 오프셋을 사용해 다른 소프트웨어 버전의 맵을 찾습니다.\n\n결과는 100%% 보장되지 않습니다(특히 1×1 상수 및 스위치). 각 맵에 신뢰도(%%)가 표시되므로 편집 전 항상 값과 축을 확인하세요.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "불러온 BIN에 맵을 자동 정렬하는 중 …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "자동 정렬됨 (100%% 확실하지 않음): 높음 %lld (≥85%%) · 보통 %lld (55–84%%) · 불확실 %lld — 편집 전 값과 축을 확인하세요!";
+"Rückgängig" = "되돌리기";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "WinOLS 프로젝트가 다른 BIN 버전에서 생성되었습니다 — 주소가 일치하지 않을 수 있습니다.";
+"Auto-Ausrichten …" = "자동 정렬 …";
+"Definition an BIN auto-ausrichten …" = "정의를 BIN에 자동 정렬 …";
+"Original-Referenz-BIN zur Definition wählen" = "원본 참조 BIN 선택";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "자동 정렬: 신뢰도 %lld%% (%@, 오프셋 %@) — 편집 전 시각적으로 확인하세요";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "자동 정렬: %lld%% (%@, 오프셋 %@)";

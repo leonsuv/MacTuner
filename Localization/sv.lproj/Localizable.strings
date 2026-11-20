@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Lås upp karta";
 "Kennfeld sperren" = "Lås karta";
 "Entsperren" = "Lås upp";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Autojustering (Experimentell)";
+"Trotzdem ausrichten" = "Justera ändå";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Autojustering försöker hitta mappar från en annan mjukvaruversion med bytemönster, axlar och moduloffset.\n\nResultatet är INTE 100 %% säkert — särskilt 1×1-konstanter och switchar. Varje mapp får en säkerhetsprocent; kontrollera alltid värden och axlar visuellt innan redigering.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Autojusterar mappar till laddad BIN …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Autojusterad (inte 100 %% säker): %lld hög (≥85%%) · %lld medel (55–84%%) · %lld osäker — kontrollera värden & axlar före redigering!";
+"Rückgängig" = "Återställ";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "WinOLS-projektet kommer från en annan BIN-version — adresserna kanske inte stämmer.";
+"Auto-Ausrichten …" = "Autojustera …";
+"Definition an BIN auto-ausrichten …" = "Autojustera definition till BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Välj original referens-BIN";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Autojustering: %lld%% säkerhet (%@, offset %@) — kontrollera före redigering";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Autojustering: %lld%% (%@, offset %@)";

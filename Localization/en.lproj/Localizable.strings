@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Unlock Map";
 "Kennfeld sperren" = "Lock Map";
 "Entsperren" = "Unlock";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Auto-Align (Experimental)";
+"Trotzdem ausrichten" = "Align Anyway";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Auto-Align tries to locate maps from a different software version using byte patterns, axes, and module offsets.\n\nThe result is NOT 100%% certain — especially 1×1 constants and switches may be misaligned. Each map gets a certainty percentage; always verify values and axes visually before editing.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Auto-aligning maps to the loaded BIN …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Auto-aligned (not 100%% certain): %lld high (≥85%%) · %lld medium (55–84%%) · %lld uncertain — verify values & axes before editing!";
+"Rückgängig" = "Revert";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "WinOLS project comes from a different BIN version — addresses may not match the loaded BIN.";
+"Auto-Ausrichten …" = "Auto-Align …";
+"Definition an BIN auto-ausrichten …" = "Auto-Align Definition to BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Choose Original Reference BIN for Definition";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Auto-Alignment: %lld%% certainty (%@, offset %@) — visually verify before editing";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Auto-Alignment: %lld%% (%@, offset %@)";

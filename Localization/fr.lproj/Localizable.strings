@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Déverrouiller la cartographie";
 "Kennfeld sperren" = "Verrouiller la cartographie";
 "Entsperren" = "Déverrouiller";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Alignement auto (Expérimental)";
+"Trotzdem ausrichten" = "Aligner quand même";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "L'alignement auto tente de localiser les cartographies d'une autre version logicielle via motifs d'octets, axes et décalages de module.\n\nLe résultat n'est PAS sûr à 100 %% — en particulier les constantes 1×1 et commutateurs. Chaque cartographie reçoit un pourcentage de fiabilité ; vérifiez toujours les valeurs et axes avant modification.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Alignement automatique des cartographies sur le BIN chargé …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Aligné automatiquement (pas sûr à 100 %%) : %lld élevé (≥85%%) · %lld moyen (55–84%%) · %lld incertain — vérifiez valeurs & axes avant édition !";
+"Rückgängig" = "Annuler";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "Le projet WinOLS provient d'une autre version BIN — les adresses peuvent ne pas correspondre.";
+"Auto-Ausrichten …" = "Alignement auto …";
+"Definition an BIN auto-ausrichten …" = "Aligner auto la définition sur le BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Choisir le BIN de référence original";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Alignement auto : %lld%% de fiabilité (%@, décalage %@) — vérifier visuellement avant édition";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Alignement auto : %lld%% (%@, décalage %@)";

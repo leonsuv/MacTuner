@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Kennfeld entsperren";
 "Kennfeld sperren" = "Kennfeld sperren";
 "Entsperren" = "Entsperren";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Auto-Ausrichten (Experimentell)";
+"Trotzdem ausrichten" = "Trotzdem ausrichten";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Kennfelder werden an die geladene BIN auto-ausgerichtet …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!";
+"Rückgängig" = "Rückgängig";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN.";
+"Auto-Ausrichten …" = "Auto-Ausrichten …";
+"Definition an BIN auto-ausrichten …" = "Definition an BIN auto-ausrichten …";
+"Original-Referenz-BIN zur Definition wählen" = "Original-Referenz-BIN zur Definition wählen";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Auto-Ausrichtung: %lld%% (%@, Offset %@)";

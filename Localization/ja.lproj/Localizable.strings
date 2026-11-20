@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "マップのロックを解除";
 "Kennfeld sperren" = "マップをロック";
 "Entsperren" = "ロック解除";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "自動位置合わせ（実験的）";
+"Trotzdem ausrichten" = "それでも位置合わせ";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "自動位置合わせは、バイトパターン・軸・モジュールオフセットから別ソフトウェア版のマップを探索します。\n\n結果は100%%確実ではありません（特に1×1定数やスイッチ）。各マップに信頼度（%%）が表示されます。編集前に必ず値と軸を目視確認してください。";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "読み込んだBINにマップを自動位置合わせ中 …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "自動位置合わせ済み（100%%確実ではありません）：高 %lld (≥85%%) · 中 %lld (55–84%%) · 不確実 %lld — 編集前に値と軸を確認してください！";
+"Rückgängig" = "元に戻す";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "WinOLSプロジェクトは別のBINバージョン用です — アドレスが一致しない可能性があります。";
+"Auto-Ausrichten …" = "自動位置合わせ …";
+"Definition an BIN auto-ausrichten …" = "定義をBINに自動位置合わせ …";
+"Original-Referenz-BIN zur Definition wählen" = "定義に対応する元の参照BINを選択";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "自動位置合わせ: 信頼度 %lld%% (%@, オフセット %@) — 編集前に目視確認してください";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "自動位置合わせ: %lld%% (%@, オフセット %@)";

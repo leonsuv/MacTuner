@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Odemknout mapu";
 "Kennfeld sperren" = "Zamknout mapu";
 "Entsperren" = "Odemknout";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Auto-zarovnání (Experimentální)";
+"Trotzdem ausrichten" = "Přesto zarovnat";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Auto-zarovnání se pokusí najít mapy z jiné verze softwaru pomocí bajtových vzorů, os a posunů modulů.\n\nVýsledek NENÍ 100 %% jistý — zejména 1×1 konstanty a přepínače. Každá mapa dostane procento spolehlivosti; před úpravou vždy zkontrolujte hodnoty a osy.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Automatické zarovnávání map na načtený BIN …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Auto-zarovnáno (není 100 %% jisté): %lld vysoká (≥85%%) · %lld střední (55–84%%) · %lld nejisté — před úpravou zkontrolujte hodnoty a osy!";
+"Rückgängig" = "Vrátit";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "WinOLS projekt pochází z jiné verze BIN — adresy nemusí odpovídat.";
+"Auto-Ausrichten …" = "Auto-zarovnat …";
+"Definition an BIN auto-ausrichten …" = "Auto-zarovnat definici k BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Vybrat původní referenční BIN";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Auto-zarovnání: %lld%% jistota (%@, posun %@) — zkontrolovat před úpravou";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Auto-zarovnání: %lld%% (%@, posun %@)";

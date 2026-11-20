@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Zhkyç hartën";
 "Kennfeld sperren" = "Kyç hartën";
 "Entsperren" = "Zhkyç";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Rreshtim automatik (Eksperimental)";
+"Trotzdem ausrichten" = "Rreshto gjithsesi";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Rreshtimi automatik përpiqet të gjejë hartat nga një version tjetër softueri duke përdorur modele bajtesh, boshte dhe zhvendosje modulesh.\n\nRezultati NUK është 100 %% i sigurt — sidomos për konstantet 1×1. Çdo hartë merr një përqindje sigurie; verifikoni gjithmonë vlerat dhe boshtet para redaktimit.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Duke rreshtuar automatikisht hartat me BIN-in e ngarkuar …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Rreshtuar automatikisht (jo 100 %% i sigurt): %lld i lartë (≥85%%) · %lld mesatar (55–84%%) · %lld i pasigurt — verifikoni para redaktimit!";
+"Rückgängig" = "Rikthe";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "Projekti WinOLS vjen nga një version tjetër BIN — adresat mund të mos përputhen.";
+"Auto-Ausrichten …" = "Rreshtim automatik …";
+"Definition an BIN auto-ausrichten …" = "Rreshto automatikisht definicionin me BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Zgjidh BIN-in origjinal të referencës";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Rreshtim automatik: %lld%% siguri (%@, zhvendosja %@) — verifiko vizualisht para redaktimit";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Rreshtim automatik: %lld%% (%@, zhvendosja %@)";

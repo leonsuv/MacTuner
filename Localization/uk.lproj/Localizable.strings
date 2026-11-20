@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Розблокувати карту";
 "Kennfeld sperren" = "Заблокувати карту";
 "Entsperren" = "Розблокувати";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Автовирівнювання (Експериментально)";
+"Trotzdem ausrichten" = "Вирівняти все одно";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Автовирівнювання намагається знайти карти з іншої версії ПЗ за шаблонами байтів, осями та зміщеннями модулів.\n\nРезультат НЕ гарантований на 100 %% — особливо для констант 1×1 і перемикачів. Кожній карті призначається відсоток впевненості; завжди перевіряйте значення та осі перед редагуванням.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Автовирівнювання карт до завантаженого BIN …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Автовирівняно (не 100 %% точно): %lld вис. (≥85%%) · %lld середн. (55–84%%) · %lld непевно — перевірте значення й осі перед редагуванням!";
+"Rückgängig" = "Скасувати";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "Проєкт WinOLS походить з іншої версії BIN — адреси можуть не збігатися.";
+"Auto-Ausrichten …" = "Автовирівняти …";
+"Definition an BIN auto-ausrichten …" = "Автовирівняти визначення до BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Вибрати оригінальний еталонний BIN";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Автовирівнювання: %lld%% впевненості (%@, зміщення %@) — перевірте перед редагуванням";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Автовирівнювання: %lld%% (%@, зміщення %@)";

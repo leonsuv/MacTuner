@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Odblokuj mapę";
 "Kennfeld sperren" = "Zablokuj mapę";
 "Entsperren" = "Odblokuj";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Auto-dopasowanie (Eksperymentalne)";
+"Trotzdem ausrichten" = "Dopasuj mimo to";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "Auto-dopasowanie próbuje znaleźć mapy z innej wersji oprogramowania na podstawie wzorców bajtów, osi i przesunięć modułów.\n\nWynik NIE jest w 100 %% pewny — szczególnie stałe 1×1 i przełączniki. Każda mapa otrzymuje procent pewności; przed edycją zawsze sprawdź wartości i osie.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Automatyczne dopasowywanie map do wczytanego pliku BIN …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Auto-dopasowano (nie 100 %% pewności): %lld wysoka (≥85%%) · %lld średnia (55–84%%) · %lld niepewna — sprawdź wartości i osie przed edycją!";
+"Rückgängig" = "Cofnij";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "Projekt WinOLS pochodzi z innej wersji BIN — adresy mogą nie pasować.";
+"Auto-Ausrichten …" = "Auto-dopasuj …";
+"Definition an BIN auto-ausrichten …" = "Auto-dopasuj definicję do BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Wybierz oryginalny referencyjny plik BIN";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Auto-dopasowanie: %lld%% pewności (%@, przesunięcie %@) — sprawdź przed edycją";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Auto-dopasowanie: %lld%% (%@, przesunięcie %@)";

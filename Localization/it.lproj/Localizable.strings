@@ -554,3 +554,17 @@
 "Kennfeld entsperren" = "Sblocca mappa";
 "Kennfeld sperren" = "Blocca mappa";
 "Entsperren" = "Sblocca";
+
+/* Auto-Align */
+"Auto-Ausrichten (Experimentell)" = "Auto-allineamento (Sperimentale)";
+"Trotzdem ausrichten" = "Allinea comunque";
+"Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 %% sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell." = "L'auto-allineamento tenta di trovare le mappe da un'altra versione software usando pattern di byte, assi e offset di modulo.\n\nIl risultato NON è sicuro al 100 %% — specialmente costanti 1×1 e switch. Ogni mappa riceve una percentuale di affidabilità; verifica sempre valori e assi prima di modificare.";
+"Kennfelder werden an die geladene BIN auto-ausgerichtet …" = "Auto-allineamento mappe al BIN caricato …";
+"Auto-ausgerichtet (nicht 100 %% sicher): %lld hoch (≥85%%) · %lld mittel (55–84%%) · %lld unsicher — Werte & Achsen vor dem Bearbeiten prüfen!" = "Auto-allineato (non sicuro al 100 %%): %lld alta (≥85%%) · %lld media (55–84%%) · %lld incerta — verifica valori e assi prima di modificare!";
+"Rückgängig" = "Ripristina";
+"WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN." = "Il progetto WinOLS proviene da una versione BIN diversa — gli indirizzi potrebbero non corrispondere.";
+"Auto-Ausrichten …" = "Auto-allinea …";
+"Definition an BIN auto-ausrichten …" = "Auto-allinea definizione al BIN …";
+"Original-Referenz-BIN zur Definition wählen" = "Scegli il BIN di riferimento originale";
+"Auto-Ausrichtung: %lld%% Sicherheit (%@, Offset %@) — vor dem Bearbeiten visuell prüfen" = "Auto-allineamento: %lld%% affidabilità (%@, offset %@) — verificare prima di modificare";
+"Auto-Ausrichtung: %lld%% (%@, Offset %@)" = "Auto-allineamento: %lld%% (%@, offset %@)";
