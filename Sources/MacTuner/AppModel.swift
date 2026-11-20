@@ -166,6 +166,87 @@ final class AppModel {
     var xdfEditorRequest: XDFEditorRequest?
     var hexJumpTarget: Range<Int>?
 
+    // Auto-Align (Cross-Version OLS / Definition Alignment)
+    var importedDefinitionURL: URL?
+    @ObservationIgnored var embeddedSourceBin: [UInt8]?
+    var hasEmbeddedSourceBin = false
+    @ObservationIgnored private var preAlignDefinition: XDFDefinition?
+    var alignmentInfo: [Int: AutoAligner.MapAlignmentInfo] = [:]
+    var alignmentSummary: AutoAligner.Summary?
+    var isAutoAligning = false
+    var showAutoAlignConfirm = false
+
+    var canAutoAlign: Bool {
+        definition != nil && hasBin && hasEmbeddedSourceBin && alignmentSummary == nil && !isAutoAligning
+    }
+
+    func alignment(for item: XDFItem) -> AutoAligner.MapAlignmentInfo? {
+        alignmentInfo[item.id]
+    }
+
+    func clearAlignmentState() {
+        preAlignDefinition = nil
+        alignmentInfo = [:]
+        alignmentSummary = nil
+        isAutoAligning = false
+    }
+
+    func refreshEmbeddedSourceBin() {
+        embeddedSourceBin = nil
+        hasEmbeddedSourceBin = false
+        guard let url = importedDefinitionURL,
+              url.pathExtension.lowercased() == "ols",
+              let def = definition, hasBin else { return }
+        if let src = AutoAligner.extractEmbeddedWinOLSBin(from: url, definition: def, targetSize: bin.count),
+           src != bin {
+            embeddedSourceBin = src
+            hasEmbeddedSourceBin = true
+        }
+    }
+
+    func startAutoAlign(referenceBin: [UInt8]? = nil) {
+        guard let def = definition, hasBin, !isAutoAligning else { return }
+        guard let src = referenceBin ?? embeddedSourceBin else {
+            autoAlignWithPickedReferenceBin()
+            return
+        }
+        let target = bin
+        if preAlignDefinition == nil { preAlignDefinition = def }
+        isAutoAligning = true
+        Task.detached(priority: .userInitiated) {
+            let result = AutoAligner.align(definition: def, sourceBin: src, targetBin: target)
+            await MainActor.run {
+                self.definition = result.alignedDefinition
+                self.covered = Changes.coverage(result.alignedDefinition)
+                self.alignmentInfo = result.infoByItemID
+                self.alignmentSummary = result.summary
+                self.isAutoAligning = false
+                self.touch()
+            }
+        }
+    }
+
+    func autoAlignWithPickedReferenceBin() {
+        guard definition != nil, hasBin else { return }
+        guard let url = chooseFile(String(localized: "Original-Referenz-BIN zur Definition wählen"), types: ["bin"]) else { return }
+        do {
+            let ref = [UInt8](try Data(contentsOf: url))
+            embeddedSourceBin = ref
+            hasEmbeddedSourceBin = true
+            startAutoAlign(referenceBin: ref)
+        } catch {
+            alert = String(localized: "BIN konnte nicht geladen werden:\n\(error.localizedDescription)")
+        }
+    }
+
+    func revertAutoAlign() {
+        guard let orig = preAlignDefinition else { return }
+        definition = orig
+        covered = Changes.coverage(orig)
+        clearAlignmentState()
+        touch()
+    }
+
     func showInHexEditor(_ item: XDFItem) {
         let range = item.data.byteRange
         hexJumpTarget = range
@@ -453,11 +534,14 @@ final class AppModel {
         do {
             let def = try DefinitionImporter.load(url)
             definition = def
+            importedDefinitionURL = url
             xdfURL = nil
             xdfDirty = true
             selection = nil
             covered = Changes.coverage(def)
             mapNotes = MapNotesStore.Payload()
+            clearAlignmentState()
+            refreshEmbeddedSourceBin()
             touch()
             checkSize()
         } catch {
@@ -469,6 +553,10 @@ final class AppModel {
         do {
             let def = try XDFParser.load(url)
             definition = def
+            importedDefinitionURL = nil
+            embeddedSourceBin = nil
+            hasEmbeddedSourceBin = false
+            clearAlignmentState()
             xdfURL = url
             xdfDirty = false
             selection = nil
@@ -699,6 +787,8 @@ final class AppModel {
             checksumCache = nil
             UserDefaults.standard.set(url.path, forKey: "binPath")
             recentBins = Self.remember(url, in: "recentBin")
+            clearAlignmentState()
+            refreshEmbeddedSourceBin()
             touch()
             checkSize()
         } catch {

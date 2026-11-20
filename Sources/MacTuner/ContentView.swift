@@ -12,7 +12,11 @@ struct ContentView: View {
                     SidebarView(search: search)
                         .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 460)
                 } detail: {
-                    detail
+                    VStack(spacing: 0) {
+                        autoAlignBanner
+                        detail
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .searchable(text: $search, placement: .sidebar, prompt: "Kennfeld suchen")
                 .toolbar {
@@ -62,6 +66,12 @@ struct ContentView: View {
         } message: {
             Text(model.alert ?? "")
         }
+        .alert("Auto-Ausrichten (Experimentell)", isPresented: Binding(get: { model.showAutoAlignConfirm }, set: { model.showAutoAlignConfirm = $0 })) {
+            Button("Abbrechen", role: .cancel) {}
+            Button("Trotzdem ausrichten") { model.startAutoAlign() }
+        } message: {
+            Text("Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 % sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell.")
+        }
         .onChange(of: model.selection) { model.rememberSelection() }
         .overlay {
             if model.showCommandPalette {
@@ -71,6 +81,50 @@ struct ContentView: View {
         .sheet(item: Binding(get: { model.xdfEditorRequest }, set: { model.xdfEditorRequest = $0 })) { req in
             XDFItemEditorSheet(existingItem: req.existingItem, presetRange: req.presetRange)
                 .environment(model)
+        }
+    }
+
+    @ViewBuilder private var autoAlignBanner: some View {
+        if model.isAutoAligning {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Kennfelder werden an die geladene BIN auto-ausgerichtet …")
+                    .font(.caption.weight(.medium))
+                Spacer()
+            }
+            .padding(.horizontal, 14).padding(.vertical, 7)
+            .background(Color.accentColor.opacity(0.12))
+            Divider()
+        } else if let sum = model.alignmentSummary {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text("Auto-ausgerichtet (nicht 100 % sicher): \(sum.highCount) hoch (≥85%) · \(sum.mediumCount) mittel (55–84%) · \(sum.lowCount) unsicher — Werte & Achsen vor dem Bearbeiten prüfen!")
+                    .font(.caption.weight(.medium))
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                Button("Rückgängig") { model.revertAutoAlign() }
+                    .controlSize(.small)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 7)
+            .background(Color.orange.opacity(0.14))
+            Divider()
+        } else if model.canAutoAlign {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text("WinOLS-Projekt stammt von einer anderen BIN-Version — Adressen passen ggf. nicht zur geladenen BIN.")
+                    .font(.caption.weight(.medium))
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                Button("Auto-Ausrichten …") { model.showAutoAlignConfirm = true }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 7)
+            .background(Color.orange.opacity(0.12))
+            Divider()
         }
     }
 

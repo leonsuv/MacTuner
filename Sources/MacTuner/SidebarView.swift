@@ -198,6 +198,13 @@ struct SidebarView: View {
             ItemIcon(item: item)
             Text(model.displayTitle(item)).lineLimit(1)
             Spacer(minLength: 4)
+            if let align = model.alignment(for: item) {
+                let col: Color = align.tier == .high ? .green : (align.tier == .medium ? .orange : .red)
+                Text("\(align.percent)%")
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(col)
+                    .help("Auto-Ausrichtung: \(align.percent)% (\(align.method.rawValue), Offset \(align.deltaHex))")
+            }
             if item.isTable {
                 Text(verbatim: "\(item.data.rows)×\(item.data.cols)")
                     .font(.caption2.monospacedDigit())

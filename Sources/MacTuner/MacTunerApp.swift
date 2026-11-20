@@ -101,6 +101,14 @@ struct MacTunerApp: App {
                 Divider()
                 Button("Befehlspalette …") { model.showCommandPalette.toggle() }
                     .keyboardShortcut("k")
+                Button("Definition an BIN auto-ausrichten …") {
+                    if model.hasEmbeddedSourceBin {
+                        model.showAutoAlignConfirm = true
+                    } else {
+                        model.autoAlignWithPickedReferenceBin()
+                    }
+                }
+                .disabled(model.definition == nil || !model.hasBin || model.isAutoAligning)
                 Divider()
                 Menu("Einheiten") {
                     ForEach(UnitSystem.allCases) { sys in

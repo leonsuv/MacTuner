@@ -64,6 +64,17 @@ struct ItemDetailView: View {
                 .buttonStyle(.plain)
                 .help(favorite ? String(localized: "Aus Favoriten entfernen (⌘D)") : String(localized: "Zu Favoriten hinzufügen (⌘D)"))
 
+                if let align = model.alignment(for: item) {
+                    let color: Color = align.tier == .high ? .green : (align.tier == .medium ? .orange : .red)
+                    let icon = align.tier == .high ? "checkmark.seal.fill" : (align.tier == .medium ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
+                    Label("\(align.percent)% · \(align.method.rawValue)", systemImage: icon)
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(color.opacity(0.16), in: Capsule())
+                        .foregroundStyle(color)
+                        .help("Auto-Ausrichtung: \(align.percent)% Sicherheit (\(align.method.rawValue), Offset \(align.deltaHex)) — vor dem Bearbeiten visuell prüfen")
+                }
+
                 if info.isChanged {
                     Label(badge, systemImage: "pencil")
                         .font(.caption.weight(.semibold))
