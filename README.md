@@ -5,53 +5,82 @@
 <h1 align="center">MacTuner</h1>
 
 <p align="center">
-  A native macOS ECU &amp; TCU tuning workbench: edit TunerPro XDF definitions (v1.60 XML &amp; legacy v1.11), A2L/DAMOS and WinOLS map packs, inspect binaries in 60-FPS Hex / 2D / 3D, compare files, log data, and verify checksums — no Wine, no VM, zero dependencies.
+  <strong>A native macOS ECU &amp; TCU tuning workbench.</strong><br>
+  WinOLS-class 60-FPS Hex &amp; Map Recognition · TunerPro XDF, A2L/DAMOS &amp; WinOLS Map Packs · Interactive 3D Surfaces · OEM DTC Switcher · Virtual Road Dyno · Checksums — no Wine, no VM, zero dependencies.
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/leonsuv/MacTuner?label=Download" alt="Download"></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/leonsuv/MacTuner?label=Download&color=007AFF" alt="Download"></a>
   <img src="https://img.shields.io/badge/macOS-14%2B-blue" alt="macOS 14+">
-  <img src="https://img.shields.io/badge/Apple%20Silicon%20%2B%20Intel-universal-lightgrey" alt="Universal">
+  <img src="https://img.shields.io/badge/Apple%20Silicon%20%2B%20Intel-Universal-lightgrey" alt="Universal">
   <img src="https://img.shields.io/badge/Swift-SwiftUI-orange" alt="SwiftUI">
-  <img src="https://img.shields.io/badge/languages-25-purple" alt="25 languages">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
+  <img src="https://img.shields.io/badge/Languages-25-purple" alt="25 languages">
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT">
 </p>
 
-![MacTuner: Map sidebar, heatmap, interactive 3D surface and 2D chart side by side](docs/v2.0-hero-sidebar.png)
+<p align="center">
+  <a href="#gallery">Gallery</a> ·
+  <a href="#highlights">Highlights</a> ·
+  <a href="#installation">Installation</a> ·
+  <a href="#shortcuts--cli">Shortcuts &amp; CLI</a> ·
+  <a href="#supported-formats">Formats</a> ·
+  <a href="#building">Building</a>
+</p>
 
-TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI tuning workbench built from the ground up for macOS. When saving a binary, only the exact bytes of edited values change.
+![MacTuner: Map sidebar, heatmap, top-down interactive 3D surface and 2D chart side by side](docs/v2.5-hero-editor.png)
+
+TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI &amp; AppKit tuning workbench engineered from the ground up for macOS. Every edit is non-destructive and byte-exact: when saving a binary, only the exact bytes of edited values change.
+
+---
+
+## Gallery
+
+| **WinOLS-Class Split Hex-Diff &amp; In-Hex Map Recognition** | **Overview, ECU Identification &amp; Change Summary** |
+|---|---|
+| ![Split Hex-Diff with In-Hex Map Recognition and Live Mini-Heatmap HUD](docs/v2.5-hex-recognition.png) | ![Overview Dashboard with ECU Identification and Change List](docs/v2.5-overview.png) |
+| **Table Difference View (Δ / Δ %)** | **Multi-File Compare (Stock · Stage 1 · Stage 2)** |
+| ![Table Difference View with 3D Surface and 2D Chart](docs/v2.5-delta.png) | ![3-File Multi-Compare](docs/v2.5-multicompare.png) |
+| **OEM DTC Table Scanner &amp; 1-Click Switcher** | **Checksums, Flash-Tool Presets &amp; BIN Utilities** |
+| ![OEM DTC Table Scanner & 1-Click Switcher](docs/v2.5-dtc-scanner.png) | ![Checksums, Flash Presets & BIN Utilities](docs/v2.5-checksum-tools.png) |
+
+---
 
 ## Highlights
 
-- **Heatmap, 2D Charts &amp; Interactive 3D Surface.** Edit 1D curves and 2D maps with color-blind-friendly palettes (Classic, Viridis, Cividis, Plasma, High Contrast), drag vertices live in 3D with camera-facing X/Y/Z axes and comparison wireframe overlays, wrap long 1×N tables, or transpose rows and columns.
-- **WinOLS-Class 60-FPS Binary Analyzer.** Windowed GPU-backed Hexdump with `8 / 16 / 32 / Float`, `LoHi / HiLo`, `Hex / Dec`, `Signed / Unsigned`, adjustable column width, element-aligned &amp; odd-byte offset shifting, inline per-row 2D bar-graphs, zoomable 2D waveform with drag-to-select &amp; offset-sync slider, live 3D preview, whole-file minimap + Shannon entropy map, wildcard (`??`) search, bookmarks, twin-map detector, and double-click to jump straight to any XDF map.
-- **Multi-File Compare, Snapshots &amp; History.** Compare 3+ binaries side by side (Stock, Stage 1, Stage 2, Snapshots), inspect **BIN · Comparison · Δ · Δ %** per table, save named snapshots, track per-map edit history with notes across sessions, and export printable multi-page **PDF reports with charts** (`⌘P` / `⇧⌘E`).
-- **Spreadsheet-Style Editing &amp; Safety.** Type values directly, step with `+ / −`, scale by `%`, copy/paste TSV (`⌘C / ⌘V`), interpolate horizontally/vertically/bilinearly, axis-aware smooth, fill down/up/right/left, flatten, clamp, edit axes inline with live monotonicity checks, lock maps (`⌘L`), set safe min/max ranges, and convert units on the fly (`°C/°F`, `Nm/lb-ft`, `bar/kPa/psi`, `km/h/mph`, `λ/AFR`).
-- **Definitions &amp; Map Finding.** Reads **XDF 1.60 XML**, **legacy XDF v1.11 text**, **A2L / DAMOS**, and **WinOLS `.kp` / `.csv`** map packs — including `XDFTABLE`, `XDFCONSTANT`, `XDFFLAG` switches, and `XDFPATCH` apply/revert. Includes a built-in XDF editor, create-map-from-selection, sidecar map notes, on-the-fly ECU glossary translation, structure-based Map Finder, cross-version tune porting, `.mtpatch` batch tuning, and automatic map diagnostics.
-- **Checksums, Datalogging &amp; Automation.** Built-in checksum plugins (Bosch ME7 / MED17 / EDC17, Siemens MS4x/SIMOS, Temic DQ250, generic CRC-32) with open/pre-save verification and flash-tool export presets (KESS, KTAG, PCMFlash, Flex, CMDFlash, MPPS); CSV/ADX/ADS datalog playback with live heatmap trace, hit-count overlay &amp; tuning suggestions; `.mtproj` projects, multi-window tabs, `⌘K` Command Palette, `mactuner` CLI, Shortcuts/AppleScript, and JavaScript plugins (`JavaScriptCore`).
+### In-Hex Map Recognition &amp; 60-FPS Binary Analyzer
+- **Automatic OEM Map Recognition:** Fast zero-allocation background scanner detects Bosch paired &amp; EDC17/MED17 interleaved 16-bit 2D headers, Bosch 8-bit headers, packed 1D curve chains, axis-anchored 2D surfaces, Signed (`±`) maps &amp; axes, IEEE-754 `Float32`, and row-pitch autocorrelated headerless maps.
+- **Hinted Blueprint Overlay &amp; Live Mini-Heatmap HUD:** Recognized maps render as subtle Amber-Gold dashed contours with Mint-Teal axes across Single-BIN, Split-Diff, 2D Waveform, and the vertical scrollbar/minimap. Hover any map for a live mini-heatmap (with diff pips) or 1D sparkline, min/max/mean stats, and axis endpoints.
+- **1-Click Right-Click → XDF &amp; True Click-Through Menus:** Double-click any potential map to select it, or right-click directly to **Add to XDF (1-Click)**, **Open in Table Editor**, **Align Hex Columns (`Spalten = W`)**, **Open 3D Preview**, or **Find Twin Maps**. Non-activating glass context menus let outside clicks pass straight through on the very first click.
+- **Full WinOLS Inspection Suite:** `8 / 16 / 32 / Float`, `LoHi / HiLo`, `Hex / Dec / Bin`, `Signed / Unsigned`, column-width &amp; odd-byte shift, inline 2D bar-graphs, Coral/Cyan synchronized Split-Diff with 1-click row transfer (`←`), Auto-Sync offset alignment, zoomable 2D waveform, Shannon entropy map, wildcard (`??`) search, and persistent bookmarks.
 
-| WinOLS-class Hexdump, 2D Bar-Graph &amp; Waveform | Overview &amp; Workbench |
-|---|---|
-| ![Hexdump & 2D Waveform](docs/v2.1-hexdump.png) | ![Overview](docs/v2.0-overview.png) |
-| **Difference view (Δ)** | **Multi-File Compare (3+ binaries)** |
-| ![Difference view](docs/v2.0-delta.png) | ![Multi-File Compare](docs/v2.0-multicompare.png) |
+### Precision Calibration &amp; Surface Editing
+- **Heatmap, 2D Active-Slice Charts &amp; Top-Down 3D Surface:** Color-blind-friendly palettes (Classic, Viridis, Cividis, Plasma, High Contrast), drag vertices live in 3D with comparison wireframe overlays, transpose or wrap 1×N tables, and toggle **Mirror Edits** to edit pinned twin maps (e.g. Bank 1/2) atomically.
+- **Axis Rescaling Wizard &amp; Multi-Variable `f(x)` Formulas:** Rescale X/Y breakpoints with automatic bilinear Z-surface re-interpolation (cascading across shared-axis maps in one Undo step), or transform selections using `X`, `CMP`, `AX`, `AY`, `R`, `C`, functions (`min`, `max`, `clamp`, `iff`, `sqrt`, `pow`, …), and bitwise operators.
+- **Spreadsheet Workflow &amp; Safety:** Type values directly, step `+ / −`, scale `%`, TSV copy/paste (`⌘C / ⌘V`), interpolate, smooth, fill, flatten, clamp, lock maps (`⌘L`), set safe min/max ranges, convert units (`°C/°F`, `Nm/lb-ft`, `bar/kPa/psi`, `km/h/mph`, `λ/AFR`), and check TCU Upshift/Downshift hysteresis automatically.
+
+### OEM DTC Switcher, Checksums, BIN Tools &amp; Virtual Road Dyno
+- **OEM DTC Table Scanner &amp; 1-Click Switcher:** Detects Bosch/Siemens OBD-II P-code arrays and correlated 8-bit Error Class switches with undoable 1-click Enable/Disable and **Save as XDF Switch**.
+- **Checksums, TPROT &amp; BIN Utilities:** Built-in checksum plugins (Bosch ME7 / MED17 / EDC17, Siemens MS4x/SIMOS, Temic DQ250, CRC-32), TPROT/RSA advisories, flash-tool export presets (KESS, KTAG, PCMFlash, Flex, CMDFlash, MPPS), plus 16/32-bit Byte-Swap, Pad to Flash Size (`0xFF`), Extract Slice, and undoable Segment Inject.
+- **Datalogging, Math Channels &amp; Virtual Road Dyno:** Import CSV (auto-skipping VCDS/ME7Logger/MHD/BM3/Cobb preambles), `.adx`, and `.ads` logs; filter by WOT, Steady-State, Reject DFCO, and Warm (≥75 °C); trace live heatmap cells with 4-cell bilinear attribution; create custom Math Channels (`Boost Deviation`, `Lambda Error %`, `IDC %`); and compute SAE J1349-corrected wheel/engine **HP &amp; Nm** curves from WOT pulls.
+
+### Definitions, Automation &amp; Multi-BIN Workspace
+- **Unified Multi-BIN Workspace:** Open any number of `.bin`, Intel `.hex`, and Motorola `.s19/.srec` files in tabs (`L` / `R` badges), compare 3+ tunes side by side, save named snapshots, track per-map edit history across sessions, and export multi-page **PDF reports with charts** (`⌘P` / `⇧⌘E`).
+- **Definitions &amp; Porting:** Reads **XDF 1.60 XML**, **legacy XDF v1.11 text**, **A2L / DAMOS**, and **WinOLS `.kp` / `.csv`**; exports XDF, WinOLS `.csv`, and `.a2l`; includes a built-in XDF editor with live byte-nudge preview, cross-version tune porting, `.mtpatch` batch tuning, ECU glossary translation, `⌘K` Command Palette, `mactuner` CLI, Shortcuts/AppleScript, and full-BIN JavaScript plugins (`JavaScriptCore`).
+
+---
 
 ## Languages
 
-The interface is available in English, German, French, Spanish, Italian, Portuguese, Dutch, Swedish, Polish, Czech,
-Slovenian, Croatian, Serbian, Romanian, Hungarian, Bulgarian, Greek, Turkish, Albanian, Ukrainian, Russian,
-Chinese (Simplified and Traditional), Japanese and Korean.
+MacTuner ships natively in **25 languages**:
+English, German, French, Spanish, Italian, Portuguese, Dutch, Swedish, Polish, Czech, Slovenian, Croatian, Serbian, Romanian, Hungarian, Bulgarian, Greek, Turkish, Albanian, Ukrainian, Russian, Chinese (Simplified &amp; Traditional), Japanese, and Korean.
 
-MacTuner follows the system language and falls back to English. To use a different language for MacTuner only, go to
-**System Settings → General → Language &amp; Region → Applications**. Map names, descriptions and categories come from
-the XDF and can optionally be translated on the fly via the built-in ECU glossary.
+MacTuner follows the macOS system language and falls back to English. To pick a dedicated language for MacTuner, go to **System Settings → General → Language &amp; Region → Applications**. Foreign-language XDF map names and descriptions can also be translated on the fly via the built-in ECU glossary.
 
-All UI strings live in [`Localization/translations.py`](Localization/translations.py) and, for 2.x, [`translations_v2.py`](Localization/translations_v2.py). After editing them, run
-`python3 Localization/translations.py Localization`.
+---
 
 ## Installation
 
-1. Download `MacTuner-2.5.2.zip` from [Releases](../../releases/latest) and unzip it (universal binary for Apple Silicon &amp; Intel).
+1. Download **`MacTuner-2.5.2.zip`** from [**Releases**](../../releases/latest) and unzip it (universal binary for Apple Silicon &amp; Intel).
 2. Move `MacTuner.app` to `/Applications`.
 3. Because the release is unsigned/not notarized, allow the first launch under **System Settings → Privacy &amp; Security → Open Anyway**, or run:
    ```sh
@@ -59,6 +88,12 @@ All UI strings live in [`Localization/translations.py`](Localization/translation
    ```
 
 A Homebrew Cask formula is also included in [`Casks/mactuner.rb`](Casks/mactuner.rb).
+
+> [!WARNING]
+> **Always verify checksums with your flashing tool before flashing.**
+> Wrong calibration values or checksums can damage the engine or transmission. Use at your own risk.
+
+---
 
 ## Shortcuts &amp; CLI
 
@@ -70,10 +105,12 @@ A Homebrew Cask formula is also included in [`Casks/mactuner.rb`](Casks/mactuner
 | `⌘Z` / `⇧⌘Z` | Undo / Redo |
 | `⌘0` / `⌘4` / `⌘5` / `⌘6` / `⌘7` | Overview / Multi-Compare / Hex-Diff / Snapshots / History |
 | `⌘1` / `⌘2` / `⌘3` | Sidebar: All / Changed / Favorites |
+| `⌥P` | Toggle In-Hex Potential Map Recognition overlay |
 | `⌥⌘↓` / `⌥⌘↑` | Next / previous changed map |
 | `⌘D` / `⌘L` | Toggle favorite / toggle write-lock |
 | `⌘E` / `⇧⌘E` / `⌘P` | Export text report / export PDF report / print |
 | `Tab` | Table: BIN ⇄ Comparison |
+| `Esc` | Close 3D / Fullscreen 2D preview and return to Hex |
 | Click, `⇧`-click, `⌘`-click, `⌘A` | Select cell, range, individual cells, or all |
 | Type number + `↩`, `+` / `−`, `⌘C` / `⌘V` | Set value, step, copy/paste TSV |
 
@@ -87,131 +124,85 @@ mactuner convert <in.a2l|in.kp> <out.xdf>
 mactuner info <xdf>
 ```
 
-> [!WARNING]
-> **Always verify checksums with your flashing tool before flashing.**
-> Wrong calibration values or checksums can damage the engine or transmission. Use at your own risk.
+---
 
 ## Supported Formats
 
-- **Definitions:** TunerPro XDF 1.60 XML (`XDFTABLE`, `XDFCONSTANT`, `XDFFLAG`, `XDFPATCH`), legacy TunerPro XDF v1.11 text format, ASAP2 `.a2l` / DAMOS, and WinOLS `.kp` / `.csv` map packs.
-- **Data types:** 8, 16 and 32 bit, signed and unsigned, little and big endian, column-major, 32-bit IEEE float, hex output, embedded &amp; label axes, and arbitrary `X` equations (`+ - * / ^ ()`) with exact linear inversion and numeric bisection fallback.
-- **Datalogs:** CSV (auto-delimiter), TunerPro v5 `.adx`, and legacy TunerPro v4 `.ads`.
-- **Projects &amp; Patches:** Single-file `.mtproj` projects and `.mtpatch` batch tune packages.
+| Category | Supported Formats |
+|---|---|
+| **Definitions** | TunerPro XDF 1.60 XML (`XDFTABLE`, `XDFCONSTANT`, `XDFFLAG`, `XDFPATCH`), legacy XDF v1.11 text, ASAP2 `.a2l` / DAMOS, WinOLS `.kp` / `.csv` |
+| **Binaries** | Raw `.bin` / `.ori` / `.mod`, Intel HEX (`.hex` / `.ihex`), Motorola S-Record (`.s19` / `.s28` / `.s37` / `.srec`) |
+| **Data Types** | 8 / 16 / 32-bit signed &amp; unsigned, Little &amp; Big Endian, column-major, 32-bit IEEE-754 Float, hex output, embedded &amp; label axes, arbitrary `X` / multi-variable equations |
+| **Datalogs** | CSV (auto-delimiter &amp; VCDS/ME7Logger/MHD/BM3/Cobb preamble detection), TunerPro v5 `.adx`, legacy TunerPro v4 `.ads` |
+| **Projects &amp; Patches** | Single-file `.mtproj` projects and `.mtpatch` batch tune packages |
 
-## Roadmap
+---
 
-Where MacTuner is heading: from an XDF viewer to the tuning workbench for the Mac. The list is not in a fixed order,
-and ideas and pull requests are welcome in [Issues](../../issues).
+<details>
+<summary><strong>Full Feature Checklist &amp; Roadmap</strong></summary>
 
-### Comparing and tracking changes
-- [x] One list of every changed map and value, changed axes, bytes changed outside the XDF ([#1](../../issues/1))
-- [x] BIN / comparison / Δ / Δ % view per table, jump from change to change, change list export
-- [x] Compare three or more files side by side (stock, stage 1, stage 2 …)
-- [x] Whole-file hex diff with the XDF items drawn over it (including live U8/U16 LE/BE byte inspector, diff-only filter, jump to address & copy hex)
-- [x] Change history per map: every edit with time, old → new and a note, across sessions (plus global searchable history & CSV export)
-- [x] Snapshots of a BIN with names ("before launch control"), restore or compare any two (plus export snapshot as BIN)
-- [x] Printable / PDF change report with charts, for customers and documentation
+### Comparing &amp; Tracking Changes
+- [x] Unified list of changed maps, axes, and bytes outside the XDF ([#1](../../issues/1))
+- [x] BIN / Comparison / Δ / Δ % view per table, jump from change to change, change list export
+- [x] Compare 3+ files side by side (Stock, Stage 1, Stage 2 …)
+- [x] 60-FPS Split-Diff Hex Viewer with XDF overlay, Coral/Cyan diff shading, 1-click row transfer (`←`), and Auto-Sync offset alignment
+- [x] Per-map edit history with timestamps &amp; notes across sessions + CSV export
+- [x] Named BIN snapshots with restore, compare, and BIN export
+- [x] Printable multi-page PDF change reports with charts
 
-### Editing
-- [x] Copy and paste as tab-separated text, interpolation, selection statistics
-- [x] 3D surface view of 2D maps, rotatable, editable by dragging points (with comparison ghost wireframe overlay)
-- [x] Smooth the selection, fill down / up / right / left, flatten to a value, set to the average, clamp to min/max
-- [x] Edit the axes like values, with a check that they stay monotonic
-- [x] Copy a whole map from another file or another map with the same layout
-- [x] Lock maps that must not change, and warn when values leave a safe range
-- [x] Unit conversion (°C/°F, Nm/lb-ft, bar/kPa/psi, km/h/mph, λ/AFR) per user preference
-- [x] Command palette (⌘K) for every action and every map
+### Editing &amp; Calibration
+- [x] TSV copy/paste, horizontal/vertical/bilinear interpolation, axis-aware smoothing, fill, flatten, clamp
+- [x] Top-down interactive 3D surface with live vertex dragging &amp; comparison ghost wireframe
+- [x] Axis Rescaling Wizard with automatic bilinear Z-surface re-interpolation &amp; shared-axis cascade
+- [x] Multi-variable `f(x)` formula transforms (`X`, `CMP`, `AX`, `AY`, `R`, `C`, functions &amp; bitwise ops)
+- [x] Synchronized Twin-Map Mirror Editing for pinned dual-map split view (Bank 1/2)
+- [x] Map write-lock (`⌘L`), safe min/max range warnings, live unit conversion, and `⌘K` Command Palette
 
-### Definitions
-- [x] Legacy TunerPro XDF v1.11 text format parser (in addition to XML XDF 1.60)
-- [x] `XDFFLAG` bitmasks as switches, `XDFPATCH` patches with apply / revert
-- [x] Built-in XDF editor: add and change maps, axes, formulas and categories, save the XDF
-- [x] Create a map straight from a selected address range (in Hex-Diff or Outside-XDF changes)
-- [x] Import A2L / DAMOS and WinOLS map packs (`.kp` / `.csv`), export them as XDF
-- [x] Notes per map that are stored next to the XDF and survive XDF updates
-- [x] Translate map names and descriptions of foreign-language XDFs on the fly (including Bosch/Siemens ECU acronym glossary)
+### WinOLS-Class Binary Analysis &amp; Reverse Engineering
+- [x] Automatic In-Hex Map Recognition (Bosch paired &amp; EDC17/MED17 interleaved 2D headers, 8-bit headers, packed 1D curves, axis-anchored 2D, Signed maps &amp; axes, IEEE-754 Float32, row-pitch headerless 2D)
+- [x] Hinted blueprint contours, live mini-heatmap/sparkline hover HUD, double-click map selection, and 1-click right-click → XDF creation
+- [x] True click-through non-activating context menus across the entire app
+- [x] 2D bar-graphs, zoomable 2D waveform, whole-file minimap + Shannon entropy map, wildcard (`??`) search, bookmarks, and twin-map detector
+- [x] OEM DTC Table Scanner &amp; 1-Click Switcher (Bosch/Siemens P-codes + Error Class switches)
+- [x] BIN Utilities: 16/32-bit Byte-Swap, Pad to Flash Size (`0xFF`), Extract Slice, and undoable Segment Inject
 
-### Finding maps
-- [x] Map finder: detect tables and axes in unknown binaries by their structure, like WinOLS (with live mini-heatmap preview & one-click add to XDF)
-- [x] Find the same maps in another software version and port a tune across versions (exports relocated XDF and ported BIN)
-- [x] Apply a change list from one file to another (batch tuning with `.mtpatch` packages in absolute, Δ or Δ% mode)
-- [x] Highlight maps that look wrong: non-monotonic axes, outliers, cut-off curves and out-of-bounds addresses
+### Definitions, Checksums, Datalogging &amp; macOS
+- [x] XDF 1.60 XML, legacy XDF v1.11, A2L/DAMOS, WinOLS `.kp`/`.csv` import &amp; XDF/CSV/A2L export
+- [x] Built-in XDF editor with live byte-nudge preview, cross-version tune porting, `.mtpatch` batch tuning, and TCU shift-hysteresis validator
+- [x] Checksum plugins (Bosch ME7/MED17/EDC17, Siemens MS4x/SIMOS, Temic DQ250, CRC-32) + flash-tool hand-off presets
+- [x] Datalog playback with WOT/Steady-State/DFCO/Warm filters, 4-cell bilinear attribution, Math Channels, and SAE-corrected Virtual Road Dyno (HP / Nm)
+- [x] `.mtproj` projects, multi-window tabs, Quick Look previews, Shortcuts/AppleScript, `mactuner` CLI, full-BIN JavaScript plugins (`JavaScriptCore`), 25 languages, Homebrew Cask, and `--self-test` suite
 
-### WinOLS-class Binary Analysis & Reverse Engineering
-- [x] 60-FPS windowed Hexdump with 8/16/32-bit, Float, LoHi/HiLo, Hex/Dec, and Signed/Unsigned toggles
-- [x] Adjustable column width (`M`/`W`) and byte-offset alignment shift (`±1` byte) to snap unknown maps into alignment
-- [x] Inline per-row bar-graph visualization right next to hex/decimal values (spot maps visually while scrolling)
-- [x] Zoomable 2D waveform graph (bottom dock & full 2D view) with click-to-scroll and drag-to-select byte ranges
-- [x] Whole-file minimap overview bar showing data density, XDF coverage and diff locations for instant navigation
-- [x] Live 3D surface toggle directly on the current hexdump window or selection
-- [x] Byte-sequence, wildcard (`??`), ASCII and numeric value-range search in hexdump
-- [x] Bookmarks & named address markers in hexdump with quick jump
-- [x] Twin-map / parallel-map detector (find identical or mirrored calibration blocks in the same BIN)
-- [x] Entropy & code-vs-calibration region map (separate executable code, calibration tables, empty flash and strings)
-- [ ] Automatic Bosch / Siemens / Marelli / Denso pointer & axis-ID descriptor decoder
-- [x] Synchronized 2D waveform comparison of two different software versions with manual offset-sync slider
+</details>
 
-### Checksums and flashing
-- [x] Checksum plugins per control unit family (Bosch ME7 / MED17 / EDC17, Siemens MS4x/SIMOS, Temic DQ250, generic CRC-32)
-- [x] Check the checksum on open and before save, with a clear warning when it does not match (plus one-click undoable correction & live StatusBar indicator)
-- [x] Hand-off to common flash tools (KESS, KTAG/Bench, PCMFlash, Flex, CMDFlash, MPPS), with the right file layout, padding, changelog sidecar and name
-
-### Datalogging
-- [x] Load logs (CSV, ADX, legacy TunerPro v4 ADS) and trace the visited cells live in the heatmap (with inline playback scrubber & auto-channel matching)
-- [x] Hit-count overlay: which cells the engine actually uses, over a whole log
-- [x] Log-based suggestions, e.g. for fuel (multiplicative) or shift/boost maps (additive) from measured values with min-hits & damping control
-
-### Workflow and macOS
-- [x] Favorites, recent files, overview page, search by address
-- [x] Projects (`.mtproj`): XDF, BIN, comparison, notes, history and snapshots in one file
-- [x] Several files open at once in tabs or windows (`WindowGroup` + native macOS window tabbing)
-- [x] Quick Look and Finder previews for `.xdf`, `.bin` and `.mtproj`
-- [x] Shortcuts (`AppIntents`) and AppleScript (`MacTuner.sdef`) actions, plus a `mactuner` command line (`diff`, `apply`, `export`, `info`, `checksum`, `convert`)
-- [x] Plugins in JavaScript (`JavaScriptCore`) for custom checksums and tools
-- [x] iPad version (`iPad/MacTunerPadApp.swift`) for reviewing and small edits on the road
-
-### Quality and distribution
-- [x] 25 languages
-- [x] Notarized builds (`scripts/notarize.sh`) and automatic updates (GitHub Releases update checker)
-- [x] Homebrew cask (`Casks/mactuner.rb` for `brew install --cask mactuner`)
-- [x] VoiceOver support and color-blind friendly heatmap palettes (Viridis, Cividis, Plasma, High Contrast)
-- [x] Test suite (`--self-test`) with public sample definitions (`Samples/all_datatypes.xdf`) for every supported data type
+---
 
 ## Building
 
-The Command Line Tools are enough; Xcode is not required.
+Only the macOS Command Line Tools are required — Xcode is not needed.
 
 ```sh
-./build_app.sh            # → build/MacTuner.app (universal)
+./build_app.sh            # → build/MacTuner.app (universal arm64 + x86_64)
 ```
 
-The macOS 27 SDK that ships with the Command Line Tools lacks the SwiftUI macro plugin. Without Xcode, the script therefore uses the macOS 26 SDK automatically.
+The macOS 27 SDK that ships with the Command Line Tools lacks the SwiftUI macro plugin; without Xcode, the script automatically selects the macOS 26 SDK.
 
-### Self-tests
+### Self-Tests
 
-If you have an XDF and a matching binary, the build also runs these tests (the third one only with `MACTUNER_CMP`):
+If you have an XDF and a matching binary, the build script can also run byte-exact round-trip verification:
 
 ```sh
 MACTUNER_XDF=def.xdf MACTUNER_BIN=stock.bin MACTUNER_CMP=tuned.bin ./build_app.sh
 ```
 
-- `--check <xdf> <bin>`
-  - reads every item;
-  - compares constants with the "Original: N (roh)" values in their descriptions;
-  - re-encodes every cell and expects exactly the same bytes.
-- `--edit-test <xdf> <bin> <out>`
-  - edits a few values through the same code the app uses;
-  - saves the file;
-  - compares it byte by byte with the original. Only the intended bytes may differ.
-- `--changes <xdf> <bin> <compare>`
-  - prints the change list exactly as the app exports it;
-  - checks the changed maps, cells and bytes outside the XDF against a plain byte comparison;
-  - checks interpolation and the parsing of pasted text.
+- `--check <xdf> <bin>` — reads every item, verifies constants, and re-encodes every cell expecting identical bytes.
+- `--edit-test <xdf> <bin> <out>` — edits values, saves, and verifies byte-by-byte that only intended bytes changed.
+- `--changes <xdf> <bin> <compare>` — verifies changed maps, cells, outside-XDF diffs, interpolation, and TSV paste parsing.
 
 ## Contributing
 
-Issues and pull requests are welcome. The short version is in [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE). Not affiliated with TunerPro. No XDF or binary files are included.
+[MIT](LICENSE). Not affiliated with TunerPro or WinOLS. No XDF or binary files are included.
