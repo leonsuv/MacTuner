@@ -11,7 +11,7 @@ enum UpdateChecker {
     }
 
     static var currentVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "2.3.0"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "2.3.1"
     }
 
     static func check(interactive: Bool) {
