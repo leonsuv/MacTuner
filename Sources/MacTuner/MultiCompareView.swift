@@ -18,22 +18,21 @@ struct MultiCompareView: View {
 
     private struct Slot: Identifiable {
         let id: String
+        let docID: UUID?
         let name: String
         let bytes: [UInt8]
         let isPrimaryBin: Bool
-        let extraID: UUID?
     }
 
     private var slots: [Slot] {
-        var out: [Slot] = []
-        if model.hasBin {
-            out.append(Slot(id: "bin", name: model.binURL?.lastPathComponent ?? "BIN", bytes: model.bin, isPrimaryBin: true, extraID: nil))
+        var out = model.openBins.map { doc in
+            Slot(id: doc.id.uuidString, docID: doc.id, name: doc.name, bytes: doc.bytes,
+                 isPrimaryBin: doc.id == model.activeBinID)
         }
-        if let cmp = model.compare {
-            out.append(Slot(id: "cmp", name: model.compareName, bytes: cmp, isPrimaryBin: false, extraID: nil))
-        }
-        for extra in model.extraCompares {
-            out.append(Slot(id: extra.id.uuidString, name: extra.name, bytes: extra.bytes, isPrimaryBin: false, extraID: extra.id))
+        // Only show virtual "Stand beim Öffnen" if just 1 BIN is open and dirty
+        if out.count == 1, let active = model.activeBin, active.dirty {
+            out.append(Slot(id: "opened", docID: nil, name: String(localized: "Stand beim Öffnen"),
+                            bytes: active.openedSnapshot, isPrimaryBin: false))
         }
         return out
     }
@@ -118,19 +117,6 @@ struct MultiCompareView: View {
                     .toggleStyle(.checkbox)
 
                 Spacer()
-
-                // Removable chips for extra files
-                ForEach(model.extraCompares) { extra in
-                    HStack(spacing: 4) {
-                        Text(extra.name).font(.caption).lineLimit(1)
-                        Button { model.removeExtraCompare(extra.id) } label: {
-                            Image(systemName: "xmark.circle.fill").font(.caption2)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(.quaternary.opacity(0.6), in: Capsule())
-                }
             }
             .controlSize(.small)
         }
@@ -357,9 +343,35 @@ struct MultiCompareView: View {
                             Text("Typ").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                             Text("Größe").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                             ForEach(Array(slots.enumerated()), id: \.element.id) { idx, s in
-                                Text(idx == baseIdx ? "\(s.name) (Basis)" : s.name)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(idx == baseIdx ? Color.accentColor : .primary)
+                                HStack(spacing: 6) {
+                                    Text(idx == baseIdx ? "\(s.name) (Basis)" : s.name)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(idx == baseIdx ? Color.accentColor : .primary)
+                                        .lineLimit(1)
+                                    if idx != baseIdx, let docID = s.docID, let baseDocID = slots[baseIdx].docID {
+                                        Button {
+                                            model.setActiveBin(docID)
+                                            model.setCompareSource(.bin(baseDocID))
+                                            if let first = clusters.first { model.hexJumpTarget = first.range }
+                                            model.selection = AppModel.hexDiffSelection
+                                        } label: {
+                                            Image(systemName: "rectangle.split.2x1")
+                                                .font(.caption2)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(Color.accentColor)
+                                        .help("Genau dieses Paar (\(s.name) vs. \(slots[baseIdx].name)) im Side-by-Side Hex-Diff öffnen")
+                                    }
+                                    if let docID = s.docID {
+                                        Button { model.closeBin(docID) } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("„\(s.name)“ aus dem Workspace schließen")
+                                    }
+                                }
                             }
                         }
                         Divider()

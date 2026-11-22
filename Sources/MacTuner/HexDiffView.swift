@@ -188,7 +188,7 @@ struct HexDiffView: View {
         case delta = "Δ"
         case percent = "Δ%"
     }
-    @State private var splitDiffMode = false
+    @State private var splitDiffMode = true
     @State private var splitRightDisplay: SplitRightDisplay = .values
     @State private var searchQuery = ""
     @State private var searchHits: [Int] = []
@@ -276,17 +276,23 @@ struct HexDiffView: View {
             } else {
                 switch viewMode {
                 case .text:
-                    VSplitView {
-                        Group {
-                            if splitDiffMode && model.compare != nil {
-                                hexdumpSplitCanvasPane
-                            } else {
-                                hexdumpCanvasPane
-                            }
+                    VStack(spacing: 6) {
+                        if model.openBins.count >= 1 {
+                            hexPairSelectorBar
                         }
-                        .frame(minHeight: 240, maxHeight: .infinity)
-                        waveform2DPane(compact: true)
-                            .frame(minHeight: 135, idealHeight: 170, maxHeight: 320)
+                        VSplitView {
+                            Group {
+                                if splitDiffMode && model.compare != nil {
+                                    hexdumpSplitCanvasPane
+                                } else {
+                                    hexdumpCanvasPane
+                                }
+                            }
+                            .frame(minHeight: 240, maxHeight: .infinity)
+                            waveform2DPane(compact: true)
+                                .frame(minHeight: 135, idealHeight: 170, maxHeight: 320)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .wave2D:
@@ -307,18 +313,14 @@ struct HexDiffView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             rebuildCaches()
-            if model.compareURL != nil || model.compareLabelOverride != nil {
-                splitDiffMode = true
-            }
             consumeJumpTarget()
         }
         .onChange(of: model.hexJumpTarget) { _, _ in consumeJumpTarget() }
         .onChange(of: model.bin.count) { _, _ in rebuildCaches() }
         .onChange(of: model.xdfURL) { _, _ in rebuildCaches() }
-        .onChange(of: model.compareURL) { _, newURL in
-            rebuildCaches()
-            if newURL != nil { splitDiffMode = true }
-        }
+        .onChange(of: model.activeBinID) { _, _ in rebuildCaches() }
+        .onChange(of: model.compareSource) { _, _ in rebuildCaches() }
+        .onChange(of: model.diffClusterGap) { _, _ in rebuildCaches() }
     }
 
     // MARK: - WinOLS Number Format & View Toolbar
@@ -506,6 +508,92 @@ struct HexDiffView: View {
             }
         }
         .controlSize(.small)
+    }
+
+    // MARK: - Interactive Left / Right BIN Pair Selector Bar
+
+    private var hexPairSelectorBar: some View {
+        HStack(spacing: 8) {
+            // Left (Active / Editable) BIN picker
+            HStack(spacing: 5) {
+                Text("L")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 3))
+                    .foregroundStyle(.white)
+                Picker("Links (Aktiv)", selection: Binding(
+                    get: { model.activeBinID ?? UUID() },
+                    set: { model.setActiveBin($0) }
+                )) {
+                    ForEach(model.openBins) { doc in
+                        Text(doc.dirty ? "\(doc.name) •" : doc.name).tag(doc.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 260)
+            }
+
+            // Swap L ⇄ R
+            Button {
+                model.swapWithCompare()
+            } label: {
+                Image(systemName: "arrow.left.arrow.right")
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.compareBinID == nil)
+            .help("Links (Aktiv) und Rechts (Vergleich) tauschen")
+
+            // Right (Compare / Reference) BIN picker
+            HStack(spacing: 5) {
+                Text("R")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Theme.changed, in: RoundedRectangle(cornerRadius: 3))
+                    .foregroundStyle(.white)
+                Picker("Rechts (Vergleich)", selection: Binding<String>(
+                    get: {
+                        switch model.compareSource {
+                        case .bin(let id): return "bin:\(id.uuidString)"
+                        case .openedState: return "opened"
+                        case .none: return "none"
+                        case .snapshot(let id, _, _): return "snap:\(id.uuidString)"
+                        }
+                    },
+                    set: { tag in
+                        if tag == "opened" {
+                            model.setCompareSource(.openedState)
+                        } else if tag == "none" {
+                            model.setCompareSource(.none)
+                        } else if tag.hasPrefix("bin:"), let id = UUID(uuidString: String(tag.dropFirst(4))) {
+                            model.setCompareSource(.bin(id))
+                        }
+                    }
+                )) {
+                    ForEach(model.openBins.filter { $0.id != model.activeBinID }) { doc in
+                        Text(doc.name).tag("bin:\(doc.id.uuidString)")
+                    }
+                    if !model.openBins.filter({ $0.id != model.activeBinID }).isEmpty {
+                        Divider()
+                    }
+                    Text("Stand beim Öffnen").tag("opened")
+                    Text("Kein Vergleich").tag("none")
+                }
+                .labelsHidden()
+                .frame(maxWidth: 260)
+            }
+
+            Spacer(minLength: 4)
+
+            if !model.diffClusters.isEmpty {
+                Text("\(model.diffClusters.count) Blöcke · \(model.outsideByteCount) B Δ")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(Theme.changed)
+            }
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
     // MARK: - 60-FPS WinOLS Side-by-Side Dual-Pane Synchronized Hex-Diff Canvas
@@ -1334,8 +1422,10 @@ struct HexDiffView: View {
     private func hexHoverHUD(_ info: HexHoverInfo, in bounds: CGSize) -> some View {
         let bin = model.bin
         let cmp = model.compare ?? []
-        let estW: CGFloat = info.isXDFColumn ? 270 : 250
-        let estH: CGFloat = info.isXDFColumn ? CGFloat(28 + info.spans.count * 22) : 58
+        let coralColor = Color(red: 0.92, green: 0.34, blue: 0.28)
+        let cyanColor = Color(red: 0.20, green: 0.62, blue: 0.96)
+        let estW: CGFloat = info.isXDFColumn ? 270 : 280
+        let estH: CGFloat = info.isXDFColumn ? CGFloat(28 + info.spans.count * 22) : 76
         let placeLeft = info.isXDFColumn || (info.point.x + estW + 20 > bounds.width)
         let x = placeLeft
             ? max(8, info.point.x - estW - 14)
@@ -1344,7 +1434,7 @@ struct HexDiffView: View {
             ? max(8, info.point.y - estH - 10)
             : max(8, info.point.y + 12)
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             if info.isXDFColumn {
                 Text("\(info.spans.count) \(info.spans.count == 1 ? "Kennfeld" : "Kennfelder") in dieser Zeile")
                     .font(.caption2.weight(.semibold))
@@ -1368,39 +1458,91 @@ struct HexDiffView: View {
                     .padding(.vertical, 2)
                     .background(isActive ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
                 }
-            } else if let span = info.spans.first {
+            } else if let addr = info.address, addr + elemBytes <= bin.count {
+                let cmpOff = addr + compareSyncOffset
+                let hasCmp = !cmp.isEmpty && cmpOff >= 0 && cmpOff + elemBytes <= cmp.count
+                let binVal = readElement(bin, at: addr)
+                let cmpVal = hasCmp ? readElement(cmp, at: cmpOff) : nil
+                let isDiff = hasCmp && (bin[addr ..< (addr + elemBytes)] != cmp[cmpOff ..< (cmpOff + elemBytes)])
+                let isHigher = isDiff && ((binVal ?? 0) >= (cmpVal ?? 0))
+                let deltaColor = isHigher ? coralColor : cyanColor
+
+                // Row 1: Address + XDF map title (or Diff Cluster hint)
                 HStack(spacing: 6) {
-                    Circle()
-                        .fill(XDFAddressIndex.palette[span.colorIndex % XDFAddressIndex.palette.count])
-                        .frame(width: 8, height: 8)
-                    Text(span.title)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(2)
-                    if span.isAxis {
-                        Text("Achse")
+                    Text(String(format: "0x%05X", addr))
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    if let span = info.spans.first {
+                        Circle()
+                            .fill(XDFAddressIndex.palette[span.colorIndex % XDFAddressIndex.palette.count])
+                            .frame(width: 7, height: 7)
+                        Text(span.isAxis ? "\(span.title) (Achse)" : span.title)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                    } else if let cluster = model.diffClusters.first(where: { $0.range.contains(addr) }) {
+                        Text(cluster.shapeHint)
                             .font(.caption2.weight(.medium))
                             .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(.secondary.opacity(0.2), in: Capsule())
-                    }
-                }
-                HStack(spacing: 8) {
-                    if let addr = info.address {
-                        Text(String(format: "0x%05X", addr))
-                            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                        Text(formatElement(bin, at: addr))
-                            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                            .background(Color.accentColor.opacity(0.18), in: Capsule())
                             .foregroundStyle(Color.accentColor)
-                        if addr + elemBytes <= cmp.count,
-                           bin[addr ..< (addr + elemBytes)] != cmp[addr ..< (addr + elemBytes)] {
-                            Text("← \(formatElement(cmp, at: addr))")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(Theme.changed)
-                        }
                     }
                     Spacer(minLength: 4)
-                    Text("\(span.range.count) B")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                    if isDiff, let bv = binVal, let cv = cmpVal {
+                        let d = bv - cv
+                        let dStr = dataFormat.isFloat ? String(format: "%+.2f", d) : String(format: "%+.0f", d)
+                        let pctStr = cv != 0 ? String(format: " (%+.1f%%)", d / abs(cv) * 100.0) : ""
+                        Text("Δ \(dStr)\(pctStr)")
+                            .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                            .foregroundStyle(deltaColor)
+                    } else if hasCmp {
+                        Text("Identisch")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                // Row 2: BIN vs Compare values
+                HStack(spacing: 8) {
+                    let binFmt = formatElement(bin, at: addr)
+                    let binDec = (!dataFormat.isFloat && numberBase == .hex && binVal != nil) ? " (\(Int64(binVal!.rounded())))" : ""
+                    Text("BIN: \(binFmt)\(binDec)")
+                        .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(isDiff ? deltaColor : .primary)
+
+                    if hasCmp {
+                        let cmpFmt = formatElement(cmp, at: cmpOff)
+                        let cmpDec = (!dataFormat.isFloat && numberBase == .hex && cmpVal != nil) ? " (\(Int64(cmpVal!.rounded())))" : ""
+                        Text("CMP: \(cmpFmt)\(cmpDec)")
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                // Row 3: 16-bit word preview when viewing in 8-bit mode (super useful for 16-bit ECU maps!)
+                if dataFormat == .u8, addr + 2 <= bin.count {
+                    let u16Bin = lsbFirst
+                        ? (UInt16(bin[addr]) | (UInt16(bin[addr + 1]) << 8))
+                        : ((UInt16(bin[addr]) << 8) | UInt16(bin[addr + 1]))
+                    if hasCmp, cmpOff + 2 <= cmp.count {
+                        let u16Cmp = lsbFirst
+                            ? (UInt16(cmp[cmpOff]) | (UInt16(cmp[cmpOff + 1]) << 8))
+                            : ((UInt16(cmp[cmpOff]) << 8) | UInt16(cmp[cmpOff + 1]))
+                        let u16Diff = Int(u16Bin) - Int(u16Cmp)
+                        HStack(spacing: 6) {
+                            Text("U16 \(lsbFirst ? "LoHi" : "HiLo"): \(u16Bin) vs \(u16Cmp)")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            if u16Diff != 0 {
+                                let pct = u16Cmp != 0 ? String(format: " (%+.1f%%)", Double(u16Diff) / Double(u16Cmp) * 100.0) : ""
+                                Text(String(format: "Δ %+d%@", u16Diff, pct))
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(u16Diff > 0 ? coralColor : cyanColor)
+                            }
+                        }
+                    } else {
+                        Text("U16 \(lsbFirst ? "LoHi" : "HiLo"): \(u16Bin)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }

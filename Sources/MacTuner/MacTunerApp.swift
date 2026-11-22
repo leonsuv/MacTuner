@@ -62,6 +62,9 @@ struct MacTunerApp: App {
                 Button("BIN speichern unter …") { model.saveAs() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
                     .disabled(!model.hasBin)
+                Button("Aktive BIN schließen") { model.closeActiveBin() }
+                    .keyboardShortcut("w", modifiers: [.command])
+                    .disabled(!model.hasBin)
                 Divider()
                 Button("XDF speichern") { model.saveXDF() }
                     .keyboardShortcut("s", modifiers: [.command, .option])

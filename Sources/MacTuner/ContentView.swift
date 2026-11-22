@@ -13,6 +13,7 @@ struct ContentView: View {
                         .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 460)
                 } detail: {
                     VStack(spacing: 0) {
+                        WorkspaceBinBar()
                         autoAlignBanner
                         detail
                     }
@@ -276,16 +277,16 @@ struct StatusBar: View {
                         .buttonStyle(.plain)
                         .help("Alle geänderten Kennfelder anzeigen (⌘2)")
                     }
-                } else if !model.outsideChanges.isEmpty {
-                    Button { model.selection = AppModel.outsideSelection } label: {
-                        Text("\(model.outsideChanges.count) Diff-Blöcke")
+                } else if !model.diffClusters.isEmpty {
+                    Button { model.selection = AppModel.hexDiffSelection } label: {
+                        Text("\(model.diffClusters.count) Diff-Blöcke · \(model.outsideByteCount) B")
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(Theme.changed)
                             .padding(.horizontal, 7).padding(.vertical, 2)
                             .background(Theme.changed.opacity(0.14), in: Capsule())
                     }
                     .buttonStyle(.plain)
-                    .help("Alle geänderten Byte-Bereiche im Bin-vs-Bin-Vergleich anzeigen")
+                    .help("Im Side-by-Side Hex-Diff anzeigen")
                 }
             }
 
@@ -389,13 +390,31 @@ struct CompareMenu: View {
 
     var body: some View {
         Menu {
+            let otherOpen = model.openBins.filter { $0.id != model.activeBinID }
+            if !otherOpen.isEmpty {
+                Section("Geöffnete BINs") {
+                    ForEach(otherOpen) { doc in
+                        Button {
+                            model.setCompareSource(.bin(doc.id))
+                        } label: {
+                            if model.compareBinID == doc.id {
+                                Label(doc.name, systemImage: "checkmark")
+                            } else {
+                                Text(doc.name)
+                            }
+                        }
+                    }
+                }
+                Divider()
+            }
             Button("Vergleichs-BIN öffnen …") { model.openComparePanel() }
             Button("Vergleich: Stand beim Öffnen") { model.resetCompare() }
-                .disabled(model.compareURL == nil && model.compareLabelOverride == nil)
+                .disabled(model.compareSource == .openedState)
             Button("BIN und Vergleich tauschen") { model.swapWithCompare() }
-                .disabled(model.compareURL == nil)
+                .disabled(model.compareBinID == nil)
                 .help("Den Vergleich bearbeiten und die BIN als Vergleich nehmen")
-            let others = model.recentBins.filter { $0 != model.binURL && $0 != model.compareURL }
+            let openURLs = Set(model.openBins.compactMap(\.url))
+            let others = model.recentBins.filter { !openURLs.contains($0) }
             if !others.isEmpty {
                 Divider()
                 Section("Zuletzt geöffnet") {

@@ -56,7 +56,7 @@ struct WorkbenchRail: View {
             railDivider
 
             railButton(.multiCompare, icon: "square.split.2x1", title: "Mehrdatei-Vergleich (⌘4)",
-                       badge: model.extraCompares.isEmpty ? nil : "\(model.extraCompares.count + 2)",
+                       badge: model.openBins.count >= 2 ? "\(model.openBins.count)" : nil,
                        badgeColor: .accentColor) {
                 model.selection = AppModel.multiCompareSelection
             }

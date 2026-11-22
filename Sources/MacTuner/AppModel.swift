@@ -113,6 +113,46 @@ enum SidebarScope: String {
     case all, changed, favorites
 }
 
+/// A single open ECU/TCU binary document in the MacTuner workspace.
+struct BinDocument: Identifiable {
+    let id: UUID
+    var url: URL?
+    var name: String
+    var bytes: [UInt8]
+    var openedSnapshot: [UInt8]
+    var format: BinaryFormatCodec.Format
+    var baseAddress: UInt64
+    var ecuIdentity: ECUIdentity
+    var dirty: Bool = false
+    var undoStack: [[Patch]] = []
+    var redoStack: [[Patch]] = []
+    var history: [EditHistoryEntry] = []
+    var snapshots: [BinSnapshotMeta] = []
+    var hexBookmarks: [HexBookmark] = []
+    var checksumPluginID: String?
+
+    init(id: UUID = UUID(), url: URL?, name: String, bytes: [UInt8],
+         format: BinaryFormatCodec.Format = .raw, baseAddress: UInt64 = 0,
+         ecuIdentity: ECUIdentity? = nil) {
+        self.id = id
+        self.url = url
+        self.name = name
+        self.bytes = bytes
+        self.openedSnapshot = bytes
+        self.format = format
+        self.baseAddress = baseAddress
+        self.ecuIdentity = ecuIdentity ?? ECUIdentifier.identify(bytes)
+    }
+}
+
+/// Reference binary shown on the Right pane / used as diff baseline.
+enum CompareSource: Equatable, Hashable {
+    case none
+    case openedState
+    case bin(UUID)
+    case snapshot(id: UUID, name: String, bytes: [UInt8])
+}
+
 @MainActor @Observable
 final class AppModel {
     static let shared = AppModel()
@@ -132,32 +172,97 @@ final class AppModel {
 
     private(set) var definition: XDFDefinition?
     private(set) var xdfURL: URL?
-    private(set) var binURL: URL?
-    private(set) var bin: [UInt8] = []
-    private(set) var binFormat: BinaryFormatCodec.Format = .raw
-    private(set) var binBaseAddress: UInt64 = 0
-    private(set) var ecuIdentity = ECUIdentity()
-    private(set) var compareIdentity: ECUIdentity?
-    /// Reference for change marks: a chosen file, or the bin as it was when opened.
-    private(set) var compare: [UInt8]?
-    private(set) var compareURL: URL?
-    private(set) var compareLabelOverride: String?
+
+    // MARK: Unified Multi-BIN Workspace Store
+    private(set) var openBins: [BinDocument] = []
+    private(set) var activeBinID: UUID?
+    private(set) var compareSource: CompareSource = .openedState
+
+    var activeBinIndex: Int? {
+        guard let id = activeBinID else { return nil }
+        return openBins.firstIndex { $0.id == id }
+    }
+
+    var activeBin: BinDocument? {
+        activeBinIndex.map { openBins[$0] }
+    }
+
+    var compareBinID: UUID? {
+        if case .bin(let id) = compareSource { return id }
+        return nil
+    }
+
+    var compareBin: BinDocument? {
+        guard let id = compareBinID else { return nil }
+        return openBins.first { $0.id == id }
+    }
+
+    // Zero-breakage compatibility getters backed by `openBins`
+    var hasBin: Bool { activeBinIndex != nil }
+    var bin: [UInt8] { activeBinIndex.map { openBins[$0].bytes } ?? [] }
+    var binURL: URL? { activeBinIndex.flatMap { openBins[$0].url } }
+    var binName: String { activeBin?.name ?? "BIN" }
+    var binFormat: BinaryFormatCodec.Format { activeBin?.format ?? .raw }
+    var binBaseAddress: UInt64 { activeBin?.baseAddress ?? 0 }
+    var ecuIdentity: ECUIdentity { activeBin?.ecuIdentity ?? ECUIdentity() }
+    var dirty: Bool { activeBin?.dirty ?? false }
+    var canUndo: Bool { !(activeBin?.undoStack.isEmpty ?? true) }
+    var canRedo: Bool { !(activeBin?.redoStack.isEmpty ?? true) }
+    var history: [EditHistoryEntry] { activeBin?.history ?? [] }
+    var snapshots: [BinSnapshotMeta] { activeBin?.snapshots ?? [] }
+    var hexBookmarks: [HexBookmark] { activeBin?.hexBookmarks ?? [] }
+    var checksumPluginID: String? { activeBin?.checksumPluginID }
+
+    var compare: [UInt8]? {
+        switch compareSource {
+        case .none:
+            return nil
+        case .openedState:
+            return activeBin?.openedSnapshot
+        case .bin(let id):
+            return openBins.first { $0.id == id }?.bytes
+        case .snapshot(_, _, let bytes):
+            return bytes
+        }
+    }
+
+    var compareURL: URL? {
+        if case .bin(let id) = compareSource { return openBins.first { $0.id == id }?.url }
+        return nil
+    }
+
+    var compareIdentity: ECUIdentity? {
+        switch compareSource {
+        case .bin(let id): return openBins.first { $0.id == id }?.ecuIdentity
+        case .openedState: return activeBin?.ecuIdentity
+        default: return nil
+        }
+    }
+
+    var compareName: String {
+        switch compareSource {
+        case .none: return String(localized: "Kein Vergleich")
+        case .openedState: return String(localized: "Stand beim Öffnen")
+        case .bin(let id): return openBins.first { $0.id == id }?.name ?? String(localized: "Vergleich")
+        case .snapshot(_, let name, _): return name
+        }
+    }
+
+    /// Additional open BINs beyond active + compare (for legacy callers).
+    var extraCompares: [CompareFile] {
+        openBins.compactMap { doc in
+            if doc.id == activeBinID || doc.id == compareBinID { return nil }
+            return CompareFile(id: doc.id, name: doc.name, url: doc.url, bytes: doc.bytes)
+        }
+    }
+
     /// Side-by-side pinned map ID for split editing (e.g. Torque/Inverse, Upshift/Downshift).
     var pinnedItemID: Int?
-    /// Persistent Hex bookmarks per BIN path.
-    private(set) var hexBookmarks: [HexBookmark] = []
     /// Byte gap threshold for clustering adjacent diffs into map-sized regions (0 / 16 / 32 / 64 B).
     var diffClusterGap: Int = 32 {
         didSet { diffClusterCache = nil }
     }
     @ObservationIgnored private var diffClusterCache: (revision: Int, gap: Int, clusters: [DiffCluster])?
-    /// Additional comparison files (Stage 1, Stage 2, Snapshots, …).
-    private(set) var extraCompares: [CompareFile] = []
-    /// Persistent per-map edit history across sessions.
-    private(set) var history: [EditHistoryEntry] = []
-    /// Named snapshots of the current BIN.
-    private(set) var snapshots: [BinSnapshotMeta] = []
-    private(set) var checksumPluginID: String?
     // Datalog state
     private(set) var datalog: Datalog?
     var logFrame = 0
@@ -166,8 +271,6 @@ final class AppModel {
     var showHitOverlay = true
     private(set) var isLogPlaying = false
     @ObservationIgnored private var logTimer: Timer?
-    private var openedSnapshot: [UInt8] = []
-    private(set) var dirty = false
     var selection: Int? {
         didSet {
             if let s = selection, s >= 0 { lastMapSelection = s }
@@ -285,9 +388,6 @@ final class AppModel {
     private(set) var recentXDFs: [URL] = []
     private(set) var recentBins: [URL] = []
 
-    private var undoStack: [[Patch]] = []
-    private var redoStack: [[Patch]] = []
-
     /// Bytes covered by the definition and a cache of the changes outside it, valid for one `revision`.
     @ObservationIgnored private var covered = IndexSet()
     @ObservationIgnored private var revision = 0
@@ -305,7 +405,8 @@ final class AppModel {
     }
 
     func setChecksumPlugin(_ id: String?) {
-        checksumPluginID = id
+        guard let idx = activeBinIndex else { return }
+        openBins[idx].checksumPluginID = id
         checksumCache = nil
         touch()
     }
@@ -382,10 +483,6 @@ final class AppModel {
         diagnosticFindings.contains { $0.itemID == item.id }
     }
 
-    var canUndo: Bool { !undoStack.isEmpty }
-    var canRedo: Bool { !redoStack.isEmpty }
-    var hasBin: Bool { binURL != nil }
-
     init(restorePrevious: Bool = true) {
         let d = UserDefaults.standard
         let fm = FileManager.default
@@ -397,24 +494,26 @@ final class AppModel {
         recentBins = Self.recent("recentBin")
         if restorePrevious {
             if let p = d.string(forKey: "xdfPath"), fm.fileExists(atPath: p) { loadXDF(URL(fileURLWithPath: p)) }
-            if let p = d.string(forKey: "binPath"), fm.fileExists(atPath: p) { loadBin(URL(fileURLWithPath: p)) }
-            if let p = d.string(forKey: "comparePath"), fm.fileExists(atPath: p) { loadCompare(URL(fileURLWithPath: p)) }
+            if let savedBins = d.stringArray(forKey: "openBinPaths"), !savedBins.isEmpty {
+                for p in savedBins where fm.fileExists(atPath: p) {
+                    _ = addBinDocument(from: URL(fileURLWithPath: p), makeActive: openBins.isEmpty, makeCompare: openBins.count == 1)
+                }
+            } else {
+                if let p = d.string(forKey: "binPath"), fm.fileExists(atPath: p) { loadBin(URL(fileURLWithPath: p)) }
+                if let p = d.string(forKey: "comparePath"), fm.fileExists(atPath: p) { loadCompare(URL(fileURLWithPath: p)) }
+            }
             if let s = d.object(forKey: "selection") as? Int, let def = definition, s < def.items.count { selection = s }
         }
     }
 
     var windowTitle: String {
-        guard let binURL else { return definition?.title ?? "MacTuner" }
-        return binURL.lastPathComponent + (dirty ? String(localized: " — bearbeitet") : "")
+        guard let doc = activeBin else { return definition?.title ?? "MacTuner" }
+        return doc.name + (doc.dirty ? String(localized: " — bearbeitet") : "")
     }
 
     var selectedItem: XDFItem? {
         guard let def = definition, let s = selection, s >= 0, s < def.items.count else { return nil }
         return def.items[s]
-    }
-
-    var compareName: String {
-        compareLabelOverride ?? compareURL?.lastPathComponent ?? String(localized: "Stand beim Öffnen")
     }
 
     private var binStorageKey: String? { binURL?.path }
@@ -533,37 +632,46 @@ final class AppModel {
                 covered = definition.map(Changes.coverage) ?? IndexSet()
             }
             if let b64 = proj.binBase64, let data = Data(base64Encoded: b64) {
-                bin = [UInt8](data)
-                binURL = url.deletingPathExtension().appendingPathExtension("bin")
-                openedSnapshot = bin
-                dirty = false
-                undoStack = []
-                redoStack = []
+                let bytes = [UInt8](data)
+                let doc = BinDocument(url: url.deletingPathExtension().appendingPathExtension("bin"),
+                                      name: proj.binName ?? url.deletingPathExtension().lastPathComponent + ".bin",
+                                      bytes: bytes)
+                openBins = [doc]
+                activeBinID = doc.id
+                compareSource = .openedState
             }
             if let c64 = proj.compareBase64, let data = Data(base64Encoded: c64) {
-                compare = [UInt8](data)
-                compareURL = nil
-                compareLabelOverride = proj.compareName
+                let bytes = [UInt8](data)
+                if bytes != activeBin?.bytes {
+                    let cmpDoc = BinDocument(url: nil, name: proj.compareName ?? "Vergleich.bin", bytes: bytes)
+                    openBins.append(cmpDoc)
+                    compareSource = .bin(cmpDoc.id)
+                }
             }
-            extraCompares = proj.extraCompares.compactMap { sc in
-                guard let data = Data(base64Encoded: sc.dataBase64) else { return nil }
-                return CompareFile(name: sc.name, url: nil, bytes: [UInt8](data))
+            for sc in proj.extraCompares {
+                if let data = Data(base64Encoded: sc.dataBase64) {
+                    let doc = BinDocument(url: nil, name: sc.name, bytes: [UInt8](data))
+                    openBins.append(doc)
+                }
             }
             mapNotes = proj.mapNotes
-            history = proj.history
+            if let idx = activeBinIndex {
+                openBins[idx].history = proj.history
+                openBins[idx].checksumPluginID = proj.checksumPluginID
+                if let key = binStorageKey {
+                    openBins[idx].snapshots = proj.snapshots.map(\.meta)
+                    for s in proj.snapshots {
+                        if let d = Data(base64Encoded: s.dataBase64) {
+                            try? SnapshotStore.saveSnapshot(s.meta, bytes: [UInt8](d), for: key)
+                        }
+                    }
+                    SnapshotStore.saveIndex(openBins[idx].snapshots, for: key)
+                }
+            }
             favorites = Set(proj.favorites)
             lockedItems = Set(proj.lockedItems)
             safeRanges = proj.safeRanges
-            checksumPluginID = proj.checksumPluginID
-            if let key = binStorageKey {
-                snapshots = proj.snapshots.map(\.meta)
-                for s in proj.snapshots {
-                    if let d = Data(base64Encoded: s.dataBase64) {
-                        try? SnapshotStore.saveSnapshot(s.meta, bytes: [UInt8](d), for: key)
-                    }
-                }
-                SnapshotStore.saveIndex(snapshots, for: key)
-            }
+            persistOpenBins()
             selection = nil
             touch()
         } catch {
@@ -577,41 +685,41 @@ final class AppModel {
 
     /// Commits raw byte patches from HexDiffView (inline edit, fill, copy from compare) with undo & history.
     func applyRawPatches(_ patches: [Patch], label: String) {
-        guard !patches.isEmpty else { return }
+        guard !patches.isEmpty, let idx = activeBinIndex else { return }
         commit(patches)
         if let key = binStorageKey, let first = patches.first {
             let entry = EditHistoryEntry(itemKey: "hex@\(first.offset)", itemTitle: "Hex-Editor",
                                          address: first.offset, summary: label, note: "")
-            history.insert(entry, at: 0)
-            if history.count > 2000 { history = Array(history.prefix(2000)) }
-            HistoryStore.save(history, for: key)
+            openBins[idx].history.insert(entry, at: 0)
+            if openBins[idx].history.count > 2000 { openBins[idx].history = Array(openBins[idx].history.prefix(2000)) }
+            HistoryStore.save(openBins[idx].history, for: key)
         }
     }
 
     func addHexBookmark(name: String, address: Int) {
-        if hexBookmarks.contains(where: { $0.address == address }) { return }
-        hexBookmarks.append(HexBookmark(name: name, address: address))
-        saveHexBookmarks()
+        guard let idx = activeBinIndex else { return }
+        if openBins[idx].hexBookmarks.contains(where: { $0.address == address }) { return }
+        openBins[idx].hexBookmarks.append(HexBookmark(name: name, address: address))
+        saveHexBookmarks(for: openBins[idx])
     }
 
     func removeHexBookmark(id: UUID) {
-        hexBookmarks.removeAll { $0.id == id }
-        saveHexBookmarks()
+        guard let idx = activeBinIndex else { return }
+        openBins[idx].hexBookmarks.removeAll { $0.id == id }
+        saveHexBookmarks(for: openBins[idx])
     }
 
-    private func loadHexBookmarks() {
-        guard let key = binStorageKey,
-              let dict = UserDefaults.standard.dictionary(forKey: "hexBookmarks"),
-              let data = dict[key] as? Data,
+    private static func loadHexBookmarks(for path: String) -> [HexBookmark] {
+        guard let dict = UserDefaults.standard.dictionary(forKey: "hexBookmarks"),
+              let data = dict[path] as? Data,
               let decoded = try? JSONDecoder().decode([HexBookmark].self, from: data) else {
-            hexBookmarks = []
-            return
+            return []
         }
-        hexBookmarks = decoded
+        return decoded
     }
 
-    private func saveHexBookmarks() {
-        guard let key = binStorageKey, let data = try? JSONEncoder().encode(hexBookmarks) else { return }
+    private func saveHexBookmarks(for doc: BinDocument) {
+        guard let key = doc.url?.path, let data = try? JSONEncoder().encode(doc.hexBookmarks) else { return }
         var dict = UserDefaults.standard.dictionary(forKey: "hexBookmarks") ?? [:]
         dict[key] = data
         UserDefaults.standard.set(dict, forKey: "hexBookmarks")
@@ -898,70 +1006,211 @@ final class AppModel {
         recordHistory(item: item, summary: String(localized: "Patch zurückgesetzt"))
     }
 
+    // MARK: Unified Workspace BIN Operations
+
+    private func persistOpenBins() {
+        let paths = openBins.compactMap { $0.url?.path }
+        UserDefaults.standard.set(paths, forKey: "openBinPaths")
+        if let activePath = binURL?.path {
+            UserDefaults.standard.set(activePath, forKey: "binPath")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "binPath")
+        }
+        if let cmpPath = compareURL?.path {
+            UserDefaults.standard.set(cmpPath, forKey: "comparePath")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "comparePath")
+        }
+    }
+
+    @discardableResult
+    func addBinDocument(from url: URL, makeActive: Bool = false, makeCompare: Bool = false) -> UUID? {
+        if let existing = openBins.first(where: { $0.url == url }) {
+            if makeActive { setActiveBin(existing.id) }
+            else if makeCompare { setCompareSource(.bin(existing.id)) }
+            return existing.id
+        }
+        do {
+            let loaded = try BinaryFormatCodec.load(url: url)
+            var doc = BinDocument(url: url, name: url.lastPathComponent, bytes: loaded.bytes,
+                                  format: loaded.format, baseAddress: loaded.baseAddress)
+            doc.history = HistoryStore.load(for: url.path)
+            doc.snapshots = SnapshotStore.loadIndex(for: url.path)
+            doc.hexBookmarks = Self.loadHexBookmarks(for: url.path)
+            doc.checksumPluginID = ChecksumRegistry.shared.autoDetect(bin: loaded.bytes)?.id
+            openBins.append(doc)
+            recentBins = Self.remember(url, in: "recentBin")
+
+            if makeActive || activeBinID == nil {
+                activeBinID = doc.id
+                if compareSource == .bin(doc.id) { compareSource = .openedState }
+                clearAlignmentState()
+                refreshEmbeddedSourceBin()
+            } else if makeCompare || (compareBinID == nil && openBins.count == 2) {
+                compareSource = .bin(doc.id)
+                if definition == nil && selection == nil {
+                    selection = Self.hexDiffSelection
+                }
+            }
+            checksumCache = nil
+            persistOpenBins()
+            touch()
+            checkSize()
+            return doc.id
+        } catch {
+            alert = String(localized: "BIN konnte nicht geladen werden:\n\(error.localizedDescription)")
+            return nil
+        }
+    }
+
     func openBin(_ url: URL) {
-        guard confirmDiscard() else { return }
-        loadBin(url)
+        // Add to workspace and make active (no longer destroys other open BINs!)
+        _ = addBinDocument(from: url, makeActive: true)
     }
 
     private func loadBin(_ url: URL) {
-        do {
-            let loaded = try BinaryFormatCodec.load(url: url)
-            bin = loaded.bytes
-            binFormat = loaded.format
-            binBaseAddress = loaded.baseAddress
-            binURL = url
-            openedSnapshot = bin
-            ecuIdentity = ECUIdentifier.identify(bin)
-            if compareURL == nil && compareLabelOverride == nil {
-                compare = bin
-                compareIdentity = ecuIdentity
-            }
-            dirty = false
-            undoStack = []
-            redoStack = []
-            history = HistoryStore.load(for: url.path)
-            snapshots = SnapshotStore.loadIndex(for: url.path)
-            loadHexBookmarks()
-            checksumPluginID = ChecksumRegistry.shared.autoDetect(bin: bin)?.id
-            checksumCache = nil
-            UserDefaults.standard.set(url.path, forKey: "binPath")
-            recentBins = Self.remember(url, in: "recentBin")
-            clearAlignmentState()
-            refreshEmbeddedSourceBin()
-            touch()
-            checkSize()
-        } catch {
-            alert = String(localized: "BIN konnte nicht geladen werden:\n\(error.localizedDescription)")
-        }
+        _ = addBinDocument(from: url, makeActive: true)
     }
 
     func loadCompare(_ url: URL) {
-        do {
-            let loaded = try BinaryFormatCodec.load(url: url)
-            compare = loaded.bytes
-            compareURL = url
-            compareLabelOverride = nil
-            compareIdentity = ECUIdentifier.identify(loaded.bytes)
-            UserDefaults.standard.set(url.path, forKey: "comparePath")
-            recentBins = Self.remember(url, in: "recentBin")
-            touch()
-        } catch {
-            alert = String(localized: "Vergleichs-BIN konnte nicht geladen werden:\n\(error.localizedDescription)")
-        }
+        _ = addBinDocument(from: url, makeActive: false, makeCompare: true)
     }
 
-    /// The comparison becomes the edited file and the bin becomes the comparison.
+    func setActiveBin(_ id: UUID) {
+        guard openBins.contains(where: { $0.id == id }) else { return }
+        let oldActive = activeBinID
+        activeBinID = id
+        // If the newly activated BIN was previously the Compare BIN, cleanly swap Compare to the previous Active BIN!
+        if compareSource == .bin(id) {
+            if let prev = oldActive, prev != id {
+                compareSource = .bin(prev)
+            } else if let other = openBins.first(where: { $0.id != id }) {
+                compareSource = .bin(other.id)
+            } else {
+                compareSource = .openedState
+            }
+        }
+        checksumCache = nil
+        clearAlignmentState()
+        refreshEmbeddedSourceBin()
+        persistOpenBins()
+        touch()
+    }
+
+    func setCompareSource(_ source: CompareSource) {
+        if case .bin(let id) = source, id == activeBinID {
+            // Comparing a BIN with itself -> use openedState instead
+            compareSource = .openedState
+        } else {
+            compareSource = source
+        }
+        persistOpenBins()
+        touch()
+    }
+
+    /// Swaps Left (Active) and Right (Compare) BINs in-memory in O(1) without losing per-BIN Undo history.
     func swapWithCompare() {
-        guard let compareURL, let binURL, confirmDiscard() else { return }
-        loadBin(compareURL)
-        loadCompare(binURL)
+        guard let aID = activeBinID, let cID = compareBinID, aID != cID else { return }
+        activeBinID = cID
+        compareSource = .bin(aID)
+        checksumCache = nil
+        clearAlignmentState()
+        refreshEmbeddedSourceBin()
+        persistOpenBins()
+        touch()
     }
 
     func resetCompare() {
-        compare = hasBin ? openedSnapshot : nil
-        compareURL = nil
-        compareLabelOverride = nil
-        UserDefaults.standard.removeObject(forKey: "comparePath")
+        compareSource = hasBin ? .openedState : .none
+        persistOpenBins()
+        touch()
+    }
+
+    /// Closes any individual BIN from the workspace (with dirty check if that BIN has unsaved edits).
+    func closeBin(_ id: UUID) {
+        guard let idx = openBins.firstIndex(where: { $0.id == id }) else { return }
+        let doc = openBins[idx]
+        if doc.dirty {
+            let a = NSAlert()
+            a.messageText = String(localized: "Ungespeicherte Änderungen in \(doc.name)")
+            a.informativeText = String(localized: "Sollen die Änderungen vor dem Schließen gespeichert werden?")
+            a.addButton(withTitle: String(localized: "Speichern"))
+            a.addButton(withTitle: String(localized: "Verwerfen"))
+            a.addButton(withTitle: String(localized: "Abbrechen"))
+            switch a.runModal() {
+            case .alertFirstButtonReturn:
+                let prevActive = activeBinID
+                activeBinID = id
+                save()
+                if openBins[idx].dirty {
+                    activeBinID = prevActive
+                    return
+                }
+            case .alertSecondButtonReturn:
+                break
+            default:
+                return
+            }
+        }
+
+        openBins.remove(at: idx)
+
+        if activeBinID == id {
+            if let cmpID = compareBinID, openBins.contains(where: { $0.id == cmpID }) {
+                activeBinID = cmpID
+                compareSource = openBins.first(where: { $0.id != cmpID }).map { .bin($0.id) } ?? .openedState
+            } else if let first = openBins.first {
+                activeBinID = first.id
+                compareSource = openBins.dropFirst().first.map { .bin($0.id) } ?? .openedState
+            } else {
+                activeBinID = nil
+                compareSource = .none
+            }
+            clearAlignmentState()
+            refreshEmbeddedSourceBin()
+        } else if compareSource == .bin(id) {
+            if let other = openBins.first(where: { $0.id != activeBinID }) {
+                compareSource = .bin(other.id)
+            } else {
+                compareSource = hasBin ? .openedState : .none
+            }
+        }
+
+        checksumCache = nil
+        persistOpenBins()
+        touch()
+    }
+
+    func closeActiveBin() {
+        if let id = activeBinID { closeBin(id) }
+    }
+
+    func closeXDF() {
+        if xdfDirty {
+            let a = NSAlert()
+            a.messageText = String(localized: "Ungespeicherte Änderungen in der Definition (\(xdfURL?.lastPathComponent ?? definition?.title ?? "XDF"))")
+            a.informativeText = String(localized: "Soll die XDF-Definition vor dem Schließen gespeichert werden?")
+            a.addButton(withTitle: String(localized: "XDF speichern"))
+            a.addButton(withTitle: String(localized: "Verwerfen"))
+            a.addButton(withTitle: String(localized: "Abbrechen"))
+            switch a.runModal() {
+            case .alertFirstButtonReturn:
+                saveXDF()
+                if xdfDirty { return }
+            case .alertSecondButtonReturn:
+                xdfDirty = false
+            default:
+                return
+            }
+        }
+        definition = nil
+        xdfURL = nil
+        xdfDirty = false
+        covered = IndexSet()
+        clearAlignmentState()
+        pinnedItemID = nil
+        if let s = selection, s >= 0 { selection = hasBin ? Self.hexDiffSelection : nil }
+        UserDefaults.standard.removeObject(forKey: "xdfPath")
         touch()
     }
 
@@ -969,7 +1218,7 @@ final class AppModel {
 
     func addExtraComparePanel() {
         let p = NSOpenPanel()
-        p.title = String(localized: "Weitere Vergleichs-BIN öffnen")
+        p.title = String(localized: "BIN zum Workspace hinzufügen")
         p.allowedContentTypes = BinaryFormatCodec.binaryExtensions.compactMap { UTType(filenameExtension: $0) } + [.data]
         p.allowsMultipleSelection = true
         guard p.runModal() == .OK else { return }
@@ -977,45 +1226,32 @@ final class AppModel {
     }
 
     func addExtraCompare(_ url: URL) {
-        // If no external Compare BIN is loaded yet (compare is still "Stand beim Öffnen"),
-        // promote this file to the active Compare BIN so Hex-Diff, Sidebar, and Overview all light up immediately!
-        if compareURL == nil && compareLabelOverride == nil && url != binURL {
-            loadCompare(url)
-            return
-        }
-        do {
-            let loaded = try BinaryFormatCodec.load(url: url)
-            if extraCompares.contains(where: { $0.url == url }) || compareURL == url { return }
-            extraCompares.append(CompareFile(name: url.lastPathComponent, url: url, bytes: loaded.bytes))
-            recentBins = Self.remember(url, in: "recentBin")
-            touch()
-        } catch {
-            alert = String(localized: "Vergleichs-BIN konnte nicht geladen werden:\n\(error.localizedDescription)")
-        }
+        _ = addBinDocument(from: url, makeActive: activeBinID == nil, makeCompare: compareBinID == nil && activeBinID != nil)
     }
 
     func removeExtraCompare(_ id: UUID) {
-        extraCompares.removeAll { $0.id == id }
-        touch()
+        closeBin(id)
     }
 
     func addSnapshotToMultiCompare(_ snap: BinSnapshotMeta) {
         guard let key = binStorageKey, let bytes = SnapshotStore.loadBytes(id: snap.id, for: key) else { return }
         let name = "📷 \(snap.name)"
-        if extraCompares.contains(where: { $0.name == name }) { return }
-        extraCompares.append(CompareFile(name: name, url: nil, bytes: bytes))
+        if openBins.contains(where: { $0.name == name }) { return }
+        let doc = BinDocument(url: nil, name: name, bytes: bytes)
+        openBins.append(doc)
+        if compareBinID == nil { compareSource = .bin(doc.id) }
         touch()
     }
 
     // MARK: Snapshots
 
     func createSnapshot(name: String, note: String = "") {
-        guard hasBin, let key = binStorageKey else { return }
+        guard let idx = activeBinIndex, let key = binStorageKey else { return }
         let meta = BinSnapshotMeta(name: name, note: note, createdAt: Date(), byteCount: bin.count)
         do {
             try SnapshotStore.saveSnapshot(meta, bytes: bin, for: key)
-            snapshots.insert(meta, at: 0)
-            SnapshotStore.saveIndex(snapshots, for: key)
+            openBins[idx].snapshots.insert(meta, at: 0)
+            SnapshotStore.saveIndex(openBins[idx].snapshots, for: key)
         } catch {
             alert = String(localized: "Snapshot konnte nicht gespeichert werden:\n\(error.localizedDescription)")
         }
@@ -1040,17 +1276,15 @@ final class AppModel {
 
     func compareWithSnapshot(_ snap: BinSnapshotMeta) {
         guard let key = binStorageKey, let bytes = SnapshotStore.loadBytes(id: snap.id, for: key) else { return }
-        compare = bytes
-        compareURL = nil
-        compareLabelOverride = "📷 \(snap.name)"
+        compareSource = .snapshot(id: snap.id, name: "📷 \(snap.name)", bytes: bytes)
         touch()
     }
 
     func deleteSnapshot(_ snap: BinSnapshotMeta) {
-        guard let key = binStorageKey else { return }
+        guard let idx = activeBinIndex, let key = binStorageKey else { return }
         SnapshotStore.deleteSnapshot(id: snap.id, for: key)
-        snapshots.removeAll { $0.id == snap.id }
-        SnapshotStore.saveIndex(snapshots, for: key)
+        openBins[idx].snapshots.removeAll { $0.id == snap.id }
+        SnapshotStore.saveIndex(openBins[idx].snapshots, for: key)
     }
 
     func exportSnapshot(_ snap: BinSnapshotMeta) {
@@ -1074,18 +1308,19 @@ final class AppModel {
     }
 
     func recordHistory(item: XDFItem, summary: String, note: String = "") {
-        guard let key = binStorageKey else { return }
+        guard let idx = activeBinIndex, let key = binStorageKey else { return }
         let entry = EditHistoryEntry(itemKey: favoriteID(item), itemTitle: item.title,
                                      address: item.data.address, summary: summary, note: note)
-        history.insert(entry, at: 0)
-        if history.count > 2000 { history = Array(history.prefix(2000)) }
-        HistoryStore.save(history, for: key)
+        openBins[idx].history.insert(entry, at: 0)
+        if openBins[idx].history.count > 2000 { openBins[idx].history = Array(openBins[idx].history.prefix(2000)) }
+        HistoryStore.save(openBins[idx].history, for: key)
     }
 
     func updateHistoryNote(id: UUID, note: String) {
-        guard let key = binStorageKey, let idx = history.firstIndex(where: { $0.id == id }) else { return }
-        history[idx].note = note
-        HistoryStore.save(history, for: key)
+        guard let bIdx = activeBinIndex, let key = binStorageKey,
+              let idx = openBins[bIdx].history.firstIndex(where: { $0.id == id }) else { return }
+        openBins[bIdx].history[idx].note = note
+        HistoryStore.save(openBins[bIdx].history, for: key)
     }
 
     func exportHistoryCSV() {
@@ -1139,22 +1374,25 @@ final class AppModel {
     }
 
     func saveAs() {
-        guard hasBin, confirmChecksumBeforeSave() else { return }
+        guard let idx = activeBinIndex, confirmChecksumBeforeSave() else { return }
         let p = NSSavePanel()
-        p.nameFieldStringValue = binURL?.lastPathComponent ?? "tuned.bin"
+        p.nameFieldStringValue = binURL?.lastPathComponent ?? openBins[idx].name
         p.directoryURL = binURL?.deletingLastPathComponent()
         guard p.runModal() == .OK, let url = p.url else { return }
         write(to: url)
-        binURL = url
-        UserDefaults.standard.set(url.path, forKey: "binPath")
+        openBins[idx].url = url
+        openBins[idx].name = url.lastPathComponent
+        persistOpenBins()
         recentBins = Self.remember(url, in: "recentBin")
     }
 
     private func write(to url: URL) {
+        guard let idx = activeBinIndex else { return }
         do {
-            let encoded = BinaryFormatCodec.encode(bin, to: url, baseAddress: binBaseAddress)
+            let encoded = BinaryFormatCodec.encode(openBins[idx].bytes, to: url, baseAddress: openBins[idx].baseAddress)
             try encoded.write(to: url, options: .atomic)
-            dirty = false
+            openBins[idx].dirty = false
+            openBins[idx].openedSnapshot = openBins[idx].bytes
         } catch {
             alert = String(localized: "Speichern fehlgeschlagen:\n\(error.localizedDescription)")
         }
@@ -1416,9 +1654,9 @@ final class AppModel {
             alert = String(localized: "„\(item.title)“ ist gesperrt. Erst entsperren (⌘L), um es zu bearbeiten.")
             return
         }
-        let beforeCount = undoStack.count
+        let beforeCount = activeBin?.undoStack.count ?? 0
         restore(ranges: item.layouts.map(\.byteRange))
-        if undoStack.count > beforeCount {
+        if (activeBin?.undoStack.count ?? 0) > beforeCount {
             recordHistory(item: item, summary: String(localized: "Auf Vergleich zurückgesetzt"))
         }
     }
@@ -1651,27 +1889,27 @@ final class AppModel {
     }
 
     private func commit(_ patches: [Patch]) {
-        guard !patches.isEmpty else { return }
-        for p in patches { bin.replaceSubrange(p.offset ..< p.offset + p.new.count, with: p.new) }
-        undoStack.append(patches)
-        redoStack = []
-        dirty = true
+        guard !patches.isEmpty, let idx = activeBinIndex else { return }
+        for p in patches { openBins[idx].bytes.replaceSubrange(p.offset ..< p.offset + p.new.count, with: p.new) }
+        openBins[idx].undoStack.append(patches)
+        openBins[idx].redoStack = []
+        openBins[idx].dirty = true
         touch()
     }
 
     func undo() {
-        guard let ps = undoStack.popLast() else { return }
-        for p in ps.reversed() { bin.replaceSubrange(p.offset ..< p.offset + p.old.count, with: p.old) }
-        redoStack.append(ps)
-        dirty = true
+        guard let idx = activeBinIndex, let ps = openBins[idx].undoStack.popLast() else { return }
+        for p in ps.reversed() { openBins[idx].bytes.replaceSubrange(p.offset ..< p.offset + p.old.count, with: p.old) }
+        openBins[idx].redoStack.append(ps)
+        openBins[idx].dirty = true
         touch()
     }
 
     func redo() {
-        guard let ps = redoStack.popLast() else { return }
-        for p in ps { bin.replaceSubrange(p.offset ..< p.offset + p.new.count, with: p.new) }
-        undoStack.append(ps)
-        dirty = true
+        guard let idx = activeBinIndex, let ps = openBins[idx].redoStack.popLast() else { return }
+        for p in ps { openBins[idx].bytes.replaceSubrange(p.offset ..< p.offset + p.new.count, with: p.new) }
+        openBins[idx].undoStack.append(ps)
+        openBins[idx].dirty = true
         touch()
     }
 
