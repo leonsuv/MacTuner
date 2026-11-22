@@ -32,10 +32,20 @@ struct PotentialMapIndex {
         raw.reserveCapacity(candidates.count * 3)
         var nextID = 0
         for (idx, c) in candidates.enumerated() {
+            let hdrUnit = (c.bits == 8) ? 1 : 2
             if let hdr = c.headerAddress, hdr < c.address {
-                let hdrEnd = min(c.address, hdr + (c.bits == 8 ? 2 : 4))
+                let hdrBytes = (c.secondHeaderAddress != nil || c.rows == 1) ? hdrUnit : (hdrUnit * 2)
+                let hdrEnd = min(c.address, hdr + hdrBytes)
                 if hdr < hdrEnd {
                     raw.append(Span(id: nextID, range: hdr ..< hdrEnd, candidateIndex: idx,
+                                    candidateKey: c.signatureKey, role: .header, confidence: c.confidence))
+                    nextID += 1
+                }
+            }
+            if let hdr2 = c.secondHeaderAddress, hdr2 < c.address {
+                let hdr2End = min(c.address, hdr2 + hdrUnit)
+                if hdr2 < hdr2End {
+                    raw.append(Span(id: nextID, range: hdr2 ..< hdr2End, candidateIndex: idx,
                                     candidateKey: c.signatureKey, role: .header, confidence: c.confidence))
                     nextID += 1
                 }
@@ -184,14 +194,14 @@ struct PotentialMapPreviewCard: View {
                     statRow("Max", formatStat(candidate.maxVal))
                     statRow("Ø", formatStat(candidate.meanVal))
                     if let xa = candidate.xAxisAddress {
-                        let rangeTxt = axisEndpointSummary(at: xa, count: candidate.cols)
+                        let rangeTxt = axisEndpointSummary(at: xa, count: candidate.cols, signed: candidate.xAxisSigned)
                         Text(String(format: "X: 0x%05X %@", xa, rangeTxt))
                             .font(.system(size: 9.5, design: .monospaced))
                             .foregroundStyle(mint)
                             .lineLimit(1)
                     }
                     if let ya = candidate.yAxisAddress, candidate.rows > 1 {
-                        let rangeTxt = axisEndpointSummary(at: ya, count: candidate.rows)
+                        let rangeTxt = axisEndpointSummary(at: ya, count: candidate.rows, signed: candidate.yAxisSigned)
                         Text(String(format: "Y: 0x%05X %@", ya, rangeTxt))
                             .font(.system(size: 9.5, design: .monospaced))
                             .foregroundStyle(mint)
@@ -268,9 +278,9 @@ struct PotentialMapPreviewCard: View {
         return String(format: "%.0f", v)
     }
 
-    private func axisEndpointSummary(at addr: Int, count: Int) -> String {
+    private func axisEndpointSummary(at addr: Int, count: Int, signed: Bool) -> String {
         guard count >= 2 else { return "" }
-        let layout = DataLayout(address: addr, bits: candidate.axisBits, signed: false,
+        let layout = DataLayout(address: addr, bits: candidate.axisBits, signed: signed,
                                 lsbFirst: candidate.lsbFirst, columnMajor: false,
                                 isFloat: candidate.isFloat, rows: 1, cols: count)
         guard let a = BinCodec.raw(layout, Cell(r: 0, c: 0), in: bin),

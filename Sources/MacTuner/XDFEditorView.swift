@@ -132,11 +132,13 @@ struct XDFItemEditorSheet: View {
             if let xa = cand.xAxisAddress {
                 _xAddrText = State(initialValue: String(format: "0x%X", xa))
                 _xBits = State(initialValue: cand.axisBits)
+                _xSigned = State(initialValue: cand.xAxisSigned)
                 _xIsFloat = State(initialValue: cand.isFloat)
             }
             if let ya = cand.yAxisAddress {
                 _yAddrText = State(initialValue: String(format: "0x%X", ya))
                 _yBits = State(initialValue: cand.axisBits)
+                _ySigned = State(initialValue: cand.yAxisSigned)
                 _yIsFloat = State(initialValue: cand.isFloat)
             }
         } else if let range = presetRange {

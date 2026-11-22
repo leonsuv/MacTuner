@@ -339,8 +339,8 @@ struct Surface3DView: View {
 
         let x1 = nx * cosY - ny * sinY
         let y1 = nx * sinY + ny * cosY
-        let y2 = y1 * cosP - nz * sinP
-        let z2 = y1 * sinP + nz * cosP
+        let y2 = y1 * cosP + nz * sinP
+        let z2 = -y1 * sinP + nz * cosP
 
         let persp = 3.4 / (3.4 - y2 * 0.42)
         return Projected(pt: CGPoint(x: cx + CGFloat(x1 * scale * persp), y: cy - CGFloat(z2 * scale * persp)), depth: y2)

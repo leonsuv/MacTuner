@@ -357,12 +357,12 @@ final class AppModel {
         ensureDefinitionForEdit()
         guard var def = definition else { return nil }
         let xAxis: Axis = c.xAxisAddress.map { addr in
-            Axis(source: .data(DataLayout(address: addr, bits: c.axisBits, signed: false, lsbFirst: c.lsbFirst,
+            Axis(source: .data(DataLayout(address: addr, bits: c.axisBits, signed: c.xAxisSigned, lsbFirst: c.lsbFirst,
                                           columnMajor: false, isFloat: c.isFloat, rows: 1, cols: c.cols)),
                  count: c.cols, scaling: .identity)
         } ?? Axis(source: .none, count: c.cols, scaling: .identity)
         let yAxis: Axis = c.yAxisAddress.map { addr in
-            Axis(source: .data(DataLayout(address: addr, bits: c.axisBits, signed: false, lsbFirst: c.lsbFirst,
+            Axis(source: .data(DataLayout(address: addr, bits: c.axisBits, signed: c.yAxisSigned, lsbFirst: c.lsbFirst,
                                           columnMajor: false, isFloat: c.isFloat, rows: 1, cols: c.rows)),
                  count: c.rows, scaling: .identity)
         } ?? Axis(source: .none, count: c.rows, scaling: .identity)

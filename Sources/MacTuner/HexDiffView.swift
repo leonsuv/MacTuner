@@ -377,199 +377,243 @@ struct HexDiffView: View {
         }
     }
 
-    // MARK: - WinOLS Number Format & View Toolbar
+    // MARK: - Adaptive Responsive WinOLS Toolbar (1 Row Wide -> 2 Rows Medium -> 3 Rows Narrow)
 
     private var winolsToolbar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ViewThatFits(in: .horizontal) {
+            // Tier 1: Ultra-wide / high-DPI — single crisp row
             HStack(spacing: 8) {
-            Picker("Ansicht", selection: $viewMode) {
-                ForEach(ViewMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) }
+                toolbarFormatGroup
+                Divider().frame(height: 18)
+                toolbarLayoutGroup
+                Spacer(minLength: 6)
+                toolbarNavigationGroup
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+            .fixedSize(horizontal: true, vertical: false)
 
-            Divider().frame(height: 18)
-
-            // 8 / 16 / 32 / Float
-            Picker("Typ", selection: $dataFormat) {
-                ForEach(DataFormat.allCases, id: \.self) { f in Text(f.rawValue).tag(f) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .help("Datenbreite: 8-Bit, 16-Bit, 32-Bit oder Float")
-
-            // LoHi / HiLo (Low-High vs. High-Low)
-            Picker("Byte-Reihenfolge", selection: $lsbFirst) {
-                Text("LoHi").tag(true)
-                Text("HiLo").tag(false)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .disabled(dataFormat == .u8)
-            .help("Byte-Reihenfolge: LoHi (Low-High / Intel LE) vs. HiLo (High-Low / Motorola BE)")
-
-            // Hex / Dec / Bin
-            Picker("Zahlensystem", selection: $numberBase) {
-                ForEach(NumberBase.allCases, id: \.self) { b in Text(b.rawValue).tag(b) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .disabled(dataFormat.isFloat)
-            .help("Zahlensystem: Hex (FF) · Dec (255) · Bin (11111111)")
-
-            // Signed / Unsigned
-            Toggle(isOn: $isSigned) {
-                Text("+/−").font(.caption.monospaced().weight(.semibold))
-            }
-            .toggleStyle(.button)
-            .disabled(dataFormat.isFloat)
-            .help("Vorzeichenbehaftet (Signed)")
-
-            Divider().frame(height: 18)
-
-            // Column width (WinOLS M / W)
-            HStack(spacing: 3) {
-                Text("Spalten:").font(.caption).foregroundStyle(.secondary)
-                Button { columns = max(4, columns - 1) } label: { Image(systemName: "minus") }
-                Text("\(columns)").font(.caption.monospacedDigit().weight(.semibold)).frame(width: 22)
-                Button { columns = min(32, columns + 1) } label: { Image(systemName: "plus") }
-            }
-            .help("Spaltenanzahl anpassen (wie WinOLS M/W, um Kennfelder auszurichten)")
-
-            // Column-phase offset shift (slides by 1 value = elemBytes, plus fine ±1B odd-alignment when > 8-bit)
-            HStack(spacing: 3) {
-                Button { byteShift = (byteShift - elemBytes + rowStride) % rowStride } label: {
-                    Image(systemName: "chevron.left")
+            // Tier 2: Standard / medium window — 2 clean rows
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    toolbarFormatGroup
+                    Divider().frame(height: 18)
+                    toolbarLayoutGroup
+                    Spacer(minLength: 0)
                 }
-                .help("1 Wert (\(elemBytes) B) nach links schieben")
-                Button { byteShift = 0 } label: {
-                    Text(String(format: "+%X", ((byteShift % rowStride) + rowStride) % rowStride))
-                        .font(.caption.monospacedDigit().weight(.semibold))
-                        .frame(minWidth: 22)
-                }
-                .help("Aktueller Zeilen-Versatz in Bytes (Klicken = auf +0 zurücksetzen)")
-                Button { byteShift = (byteShift + elemBytes) % rowStride } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .help("1 Wert (\(elemBytes) B) nach rechts schieben")
-                if elemBytes > 1 {
-                    Button { byteShift = (byteShift + 1) % rowStride } label: { Text("±1B") }
-                        .help("Fein-Versatz um 1 einzelnes Byte (für ungerade 16/32-Bit-Ausrichtung)")
-                }
-                if let sel = selectedStart {
-                    Button {
-                        byteShift = sel % rowStride
-                    } label: {
-                        Image(systemName: "arrow.left.to.line")
-                    }
-                    .help("Ausgewählte Adresse (\(String(format: "0x%05X", sel))) ganz links (Spalte +0) ausrichten")
+                HStack(spacing: 8) {
+                    toolbarNavigationGroup
+                    Spacer(minLength: 0)
                 }
             }
 
-            if viewMode == .text {
-                if model.compare != nil {
-                    Picker("Ansichtsmodus", selection: $splitDiffMode) {
-                        Text("Einzel").tag(false)
-                        Text("Split").tag(true)
+            // Tier 3: Half-screen / narrow window — 3 compact rows, zero cut-off
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    toolbarFormatGroup
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 6) {
+                    toolbarLayoutGroup
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 6) {
+                    toolbarNavigationGroup
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .controlSize(.small)
+    }
+
+    @ViewBuilder private var toolbarFormatGroup: some View {
+        Picker("Ansicht", selection: $viewMode) {
+            ForEach(ViewMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+
+        // 8 / 16 / 32 / Float
+        Picker("Typ", selection: $dataFormat) {
+            ForEach(DataFormat.allCases, id: \.self) { f in Text(f.rawValue).tag(f) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .help("Datenbreite: 8-Bit, 16-Bit, 32-Bit oder Float")
+
+        // LoHi / HiLo
+        Picker("Byte-Reihenfolge", selection: $lsbFirst) {
+            Text("LoHi").tag(true)
+            Text("HiLo").tag(false)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .disabled(dataFormat == .u8)
+        .help("Byte-Reihenfolge: LoHi (Low-High / Intel LE) vs. HiLo (High-Low / Motorola BE)")
+
+        // Hex / Dec / Bin
+        Picker("Zahlensystem", selection: $numberBase) {
+            ForEach(NumberBase.allCases, id: \.self) { b in Text(b.rawValue).tag(b) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .disabled(dataFormat.isFloat)
+        .help("Zahlensystem: Hex (FF) · Dec (255) · Bin (11111111)")
+
+        // Signed / Unsigned
+        Toggle(isOn: $isSigned) {
+            Text("+/−").font(.caption.monospaced().weight(.semibold))
+        }
+        .toggleStyle(.button)
+        .fixedSize()
+        .disabled(dataFormat.isFloat)
+        .help("Vorzeichenbehaftet (Signed)")
+    }
+
+    @ViewBuilder private var toolbarLayoutGroup: some View {
+        // Column width (WinOLS M / W)
+        HStack(spacing: 3) {
+            Text("Spalten:").font(.caption).foregroundStyle(.secondary).fixedSize()
+            Button { columns = max(4, columns - 1) } label: { Image(systemName: "minus") }
+            Text("\(columns)").font(.caption.monospacedDigit().weight(.semibold)).frame(width: 22)
+            Button { columns = min(32, columns + 1) } label: { Image(systemName: "plus") }
+        }
+        .fixedSize()
+        .help("Spaltenanzahl anpassen (wie WinOLS M/W, um Kennfelder auszurichten)")
+
+        // Column-phase offset shift
+        HStack(spacing: 3) {
+            Button { byteShift = (byteShift - elemBytes + rowStride) % rowStride } label: {
+                Image(systemName: "chevron.left")
+            }
+            .help("1 Wert (\(elemBytes) B) nach links schieben")
+            Button { byteShift = 0 } label: {
+                Text(String(format: "+%X", ((byteShift % rowStride) + rowStride) % rowStride))
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .frame(minWidth: 22)
+            }
+            .help("Aktueller Zeilen-Versatz in Bytes (Klicken = auf +0 zurücksetzen)")
+            Button { byteShift = (byteShift + elemBytes) % rowStride } label: {
+                Image(systemName: "chevron.right")
+            }
+            .help("1 Wert (\(elemBytes) B) nach rechts schieben")
+            if elemBytes > 1 {
+                Button { byteShift = (byteShift + 1) % rowStride } label: { Text("±1B") }
+                    .help("Fein-Versatz um 1 einzelnes Byte (für ungerade 16/32-Bit-Ausrichtung)")
+            }
+            if let sel = selectedStart {
+                Button {
+                    byteShift = sel % rowStride
+                } label: {
+                    Image(systemName: "arrow.left.to.line")
+                }
+                .help("Ausgewählte Adresse (\(String(format: "0x%05X", sel))) ganz links (Spalte +0) ausrichten")
+            }
+        }
+        .fixedSize()
+
+        if viewMode == .text {
+            if model.compare != nil {
+                Picker("Ansichtsmodus", selection: $splitDiffMode) {
+                    Text("Einzel").tag(false)
+                    Text("Split").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .help("Nebeneinander-Vergleich (WinOLS Side-by-Side Hex-Diff)")
+
+                if splitDiffMode {
+                    Picker("Rechte Seite", selection: $splitRightDisplay) {
+                        ForEach(SplitRightDisplay.allCases, id: \.self) { m in Text(m.rawValue).tag(m) }
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .fixedSize()
-                    .help("Nebeneinander-Vergleich (WinOLS Side-by-Side Hex-Diff)")
-
-                    if splitDiffMode {
-                        Picker("Rechte Seite", selection: $splitRightDisplay) {
-                            ForEach(SplitRightDisplay.allCases, id: \.self) { m in Text(m.rawValue).tag(m) }
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .fixedSize()
-                        .help("Rechte Spalte: Vergleichswerte, Delta (Δ) oder Prozent (Δ%)")
-                    } else {
-                        Toggle("Balken", isOn: $showBars).toggleStyle(.checkbox)
-                    }
+                    .help("Rechte Spalte: Vergleichswerte, Delta (Δ) oder Prozent (Δ%)")
                 } else {
-                    Toggle("Balken", isOn: $showBars).toggleStyle(.checkbox)
+                    Toggle("Balken", isOn: $showBars).toggleStyle(.checkbox).fixedSize()
                 }
+            } else {
+                Toggle("Balken", isOn: $showBars).toggleStyle(.checkbox).fixedSize()
             }
+        }
+    }
 
-            Spacer(minLength: 4)
+    @ViewBuilder private var toolbarNavigationGroup: some View {
+        // Potential Map Recognition Cluster
+        potentialMapsToolbarCluster
 
-            // Potential Map Recognition Cluster
-            potentialMapsToolbarCluster
-
-            // Diff navigation
-            if !cachedDiffOffsets.isEmpty {
-                Toggle("Nur Diffs", isOn: $onlyDiffRows)
-                    .toggleStyle(.checkbox)
-                    .help("Nur Zeilen mit Unterschieden anzeigen")
-                ControlGroup {
-                    Button { jumpDiff(step: -1) } label: { Image(systemName: "chevron.up") }
-                        .help("Vorheriger Unterschied")
-                    Button { jumpDiff(step: 1) } label: { Image(systemName: "chevron.down") }
-                        .help("Nächster Unterschied")
-                }
+        // Diff navigation
+        if !cachedDiffOffsets.isEmpty {
+            Toggle("Nur Diffs", isOn: $onlyDiffRows)
+                .toggleStyle(.checkbox)
                 .fixedSize()
-                Chip(text: "\(cachedDiffOffsets.count) Diffs", icon: "arrow.left.arrow.right")
-                    .fixedSize()
-            }
-
-            HStack(spacing: 4) {
-                TextField("Suche (Hex/??/\"Text\")", text: $searchQuery)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption.monospaced())
-                    .frame(width: 130)
-                    .onSubmit { runSearch() }
-                if !searchHits.isEmpty {
-                    Text("\(searchHitIndex + 1)/\(searchHits.count)")
-                        .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-                    Button { stepSearch(-1) } label: { Image(systemName: "chevron.left") }
-                    Button { stepSearch(1) } label: { Image(systemName: "chevron.right") }
-                }
-            }
-
-            Menu {
-                Button("Aktuelle Adresse merken (\(String(format: "0x%05X", selectedStart ?? viewportOffset)))") {
-                    let addr = selectedStart ?? viewportOffset
-                    model.addHexBookmark(name: String(format: "Marker 0x%05X", addr), address: addr)
-                }
-                if !model.hexBookmarks.isEmpty {
-                    Divider()
-                    ForEach(model.hexBookmarks) { bm in
-                        Button("\(bm.name)") {
-                            viewportOffset = bm.address
-                            selectedStart = bm.address
-                            selectedEnd = bm.address
-                        }
-                    }
-                    Divider()
-                    Button("Alle löschen", role: .destructive) {
-                        for bm in model.hexBookmarks { model.removeHexBookmark(id: bm.id) }
-                    }
-                }
-            } label: {
-                Image(systemName: model.hexBookmarks.isEmpty ? "bookmark" : "bookmark.fill")
+                .help("Nur Zeilen mit Unterschieden anzeigen")
+            ControlGroup {
+                Button { jumpDiff(step: -1) } label: { Image(systemName: "chevron.up") }
+                    .help("Vorheriger Unterschied")
+                Button { jumpDiff(step: 1) } label: { Image(systemName: "chevron.down") }
+                    .help("Nächster Unterschied")
             }
             .fixedSize()
-            .help("Lesezeichen im Hexdump (dauerhaft gespeichert)")
-
-            HStack(spacing: 4) {
-                TextField("0x00000", text: $addressInput)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption.monospaced())
-                    .frame(width: 74)
-                    .onSubmit { jumpToAddress() }
-                Button("Gehe zu") { jumpToAddress() }
-                    .fixedSize()
-            }
-            }
-            .controlSize(.small)
-            .padding(.vertical, 1)
+            Chip(text: "\(cachedDiffOffsets.count) Diffs", icon: "arrow.left.arrow.right")
+                .fixedSize()
         }
+
+        HStack(spacing: 4) {
+            TextField("Suche (Hex/??/\"Text\")", text: $searchQuery)
+                .textFieldStyle(.roundedBorder)
+                .font(.caption.monospaced())
+                .frame(width: 118)
+                .onSubmit { runSearch() }
+            if !searchHits.isEmpty {
+                Text("\(searchHitIndex + 1)/\(searchHits.count)")
+                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                    .fixedSize()
+                Button { stepSearch(-1) } label: { Image(systemName: "chevron.left") }
+                Button { stepSearch(1) } label: { Image(systemName: "chevron.right") }
+            }
+        }
+        .fixedSize()
+
+        Menu {
+            Button("Aktuelle Adresse merken (\(String(format: "0x%05X", selectedStart ?? viewportOffset)))") {
+                let addr = selectedStart ?? viewportOffset
+                model.addHexBookmark(name: String(format: "Marker 0x%05X", addr), address: addr)
+            }
+            if !model.hexBookmarks.isEmpty {
+                Divider()
+                ForEach(model.hexBookmarks) { bm in
+                    Button("\(bm.name)") {
+                        viewportOffset = bm.address
+                        selectedStart = bm.address
+                        selectedEnd = bm.address
+                    }
+                }
+                Divider()
+                Button("Alle löschen", role: .destructive) {
+                    for bm in model.hexBookmarks { model.removeHexBookmark(id: bm.id) }
+                }
+            }
+        } label: {
+            Image(systemName: model.hexBookmarks.isEmpty ? "bookmark" : "bookmark.fill")
+        }
+        .fixedSize()
+        .help("Lesezeichen im Hexdump (dauerhaft gespeichert)")
+
+        HStack(spacing: 4) {
+            TextField("0x00000", text: $addressInput)
+                .textFieldStyle(.roundedBorder)
+                .font(.caption.monospaced())
+                .frame(width: 72)
+                .onSubmit { jumpToAddress() }
+            Button("Gehe zu") { jumpToAddress() }
+                .fixedSize()
+        }
+        .fixedSize()
     }
 
     // MARK: - Interactive Left / Right BIN Pair Selector Bar
@@ -2238,7 +2282,7 @@ struct HexDiffView: View {
             } label: {
                 Label("Gesamtes Kennfeld auswählen (\(cand.byteCount) B)", systemImage: "selection.pin.in.out")
             }
-            if cand.hasAxes {
+            if cand.hasContiguousAxes {
                 Button {
                     selectedStart = cand.fullEnvelopeRange.lowerBound
                     selectedEnd = max(cand.fullEnvelopeRange.lowerBound, cand.fullEnvelopeRange.upperBound - elemBytes)
@@ -2741,7 +2785,7 @@ struct HexDiffView: View {
 
                     func proj(_ nx: Double, _ ny: Double, _ nz: Double) -> (CGPoint, Double) {
                         let x1 = nx * cosY - ny * sinY, y1 = nx * sinY + ny * cosY
-                        let y2 = y1 * cosP - nz * sinP, z2 = y1 * sinP + nz * cosP
+                        let y2 = y1 * cosP + nz * sinP, z2 = -y1 * sinP + nz * cosP
                         let p = 3.4 / (3.4 - y2 * 0.42)
                         return (CGPoint(x: cx + CGFloat(x1 * scale * p), y: cy - CGFloat(z2 * scale * p)), y2)
                     }
