@@ -8,6 +8,8 @@ enum MapFinder {
         let rows: Int
         let cols: Int
         let bits: Int
+        let signed: Bool
+        let isFloat: Bool
         let lsbFirst: Bool
         let xAxisAddress: Int?
         let yAxisAddress: Int?
@@ -15,8 +17,8 @@ enum MapFinder {
         let reason: String
 
         var layout: DataLayout {
-            DataLayout(address: address, bits: bits, signed: false, lsbFirst: lsbFirst,
-                       columnMajor: false, isFloat: false, rows: rows, cols: cols)
+            DataLayout(address: address, bits: bits, signed: signed, lsbFirst: lsbFirst,
+                       columnMajor: false, isFloat: isFloat, rows: rows, cols: cols)
         }
 
         var byteCount: Int { rows * cols * (bits / 8) }
@@ -24,6 +26,8 @@ enum MapFinder {
 
     struct Options {
         var bits: Int = 16
+        var signed: Bool = false
+        var isFloat: Bool = false
         var lsbFirst: Bool = true
         var minRows: Int = 4
         var maxRows: Int = 24
@@ -39,7 +43,7 @@ enum MapFinder {
         var usedRanges = IndexSet()
 
         // Pass 1: Bosch/Siemens axis-prefixed maps: [len1, len2, axis1..., axis2..., data...]
-        if options.bits == 16 {
+        if options.bits == 16 && !options.isFloat {
             var off = 0
             while off + 16 < bin.count {
                 let n1 = readU16(bin, off, lsb: options.lsbFirst)
@@ -53,12 +57,13 @@ enum MapFinder {
                         let a1 = readU16Array(bin, ax1Off, count: n1, lsb: options.lsbFirst)
                         let a2 = readU16Array(bin, ax2Off, count: n2, lsb: options.lsbFirst)
                         if isStrictlyIncreasing(a1) && isStrictlyIncreasing(a2) {
-                            let smoothness = surfaceSmoothness(bin, offset: dataOff, rows: n1, cols: n2, bits: 16, lsb: options.lsbFirst)
+                            let smoothness = surfaceSmoothness(bin, offset: dataOff, rows: n1, cols: n2, bits: 16,
+                                                               signed: options.signed, isFloat: false, lsb: options.lsbFirst)
                             if smoothness > 0.45 {
                                 let conf = min(0.99, 0.55 + smoothness * 0.44)
                                 candidates.append(Candidate(
-                                    address: dataOff, rows: n1, cols: n2, bits: 16, lsbFirst: options.lsbFirst,
-                                    xAxisAddress: ax2Off, yAxisAddress: ax1Off, confidence: conf,
+                                    address: dataOff, rows: n1, cols: n2, bits: 16, signed: options.signed, isFloat: false,
+                                    lsbFirst: options.lsbFirst, xAxisAddress: ax2Off, yAxisAddress: ax1Off, confidence: conf,
                                     reason: "Achsen-Header (\(n1)×\(n2)) + glatte Oberfläche"
                                 ))
                                 usedRanges.insert(integersIn: off ..< (dataOff + dataBytes))
@@ -72,7 +77,7 @@ enum MapFinder {
             }
         }
 
-        // Pass 2: Smooth 2D surface scanner over common ECU dimensions (8x8, 12x12, 16x16, 8x16, 16x8, 6x8)
+        // Pass 2: Smooth 2D surface scanner over common ECU dimensions (supports 8/16-bit signed/unsigned + 32-bit IEEE Float)
         let commonShapes = [(16, 16), (12, 12), (8, 16), (16, 8), (8, 12), (12, 8), (8, 8), (6, 8), (1, 16), (1, 12)]
             .filter { $0.0 <= options.maxRows && $0.1 <= options.maxCols }
         let step = max(strideBytes * 4, 16)
@@ -83,17 +88,19 @@ enum MapFinder {
             for (r, c) in commonShapes {
                 let bytesNeeded = r * c * strideBytes
                 guard off + bytesNeeded <= bin.count else { continue }
-                let score = surfaceSmoothness(bin, offset: off, rows: r, cols: c, bits: options.bits, lsb: options.lsbFirst)
+                let score = surfaceSmoothness(bin, offset: off, rows: r, cols: c, bits: options.bits,
+                                              signed: options.signed, isFloat: options.isFloat, lsb: options.lsbFirst)
                 if score > 0.72, score > (bestShape?.2 ?? 0) {
                     bestShape = (r, c, score)
                 }
             }
             if let (r, c, score) = bestShape {
                 let bytesNeeded = r * c * strideBytes
+                let typeTag = options.isFloat ? "Float32" : (options.signed ? "Signed \(options.bits)-Bit" : "\(options.bits)-Bit")
                 candidates.append(Candidate(
-                    address: off, rows: r, cols: c, bits: options.bits, lsbFirst: options.lsbFirst,
-                    xAxisAddress: nil, yAxisAddress: nil, confidence: min(0.92, score),
-                    reason: r == 1 ? "Glatte 1D-Kennlinie (\(c))" : "Glatte 2D-Oberfläche (\(r)×\(c))"
+                    address: off, rows: r, cols: c, bits: options.bits, signed: options.signed, isFloat: options.isFloat,
+                    lsbFirst: options.lsbFirst, xAxisAddress: nil, yAxisAddress: nil, confidence: min(0.92, score),
+                    reason: r == 1 ? "Glatte 1D-Kennlinie (\(c) · \(typeTag))" : "Glatte 2D-Oberfläche (\(r)×\(c) · \(typeTag))"
                 ))
                 usedRanges.insert(integersIn: off ..< (off + bytesNeeded))
                 off += bytesNeeded
@@ -122,7 +129,8 @@ enum MapFinder {
     }
 
     /// Returns a 0...1 smoothness score: high when values vary smoothly without random noise, ASCII text, or flat fill.
-    private static func surfaceSmoothness(_ bin: [UInt8], offset: Int, rows: Int, cols: Int, bits: Int, lsb: Bool) -> Double {
+    private static func surfaceSmoothness(_ bin: [UInt8], offset: Int, rows: Int, cols: Int,
+                                          bits: Int, signed: Bool, isFloat: Bool, lsb: Bool) -> Double {
         let count = rows * cols
         guard count >= 8 else { return 0 }
         let strideBytes = bits / 8
@@ -132,23 +140,32 @@ enum MapFinder {
         for i in 0..<count {
             let o = offset + i * strideBytes
             let v: Double
-            if bits == 16 {
+            if isFloat && bits == 32 {
+                let u: UInt32 = lsb
+                    ? (UInt32(bin[o]) | (UInt32(bin[o + 1]) << 8) | (UInt32(bin[o + 2]) << 16) | (UInt32(bin[o + 3]) << 24))
+                    : ((UInt32(bin[o]) << 24) | (UInt32(bin[o + 1]) << 16) | (UInt32(bin[o + 2]) << 8) | UInt32(bin[o + 3]))
+                if u == 0 { zeroCount += 1 }
+                if u == 0xFFFFFFFF { ffCount += 1 }
+                let f = Float(bitPattern: u)
+                guard f.isFinite, abs(f) < 1e7 else { return 0 }
+                v = Double(f)
+            } else if bits == 16 {
                 let raw = readU16(bin, o, lsb: lsb)
                 if raw == 0 { zeroCount += 1 }
                 if raw == 0xFFFF { ffCount += 1 }
-                v = Double(raw)
+                v = signed ? Double(Int16(bitPattern: UInt16(raw))) : Double(raw)
             } else {
-                let raw = Int(bin[o])
+                let raw = bin[o]
                 if raw == 0 { zeroCount += 1 }
                 if raw == 0xFF { ffCount += 1 }
-                v = Double(raw)
+                v = signed ? Double(Int8(bitPattern: raw)) : Double(raw)
             }
             vals[i] = v
             if v < minV { minV = v }
             if v > maxV { maxV = v }
         }
         let range = maxV - minV
-        if range < 8 { return 0 } // Flat/constant block
+        if isFloat ? (range < 0.01) : (range < 8) { return 0 } // Flat/constant block
         if Double(zeroCount + ffCount) / Double(count) > 0.65 { return 0 } // Mostly empty/erased flash
 
         // Compute average neighbor step relative to total range

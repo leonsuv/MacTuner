@@ -272,4 +272,46 @@ enum BinaryFormatCodec {
         }
         return out
     }
+
+    static func padToSize(_ bytes: [UInt8], targetSize: Int, padByte: UInt8 = 0xFF, atHead: Bool = false) -> [UInt8] {
+        guard targetSize > bytes.count else { return bytes }
+        let pad = [UInt8](repeating: padByte, count: targetSize - bytes.count)
+        return atHead ? (pad + bytes) : (bytes + pad)
+    }
+
+    static func extractSlice(_ bytes: [UInt8], range: Range<Int>) -> [UInt8] {
+        let lo = max(0, range.lowerBound)
+        let hi = min(bytes.count, range.upperBound)
+        guard lo < hi else { return [] }
+        return Array(bytes[lo ..< hi])
+    }
+
+    static func injectSlice(into base: [UInt8], slice: [UInt8], at offset: Int) -> [Patch] {
+        guard offset >= 0, offset + slice.count <= base.count, !slice.isEmpty else { return [] }
+        let old = Array(base[offset ..< offset + slice.count])
+        guard old != slice else { return [] }
+        return [Patch(offset: offset, old: old, new: slice)]
+    }
+
+    static func splitHiLo(_ bytes: [UInt8]) -> (even: [UInt8], odd: [UInt8]) {
+        var even: [UInt8] = [], odd: [UInt8] = []
+        even.reserveCapacity(bytes.count / 2)
+        odd.reserveCapacity(bytes.count / 2)
+        for i in stride(from: 0, to: bytes.count - 1, by: 2) {
+            even.append(bytes[i])
+            odd.append(bytes[i + 1])
+        }
+        return (even, odd)
+    }
+
+    static func mergeHiLo(even: [UInt8], odd: [UInt8]) -> [UInt8] {
+        let n = min(even.count, odd.count)
+        var out: [UInt8] = []
+        out.reserveCapacity(n * 2)
+        for i in 0..<n {
+            out.append(even[i])
+            out.append(odd[i])
+        }
+        return out
+    }
 }

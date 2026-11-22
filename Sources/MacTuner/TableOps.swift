@@ -208,4 +208,58 @@ enum TableOps {
         }
         return increasing || decreasing
     }
+
+    /// Evaluates a 1D piecewise-linear curve at `q` (clamped at ends or linear-slope extrapolated).
+    static func eval1D(xs: [Double], zs: [Double], at q: Double, extrapolate: Bool = false) -> Double {
+        let n = min(xs.count, zs.count)
+        guard n > 0 else { return 0 }
+        if n == 1 { return zs[0] }
+        let ascending = xs[n - 1] >= xs[0]
+        if ascending {
+            if q <= xs[0] {
+                if !extrapolate || xs[1] == xs[0] { return zs[0] }
+                return zs[0] + (q - xs[0]) / (xs[1] - xs[0]) * (zs[1] - zs[0])
+            }
+            if q >= xs[n - 1] {
+                if !extrapolate || xs[n - 1] == xs[n - 2] { return zs[n - 1] }
+                return zs[n - 1] + (q - xs[n - 1]) / (xs[n - 1] - xs[n - 2]) * (zs[n - 1] - zs[n - 2])
+            }
+            for i in 0..<(n - 1) {
+                if q >= xs[i] && q <= xs[i + 1] {
+                    let span = xs[i + 1] - xs[i]
+                    let t = span == 0 ? 0 : (q - xs[i]) / span
+                    return zs[i] + t * (zs[i + 1] - zs[i])
+                }
+            }
+        } else {
+            return eval1D(xs: xs.reversed(), zs: zs.reversed(), at: q, extrapolate: extrapolate)
+        }
+        return zs[n - 1]
+    }
+
+    /// Re-interpolates a 2D surface `(oldX, oldY, oldZ)` onto new breakpoints `(newX, newY)` via bilinear interpolation.
+    static func reinterpolateSurface(oldX: [Double], oldY: [Double], oldZ: [[Double]],
+                                     newX: [Double], newY: [Double], extrapolate: Bool = false) -> [[Double]] {
+        let rows = newY.count, cols = newX.count
+        guard rows > 0, cols > 0, !oldZ.isEmpty else { return oldZ }
+        // First resample each old row along X -> intermediate [oldY.count][cols]
+        var mid = [[Double]](repeating: [Double](repeating: 0, count: cols), count: oldZ.count)
+        for r in 0..<oldZ.count {
+            for c in 0..<cols {
+                mid[r][c] = eval1D(xs: oldX, zs: oldZ[r], at: newX[c], extrapolate: extrapolate)
+            }
+        }
+        if rows == 1 || oldY.count <= 1 {
+            return mid
+        }
+        // Then resample each column along Y -> [rows][cols]
+        var out = [[Double]](repeating: [Double](repeating: 0, count: cols), count: rows)
+        for c in 0..<cols {
+            let colVals = (0..<mid.count).map { mid[$0][c] }
+            for r in 0..<rows {
+                out[r][c] = eval1D(xs: oldY, zs: colVals, at: newY[r], extrapolate: extrapolate)
+            }
+        }
+        return out
+    }
 }

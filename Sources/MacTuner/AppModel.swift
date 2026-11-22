@@ -169,6 +169,7 @@ final class AppModel {
     static let checksumSelection = -10
     static let datalogSelection = -11
     static let pluginsSelection = -12
+    static let dtcSelection = -13
 
     private(set) var definition: XDFDefinition?
     private(set) var xdfURL: URL?
@@ -258,6 +259,8 @@ final class AppModel {
 
     /// Side-by-side pinned map ID for split editing (e.g. Torque/Inverse, Upshift/Downshift).
     var pinnedItemID: Int?
+    /// When true, edits applied to the active map mirror atomically to `pinnedItemID` (if compatible shape).
+    var mirrorPinnedEdits = false
     /// Byte gap threshold for clustering adjacent diffs into map-sized regions (0 / 16 / 32 / 64 B).
     var diffClusterGap: Int = 32 {
         didSet { diffClusterCache = nil }
@@ -464,6 +467,14 @@ final class AppModel {
         stopLogPlayback()
         datalog = nil
         logFrame = 0
+    }
+
+    @discardableResult
+    func addDatalogMathChannel(name: String, unit: String, formula: String, channelA: Int, channelB: Int) -> Bool {
+        guard var log = datalog else { return false }
+        let ok = log.appendMathChannel(name: name, unit: unit, formula: formula, channelA: channelA, channelB: channelB)
+        if ok { datalog = log }
+        return ok
     }
 
     func toggleLogPlayback() {
@@ -1850,8 +1861,30 @@ final class AppModel {
         }
 
         let summary = describeEdit(op, item: item, cells: cells, patchCount: patches.count)
-        commit(patches)
+        var allPatches = patches
+        if mirrorPinnedEdits, let pid = pinnedItemID, pid != item.id, let def = definition,
+           pid >= 0, pid < def.items.count {
+            let twin = def.items[pid]
+            if twin.data.rows == item.data.rows && twin.data.cols == item.data.cols && !isLocked(twin) {
+                let twinPatches = BinCodec.patches(op, item: twin, cells: cells, bin: bin, compare: compare)
+                allPatches.append(contentsOf: twinPatches)
+            }
+        }
+        commit(allPatches)
         recordHistory(item: item, summary: summary)
+    }
+
+    /// Adds an in-memory binary buffer (e.g. extracted slice, byte-swapped copy, padded BIN) as a new workspace tab.
+    func addInMemoryBin(name: String, bytes: [UInt8], makeActive: Bool = true) {
+        let doc = BinDocument(url: nil, name: name, bytes: bytes)
+        openBins.append(doc)
+        if makeActive {
+            activeBinID = doc.id
+            if compareSource == .bin(doc.id) { compareSource = .openedState }
+            clearAlignmentState()
+            refreshEmbeddedSourceBin()
+        }
+        touch()
     }
 
     /// Edits a single axis value stored in the BIN.

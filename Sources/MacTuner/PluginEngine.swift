@@ -93,9 +93,25 @@ final class PluginEngine {
         loadedPlugins.append(LoadedPlugin(fileName: url.lastPathComponent, url: url, error: jsError))
     }
 
+    /// Creates a full-size native JS `Uint8Array` (no 512 KB truncation!) for any 64 KB – 16 MB binary.
+    fileprivate static func makeJSUint8Array(_ bin: [UInt8], in ctx: JSContext?) -> Any {
+        guard let ctx, !bin.isEmpty else { return [Int]() }
+        var exc: JSValueRef?
+        guard let ta = JSObjectMakeTypedArray(ctx.jsGlobalContextRef, kJSTypedArrayTypeUint8Array, bin.count, &exc),
+              exc == nil,
+              let ptr = JSObjectGetTypedArrayBytesPtr(ctx.jsGlobalContextRef, ta, &exc),
+              exc == nil else {
+            return bin.map { Int($0) }
+        }
+        bin.withUnsafeBytes { raw in
+            if let src = raw.baseAddress { memcpy(ptr, src, bin.count) }
+        }
+        return JSValue(jsValueRef: ta, in: ctx) as Any
+    }
+
     func runTool(_ tool: RegisteredTool, bin: [UInt8]) -> (message: String, patches: [Patch]) {
-        let arr = bin.prefix(min(bin.count, 512_000)).map { Int($0) }
-        guard let res = tool.callback.call(withArguments: [arr]) else {
+        let jsBytes = Self.makeJSUint8Array(bin, in: tool.callback.context)
+        guard let res = tool.callback.call(withArguments: [jsBytes]) else {
             return ("Plugin lieferte kein Ergebnis.", [])
         }
         if res.isString { return (res.toString() ?? "OK", []) }
@@ -161,8 +177,8 @@ private struct JSChecksumPlugin: ChecksumPlugin {
     func matches(bin: [UInt8]) -> Bool { false }
 
     func verify(bin: [UInt8]) -> ChecksumReport {
-        let arr = bin.prefix(min(bin.count, 512_000)).map { Int($0) }
-        guard let res = verifyFn.call(withArguments: [arr]) else {
+        let jsBytes = PluginEngine.makeJSUint8Array(bin, in: verifyFn.context)
+        guard let res = verifyFn.call(withArguments: [jsBytes]) else {
             return ChecksumReport(pluginID: id, pluginName: name, blocks: [])
         }
         let valid = res.forProperty("valid")?.toBool() ?? false
@@ -176,8 +192,8 @@ private struct JSChecksumPlugin: ChecksumPlugin {
 
     func correct(bin: [UInt8]) -> [Patch] {
         guard let correctFn, !correctFn.isUndefined else { return [] }
-        let arr = bin.prefix(min(bin.count, 512_000)).map { Int($0) }
-        guard let jsPatches = correctFn.call(withArguments: [arr])?.toArray() as? [[String: Any]] else { return [] }
+        let jsBytes = PluginEngine.makeJSUint8Array(bin, in: correctFn.context)
+        guard let jsPatches = correctFn.call(withArguments: [jsBytes])?.toArray() as? [[String: Any]] else { return [] }
         return jsPatches.compactMap { p -> Patch? in
             guard let off = p["offset"] as? Int, let vals = p["bytes"] as? [Int] else { return nil }
             let newBytes = vals.map { UInt8(truncatingIfNeeded: $0) }

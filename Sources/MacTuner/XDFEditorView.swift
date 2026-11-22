@@ -33,12 +33,17 @@ struct XDFItemEditorSheet: View {
     // Axes (for tables)
     @State private var xAddrText = ""
     @State private var xBits = 16
+    @State private var xSigned = false
+    @State private var xIsFloat = false
     @State private var xEq = "X"
     @State private var xUnits = ""
     @State private var yAddrText = ""
     @State private var yBits = 16
+    @State private var ySigned = false
+    @State private var yIsFloat = false
     @State private var yEq = "X"
     @State private var yUnits = ""
+    @State private var preservedExtraPatchEntries: [XDFPatchEntry] = []
 
     // Flag
     @State private var flagMaskText = "0x01"
@@ -79,12 +84,16 @@ struct XDFItemEditorSheet: View {
                 if let xl = x.layout {
                     _xAddrText = State(initialValue: String(format: "0x%X", xl.address))
                     _xBits = State(initialValue: xl.bits)
+                    _xSigned = State(initialValue: xl.signed)
+                    _xIsFloat = State(initialValue: xl.isFloat)
                 }
                 _xEq = State(initialValue: x.scaling.equation)
                 _xUnits = State(initialValue: x.scaling.units)
                 if let yl = y.layout {
                     _yAddrText = State(initialValue: String(format: "0x%X", yl.address))
                     _yBits = State(initialValue: yl.bits)
+                    _ySigned = State(initialValue: yl.signed)
+                    _yIsFloat = State(initialValue: yl.isFloat)
                 }
                 _yEq = State(initialValue: y.scaling.equation)
                 _yUnits = State(initialValue: y.scaling.units)
@@ -100,6 +109,9 @@ struct XDFItemEditorSheet: View {
                     _addressText = State(initialValue: String(format: "0x%X", first.address))
                     _patchHexText = State(initialValue: first.patchData.map { String(format: "%02X", $0) }.joined(separator: " "))
                     _baseHexText = State(initialValue: first.baseData.map { String(format: "%02X", $0) }.joined(separator: " "))
+                }
+                if entries.count > 1 {
+                    _preservedExtraPatchEntries = State(initialValue: Array(entries.dropFirst()))
                 }
             }
         } else if let range = presetRange {
@@ -159,15 +171,30 @@ struct XDFItemEditorSheet: View {
                 }
 
                 Section("Daten-Layout") {
-                    HStack {
+                    HStack(spacing: 6) {
                         TextField("Adresse (Hex)", text: $addressText)
+                        ControlGroup {
+                            Button("-2") { nudgeAddress(-2) }
+                            Button("-1") { nudgeAddress(-1) }
+                            Button("+1") { nudgeAddress(1) }
+                            Button("+2") { nudgeAddress(2) }
+                        }
+                        .fixedSize()
+                        .controlSize(.small)
+                        .help("Startadresse in Bytes verschieben (Live-Vorschau unten)")
                         if itemType != .patch {
                             Picker("Bits", selection: $bits) {
                                 Text("8").tag(8)
                                 Text("16").tag(16)
                                 Text("32").tag(32)
                             }
-                            .frame(width: 110)
+                            .frame(width: 90)
+                        }
+                    }
+                    if model.hasBin, itemType != .patch, let preview = livePreviewValues {
+                        HStack(spacing: 6) {
+                            Text("Vorschau:").font(.caption2).foregroundStyle(.secondary)
+                            Text(preview).font(.caption2.monospaced()).foregroundStyle(Color.accentColor).lineLimit(1)
                         }
                     }
                     if itemType == .table {
@@ -206,19 +233,23 @@ struct XDFItemEditorSheet: View {
 
                 if itemType == .table {
                     Section("Achsen (optional, leer = Index)") {
-                        HStack {
+                        HStack(spacing: 6) {
                             Text("X:").frame(width: 18)
-                            TextField("Adresse 0x…", text: $xAddrText).frame(width: 95)
-                            Picker("", selection: $xBits) { Text("8b").tag(8); Text("16b").tag(16); Text("32b").tag(32) }.frame(width: 68)
+                            TextField("Adresse 0x…", text: $xAddrText).frame(width: 88)
+                            Picker("", selection: $xBits) { Text("8b").tag(8); Text("16b").tag(16); Text("32b").tag(32) }.frame(width: 64)
+                            Toggle("±", isOn: $xSigned).toggleStyle(.button).controlSize(.mini).help("X-Achse vorzeichenbehaftet (Signed)")
+                            Toggle("F", isOn: $xIsFloat).toggleStyle(.button).controlSize(.mini).help("X-Achse 32-Bit Float")
                             TextField("Formel", text: $xEq)
-                            TextField("Einheit", text: $xUnits).frame(width: 70)
+                            TextField("Einheit", text: $xUnits).frame(width: 64)
                         }
-                        HStack {
+                        HStack(spacing: 6) {
                             Text("Y:").frame(width: 18)
-                            TextField("Adresse 0x…", text: $yAddrText).frame(width: 95)
-                            Picker("", selection: $yBits) { Text("8b").tag(8); Text("16b").tag(16); Text("32b").tag(32) }.frame(width: 68)
+                            TextField("Adresse 0x…", text: $yAddrText).frame(width: 88)
+                            Picker("", selection: $yBits) { Text("8b").tag(8); Text("16b").tag(16); Text("32b").tag(32) }.frame(width: 64)
+                            Toggle("±", isOn: $ySigned).toggleStyle(.button).controlSize(.mini).help("Y-Achse vorzeichenbehaftet (Signed)")
+                            Toggle("F", isOn: $yIsFloat).toggleStyle(.button).controlSize(.mini).help("Y-Achse 32-Bit Float")
                             TextField("Formel", text: $yEq)
-                            TextField("Einheit", text: $yUnits).frame(width: 70)
+                            TextField("Einheit", text: $yUnits).frame(width: 64)
                         }
                     }
                 }
@@ -263,8 +294,8 @@ struct XDFItemEditorSheet: View {
         case .table:
             dl = DataLayout(address: addr, bits: bits, signed: signed, lsbFirst: lsbFirst,
                             columnMajor: columnMajor, isFloat: isFloat, rows: rows, cols: cols)
-            let xAxis = makeAxis(addrText: xAddrText, bits: xBits, eq: xEq, units: xUnits, count: cols)
-            let yAxis = makeAxis(addrText: yAddrText, bits: yBits, eq: yEq, units: yUnits, count: rows)
+            let xAxis = makeAxis(addrText: xAddrText, bits: xBits, signed: xSigned, isFloat: xIsFloat, eq: xEq, units: xUnits, count: cols)
+            let yAxis = makeAxis(addrText: yAddrText, bits: yBits, signed: ySigned, isFloat: yIsFloat, eq: yEq, units: yUnits, count: rows)
             kind = .table(x: xAxis, y: yAxis)
         case .constant:
             dl = DataLayout(address: addr, bits: bits, signed: signed, lsbFirst: lsbFirst,
@@ -280,7 +311,8 @@ struct XDFItemEditorSheet: View {
             let bBytes = XDFParser.parseHexBytes(baseHexText)
             dl = DataLayout(address: addr, bits: 8, signed: false, lsbFirst: false,
                             columnMajor: false, isFloat: false, rows: 1, cols: max(1, pBytes.count))
-            kind = .patch(entries: [XDFPatchEntry(address: addr, name: title, baseData: bBytes, patchData: pBytes)])
+            let primary = XDFPatchEntry(address: addr, name: title, baseData: bBytes, patchData: pBytes)
+            kind = .patch(entries: [primary] + preservedExtraPatchEntries)
         }
 
         let item = XDFItem(id: existingID ?? (model.definition?.items.count ?? 0),
@@ -290,15 +322,33 @@ struct XDFItemEditorSheet: View {
         dismiss()
     }
 
-    private func makeAxis(addrText: String, bits: Int, eq: String, units: String, count: Int) -> Axis {
+    private func makeAxis(addrText: String, bits: Int, signed: Bool, isFloat: Bool, eq: String, units: String, count: Int) -> Axis {
         let cleanEq = eq.trimmingCharacters(in: .whitespaces).isEmpty ? "X" : eq
         let sc = Scaling(equation: cleanEq, expr: Expr.parse(cleanEq) ?? .x, units: units, decimals: 1, output: .float)
         if let a = XDFParser.int(addrText) {
-            let l = DataLayout(address: a, bits: bits, signed: false, lsbFirst: lsbFirst,
-                               columnMajor: false, isFloat: false, rows: 1, cols: count)
+            let l = DataLayout(address: a, bits: bits, signed: signed, lsbFirst: lsbFirst,
+                               columnMajor: false, isFloat: isFloat, rows: 1, cols: count)
             return Axis(source: .data(l), count: count, scaling: sc)
         }
         return Axis(source: .none, count: count, scaling: sc)
+    }
+
+    private func nudgeAddress(_ delta: Int) {
+        let cur = XDFParser.int(addressText) ?? 0
+        let next = max(0, cur + delta)
+        addressText = String(format: "0x%X", next)
+    }
+
+    private var livePreviewValues: String? {
+        guard let addr = XDFParser.int(addressText), addr >= 0 else { return nil }
+        let dl = DataLayout(address: addr, bits: bits, signed: signed, lsbFirst: lsbFirst,
+                            columnMajor: columnMajor, isFloat: isFloat, rows: 1, cols: min(8, max(1, cols)))
+        let eq = equation.trimmingCharacters(in: .whitespaces).isEmpty ? "X" : equation
+        let sc = Scaling(equation: eq, expr: Expr.parse(eq) ?? .x, units: units, decimals: decimals, output: outputType)
+        let vals = (0..<dl.cols).compactMap { c -> String? in
+            BinCodec.raw(dl, Cell(r: 0, c: c), in: model.bin).map { sc.display(raw: $0, layout: dl) }
+        }
+        return vals.isEmpty ? nil : vals.joined(separator: " · ")
     }
 
     private static func guessDimensions(_ count: Int) -> (Int, Int) {

@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 struct MapFinderView: View {
     @Environment(AppModel.self) private var model
     @State private var bits = 16
+    @State private var signed = false
+    @State private var isFloat = false
     @State private var lsbFirst = true
     @State private var candidates: [MapFinder.Candidate] = []
     @State private var selectedID: UUID?
@@ -17,18 +19,29 @@ struct MapFinderView: View {
                 Text("Kennfeld-Finder").font(.system(size: 22, weight: .bold))
                 Chip(text: "\(candidates.count) Kandidaten", icon: "sparkle.magnifyingglass")
                 Spacer()
-                Picker("Bits", selection: $bits) {
+                Picker("Bits", selection: Binding(
+                    get: { isFloat ? 32 : bits },
+                    set: { v in
+                        if v == 32 { bits = 32; isFloat = true }
+                        else { bits = v; isFloat = false }
+                    }
+                )) {
                     Text("8-Bit").tag(8)
                     Text("16-Bit").tag(16)
+                    Text("Float32").tag(32)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
+                Toggle("Signed", isOn: $signed)
+                    .disabled(isFloat)
                 Toggle("LSB (Intel)", isOn: $lsbFirst)
                     .disabled(bits == 8)
                 Button {
                     var opts = MapFinder.Options()
                     opts.bits = bits
+                    opts.signed = signed
+                    opts.isFloat = isFloat
                     opts.lsbFirst = lsbFirst
                     let cov = model.definition.map(Changes.coverage) ?? IndexSet()
                     candidates = MapFinder.scan(bin: model.bin, covered: cov, options: opts)
@@ -252,10 +265,10 @@ struct VersionPortView: View {
     }
 
     private func pickTarget() {
-        guard let url = model.chooseFile("Ziel-BIN (andere Softwareversion)", types: ["bin"]),
-              let data = try? Data(contentsOf: url) else { return }
+        guard let url = model.chooseFile("Ziel-BIN (andere Softwareversion)", types: BinaryFormatCodec.binaryExtensions),
+              let loaded = try? BinaryFormatCodec.load(url: url) else { return }
         targetURL = url
-        targetBytes = [UInt8](data)
+        targetBytes = loaded.bytes
         matches = []
         statusMessage = nil
     }

@@ -17,6 +17,7 @@ struct WorkbenchRail: View {
         case versionPort
         case batchTuner
         case diagnostics
+        case dtc
         case checksums
         case plugins
     }
@@ -33,6 +34,7 @@ struct WorkbenchRail: View {
         case AppModel.versionPortSelection: return .versionPort
         case AppModel.batchTunerSelection: return .batchTuner
         case AppModel.diagnosticsSelection: return .diagnostics
+        case AppModel.dtcSelection: return .dtc
         case AppModel.checksumSelection: return .checksums
         case AppModel.pluginsSelection: return .plugins
         default: return .maps
@@ -105,6 +107,11 @@ struct WorkbenchRail: View {
                        badge: model.diagnosticFindings.isEmpty ? nil : "\(model.diagnosticFindings.count)",
                        badgeColor: .orange) {
                 model.selection = AppModel.diagnosticsSelection
+            }
+            .disabled(!model.hasBin)
+
+            railButton(.dtc, icon: "exclamationmark.octagon", title: "DTC-Tabellen & Fehlercodes") {
+                model.selection = AppModel.dtcSelection
             }
             .disabled(!model.hasBin)
 

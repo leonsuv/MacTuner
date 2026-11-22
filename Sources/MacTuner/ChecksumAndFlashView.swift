@@ -9,6 +9,10 @@ struct ChecksumAndFlashView: View {
     @State private var includeChangelog = true
     @State private var revealInFinder = true
     @State private var exportStatus: String?
+    @State private var sliceStartHex = "0x0"
+    @State private var sliceEndHex = "0x80000"
+    @State private var injectOffsetHex = "0x0"
+    @State private var utilStatus: String?
 
     var body: some View {
         ScrollView {
@@ -21,6 +25,7 @@ struct ChecksumAndFlashView: View {
                 } else {
                     checksumCard
                     flashHandoffCard
+                    binaryUtilitiesCard
                 }
             }
             .padding(20)
@@ -154,6 +159,72 @@ struct ChecksumAndFlashView: View {
                 if let exportStatus {
                     Text(exportStatus).font(.caption).foregroundStyle(.green)
                 }
+            }
+        }
+        .card(padding: 14)
+    }
+
+    private var binaryUtilitiesCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("BIN-Werkzeuge (Byte-Swap, Slice, Inject, Padding)", systemImage: "wrench.and.screwdriver").font(.headline)
+            Text("Erzeugt neue Workspace-Tabs oder injiziert Kalibrierungs-Segmente (rückgängig machbar) — z. B. für Byte-Swapped EPROMs oder OBD ↔ Bench-Dumps.")
+                .font(.caption).foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Button("16-Bit Byte-Swap") {
+                    let swapped = BinaryFormatCodec.byteSwap16(model.bin)
+                    model.addInMemoryBin(name: "\(model.binName)_swap16.bin", bytes: swapped)
+                    utilStatus = "16-Bit Byte-Swap als neuer Tab geöffnet."
+                }
+                Button("32-Bit Byte-Swap") {
+                    let swapped = BinaryFormatCodec.byteSwap32(model.bin)
+                    model.addInMemoryBin(name: "\(model.binName)_swap32.bin", bytes: swapped)
+                    utilStatus = "32-Bit Byte-Swap als neuer Tab geöffnet."
+                }
+                Menu("Auf Flash-Größe auffüllen (0xFF)") {
+                    ForEach([(524_288, "512 KB"), (1_048_576, "1 MB"), (2_097_152, "2 MB"), (4_194_304, "4 MB")], id: \.0) { size, label in
+                        Button("Auf \(label) auffüllen") {
+                            let padded = BinaryFormatCodec.padToSize(model.bin, targetSize: size, padByte: 0xFF)
+                            model.addInMemoryBin(name: "\(model.binName)_\(label.replacingOccurrences(of: " ", with: "")).bin", bytes: padded)
+                            utilStatus = "Auf \(label) aufgefüllt."
+                        }
+                        .disabled(model.bin.count >= size)
+                    }
+                }
+            }
+            .controlSize(.small)
+
+            Divider()
+
+            HStack(spacing: 8) {
+                Text("Ausschnitt extrahieren:").font(.caption).foregroundStyle(.secondary)
+                TextField("Start 0x…", text: $sliceStartHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 90)
+                Text("–").foregroundStyle(.secondary)
+                TextField("Ende 0x…", text: $sliceEndHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 90)
+                Button("Extrahieren") {
+                    guard let s = XDFParser.int(sliceStartHex), let e = XDFParser.int(sliceEndHex), s < e else { return }
+                    let slice = BinaryFormatCodec.extractSlice(model.bin, range: s..<e)
+                    guard !slice.isEmpty else { return }
+                    model.addInMemoryBin(name: String(format: "%@_0x%X-0x%X.bin", model.binName, s, e), bytes: slice)
+                    utilStatus = "\(slice.count) Bytes extrahiert."
+                }
+                Spacer()
+                Text("Segment injizieren ab:").font(.caption).foregroundStyle(.secondary)
+                TextField("Offset 0x…", text: $injectOffsetHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 90)
+                Button("Datei wählen …") {
+                    guard let off = XDFParser.int(injectOffsetHex),
+                          let url = model.chooseFile("Segment-Datei wählen", types: BinaryFormatCodec.binaryExtensions),
+                          let loaded = try? BinaryFormatCodec.load(url: url) else { return }
+                    let patches = BinaryFormatCodec.injectSlice(into: model.bin, slice: loaded.bytes, at: off)
+                    guard !patches.isEmpty else { utilStatus = "Bereich außerhalb der BIN oder identisch."; return }
+                    model.applyRawPatches(patches, label: String(format: "Segment injiziert (%d B @ 0x%05X)", loaded.bytes.count, off))
+                    utilStatus = String(format: "%d Bytes ab 0x%05X injiziert.", loaded.bytes.count, off)
+                }
+            }
+            .controlSize(.small)
+
+            if let utilStatus {
+                Text(utilStatus).font(.caption).foregroundStyle(.green)
             }
         }
         .card(padding: 14)

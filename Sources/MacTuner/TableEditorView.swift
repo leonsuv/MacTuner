@@ -27,6 +27,14 @@ struct TableEditorView: View {
     @State private var showClampPopover = false
     @State private var clampMinInput = ""
     @State private var clampMaxInput = ""
+    @State private var showFormulaPopover = false
+    @State private var formulaInput = "X * 1.05"
+    @State private var showRescaleAxisSheet = false
+    @State private var rescaleIsX = true
+    @State private var rescaleStartText = ""
+    @State private var rescaleEndText = ""
+    @State private var rescaleSharedCascade = true
+    @State private var rescaleExtrapolate = false
     @AppStorage("valueMode") private var valueMode: ValueMode = .values
     @FocusState private var gridFocused: Bool
 
@@ -149,11 +157,50 @@ struct TableEditorView: View {
                             Button("Auf Durchschnitt setzen") { runTransform { TableOps.setToAverage($0, value: $1) } }
                             Button("Abflachen auf Wert …") { flattenInput = ""; showFlattenPopover = true }
                             Button("Begrenzen (Clamp) …") { clampMinInput = ""; clampMaxInput = ""; showClampPopover = true }
+                            Divider()
+                            Button("Formel f(x) anwenden …") { showFormulaPopover = true }
                         } label: {
                             Label("Füllen", systemImage: "arrow.down.right.square")
                         }
                         .fixedSize()
                         .disabled(!canTransform)
+                        .popover(isPresented: $showFormulaPopover) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Formel auf Auswahl anwenden").font(.headline)
+                                Text("Variablen: X (aktuell), CMP (Vergleich), AX (X-Achse), AY (Y-Achse), R, C — z. B. 0.5*(X+CMP) oder clamp(X*1.05, 0, 100)")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                HStack(spacing: 6) {
+                                    TextField("Formel (z. B. 0.5*(X+CMP))", text: $formulaInput)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.body.monospaced())
+                                        .onSubmit { applyFormulaTransform(); showFormulaPopover = false }
+                                    Button("Anwenden") {
+                                        applyFormulaTransform()
+                                        showFormulaPopover = false
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
+                            }
+                            .padding(12)
+                            .frame(width: 360)
+                        }
+
+                        if x.layout != nil || y.layout != nil {
+                            Button {
+                                rescaleIsX = (x.layout != nil)
+                                prepareRescaleInputs()
+                                showRescaleAxisSheet = true
+                            } label: {
+                                Label("Achse skalieren", systemImage: "arrow.left.and.right.square")
+                            }
+                            .fixedSize()
+                            .disabled(model.isLocked(item) || isCompareView)
+                            .help("Achse neu skalieren und Z-Kennfeldwerte automatisch bilinear umrechnen")
+                            .popover(isPresented: $showRescaleAxisSheet) {
+                                axisRescalePopover
+                            }
+                        }
                     }
                     .controlSize(.small)
                     .padding(.horizontal, 8).padding(.vertical, 5)
@@ -927,12 +974,166 @@ struct TableEditorView: View {
         input = ""
     }
 
+    // MARK: Formula Transform & Axis Rescaling with Z-Surface Re-Interpolation
+
+    private func applyFormulaTransform() {
+        guard !selection.isEmpty, let expr = Expr.parse(formulaInput) else { return }
+        let xv = model.axisValues(x, count: l.cols)
+        let yv = model.axisValues(y, count: l.rows)
+        var targetValues: [Cell: Double] = [:]
+        for cell in selection {
+            guard let cur = model.raw(l, cell).map(s.value(raw:)) else { continue }
+            let cmp = model.raw(l, cell, original: true).map(s.value(raw:)) ?? cur
+            let vars: [String: Double] = [
+                "X": cur,
+                "CMP": cmp,
+                "AX": cell.c < xv.count ? xv[cell.c] : Double(cell.c),
+                "AY": cell.r < yv.count ? yv[cell.r] : Double(cell.r),
+                "R": Double(cell.r),
+                "C": Double(cell.c),
+            ]
+            let res = expr.eval(vars)
+            if res.isFinite { targetValues[cell] = res }
+        }
+        guard !targetValues.isEmpty else { return }
+        model.apply(.values(targetValues), item: item, cells: Set(targetValues.keys))
+    }
+
+    private func prepareRescaleInputs() {
+        let ax = rescaleIsX ? x : y
+        let cnt = rescaleIsX ? l.cols : l.rows
+        let vals = model.axisValues(ax, count: cnt)
+        rescaleStartText = vals.first.map { ax.scaling.format($0) } ?? ""
+        rescaleEndText = vals.last.map { ax.scaling.format($0) } ?? ""
+    }
+
+    private var axisRescalePopover: some View {
+        let ax = rescaleIsX ? x : y
+        let shared = ax.layout.map { model.itemsSharingAxis(at: $0.address, excluding: item.id) } ?? []
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Achse neu skalieren & Z umrechnen").font(.headline)
+            if x.layout != nil && y.layout != nil {
+                Picker("Achse", selection: $rescaleIsX) {
+                    Text("X-Achse (\(l.cols))").tag(true)
+                    Text("Y-Achse (\(l.rows))").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: rescaleIsX) { _, _ in prepareRescaleInputs() }
+            }
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Start (\(ax.scaling.units))").font(.caption2).foregroundStyle(.secondary)
+                    TextField("Start", text: $rescaleStartText).textFieldStyle(.roundedBorder).font(.body.monospaced())
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Ende (\(ax.scaling.units))").font(.caption2).foregroundStyle(.secondary)
+                    TextField("Ende", text: $rescaleEndText).textFieldStyle(.roundedBorder).font(.body.monospaced())
+                }
+            }
+            Toggle("Randwerte linear extrapolieren (statt klemmen)", isOn: $rescaleExtrapolate)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+            if !shared.isEmpty {
+                Toggle("Auch \(shared.count) verknüpfte Kennfelder umrechnen", isOn: $rescaleSharedCascade)
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            HStack {
+                Spacer()
+                Button("Abbrechen") { showRescaleAxisSheet = false }
+                Button("Skalieren & Umrechnen") {
+                    applyAxisRescale()
+                    showRescaleAxisSheet = false
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(14)
+        .frame(width: 340)
+    }
+
+    private func applyAxisRescale() {
+        let ax = rescaleIsX ? x : y
+        guard let al = ax.layout else { return }
+        let cnt = al.cols
+        guard cnt >= 2,
+              let vStart = Double(rescaleStartText.replacingOccurrences(of: ",", with: ".")),
+              let vEnd = Double(rescaleEndText.replacingOccurrences(of: ",", with: ".")),
+              vStart != vEnd else { return }
+
+        let newAxisVals = (0..<cnt).map { i in
+            vStart + (vEnd - vStart) * Double(i) / Double(cnt - 1)
+        }
+
+        // Collect items to re-interpolate (this item + optionally all sibling maps sharing this axis)
+        var targetItems: [XDFItem] = [item]
+        if rescaleSharedCascade {
+            let siblings = model.itemsSharingAxis(at: al.address, excluding: item.id).filter { !model.isLocked($0) }
+            targetItems.append(contentsOf: siblings)
+        }
+
+        var patches: [Patch] = []
+        // 1. Axis breakpoint byte patches
+        for i in 0..<cnt {
+            let cell = Cell(r: 0, c: i)
+            let o = al.offset(cell), n = al.elementBytes
+            guard o >= 0, o + n <= model.bin.count, let r = ax.scaling.raw(for: newAxisVals[i], layout: al) else { continue }
+            let encoded = BinCodec.encode(al, raw: r)
+            let old = Array(model.bin[o ..< o + n])
+            if encoded != old { patches.append(Patch(offset: o, old: old, new: encoded)) }
+        }
+
+        // 2. Re-interpolate Z surfaces for every affected map
+        for mapItem in targetItems where mapItem.isTable {
+            let ml = mapItem.data, ms = mapItem.scaling
+            let oldX = mapItem.xAxis.map { model.axisValues($0, count: ml.cols) } ?? (0..<ml.cols).map(Double.init)
+            let oldY = mapItem.yAxis.map { model.axisValues($0, count: ml.rows) } ?? (0..<ml.rows).map(Double.init)
+            let isXMatch = mapItem.xAxis?.layout?.address == al.address
+            let isYMatch = mapItem.yAxis?.layout?.address == al.address
+            guard isXMatch || isYMatch else { continue }
+
+            var oldZ = [[Double]](repeating: [Double](repeating: 0, count: ml.cols), count: ml.rows)
+            for r in 0..<ml.rows {
+                for c in 0..<ml.cols {
+                    oldZ[r][c] = model.raw(ml, Cell(r: r, c: c)).map(ms.value(raw:)) ?? 0
+                }
+            }
+            let newX = (isXMatch && newAxisVals.count == ml.cols) ? newAxisVals : oldX
+            let newY = (isYMatch && newAxisVals.count == ml.rows) ? newAxisVals : oldY
+            let newZ = TableOps.reinterpolateSurface(oldX: oldX, oldY: oldY, oldZ: oldZ,
+                                                     newX: newX, newY: newY, extrapolate: rescaleExtrapolate)
+            for r in 0..<ml.rows {
+                for c in 0..<ml.cols {
+                    let cell = Cell(r: r, c: c)
+                    let o = ml.offset(cell), n = ml.elementBytes
+                    guard o >= 0, o + n <= model.bin.count,
+                          let raw = ms.raw(for: newZ[r][c], layout: ml) else { continue }
+                    let encoded = BinCodec.encode(ml, raw: raw)
+                    let old = Array(model.bin[o ..< o + n])
+                    if encoded != old { patches.append(Patch(offset: o, old: old, new: encoded)) }
+                }
+            }
+        }
+
+        guard !patches.isEmpty else { return }
+        let label = "Achse \(rescaleIsX ? "X" : "Y") skaliert (\(rescaleStartText)–\(rescaleEndText), \(targetItems.count) Kennfeld(er) umgerechnet)"
+        model.applyRawPatches(patches, label: label)
+    }
+
     // MARK: Chart
 
     private func chartPoints(values: [[Double?]], ys: [String]) -> [TableChart.Point] {
         let xv = model.axisValues(x, count: l.cols)
+        // Active-Slice isolation: on large 2D maps (>4 rows), show selected row(s) cleanly instead of 32 overlapping lines
+        let activeRows: [Int]
+        if l.rows > 4 && !selection.isEmpty {
+            activeRows = Array(Set(selection.map(\.r))).sorted()
+        } else {
+            activeRows = Array(0..<l.rows)
+        }
         var pts: [TableChart.Point] = []
-        for r in 0..<l.rows {
+        for r in activeRows {
             let name = l.rows > 1 ? String(localized: "Zeile \(ys[r])") : item.title
             var changedRow = false
             for c in 0..<l.cols {

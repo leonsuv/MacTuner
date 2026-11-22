@@ -148,6 +148,8 @@ struct ContentView: View {
             BatchTunerView()
         } else if model.selection == AppModel.diagnosticsSelection, model.hasBin {
             DiagnosticsView()
+        } else if model.selection == AppModel.dtcSelection, model.hasBin {
+            DTCView()
         } else if model.selection == AppModel.checksumSelection, model.hasBin {
             ChecksumAndFlashView()
         } else if model.selection == AppModel.datalogSelection {
@@ -168,6 +170,15 @@ struct ContentView: View {
                                 Image(systemName: "pin.fill").font(.caption2).foregroundStyle(Color.accentColor)
                                 Text("Angeheftet: \(def.items[pinnedID].title)").font(.caption.weight(.semibold)).lineLimit(1)
                                 Spacer()
+                                if def.items[pinnedID].data.rows == item.data.rows && def.items[pinnedID].data.cols == item.data.cols {
+                                    Toggle("Änderungen spiegeln", isOn: Binding(
+                                        get: { model.mirrorPinnedEdits },
+                                        set: { model.mirrorPinnedEdits = $0 }
+                                    ))
+                                    .toggleStyle(.checkbox)
+                                    .controlSize(.mini)
+                                    .help("Änderungen am aktiven Kennfeld gleichzeitig auf das angeheftete Kennfeld anwenden (z. B. Bank 1/2)")
+                                }
                                 Button { model.pinnedItemID = nil } label: {
                                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                                 }

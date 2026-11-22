@@ -77,7 +77,110 @@ struct Datalog {
         var deltaPercent: Double { currentValue != 0 ? (suggestedValue - currentValue) / abs(currentValue) * 100.0 : 0 }
     }
 
-    /// Computes log-based tuning suggestions per visited cell from Target vs Measured channels.
+    struct FilterConfig: Equatable {
+        var wotOnly = false          // TPS/Pedal >= 85% and RPM rising
+        var steadyStateOnly = false  // |dRPM| < 150 and |dTPS| < 5
+        var rejectDFCO = false       // reject Lambda > 1.30 / AFR > 19.0
+        var warmEngineOnly = false   // ECT >= 75°C
+    }
+
+    func channelIndex(matching keywords: [String]) -> Int? {
+        channels.firstIndex { ch in
+            let low = ch.lowercased()
+            return keywords.contains { low.contains($0) }
+        }
+    }
+
+    func passesFilter(frame f: Int, config: FilterConfig) -> Bool {
+        if config.wotOnly {
+            if let tpsCh = channelIndex(matching: ["tps", "throttle", "pedal", "drossel", "gaspedal", "app"]),
+               let tps = value(frame: f, channel: tpsCh), tps < 80 {
+                return false
+            }
+            if f > 0, let rpmCh = channelIndex(matching: ["rpm", "drehzahl", "nmot"]),
+               let r1 = value(frame: f, channel: rpmCh), let r0 = value(frame: f - 1, channel: rpmCh),
+               r1 < r0 - 20 {
+                return false
+            }
+        }
+        if config.steadyStateOnly, f > 0 {
+            if let rpmCh = channelIndex(matching: ["rpm", "drehzahl", "nmot"]),
+               let r1 = value(frame: f, channel: rpmCh), let r0 = value(frame: f - 1, channel: rpmCh),
+               abs(r1 - r0) > 150 {
+                return false
+            }
+            if let tpsCh = channelIndex(matching: ["tps", "throttle", "pedal", "drossel"]),
+               let t1 = value(frame: f, channel: tpsCh), let t0 = value(frame: f - 1, channel: tpsCh),
+               abs(t1 - t0) > 5 {
+                return false
+            }
+        }
+        if config.rejectDFCO {
+            if let lamCh = channelIndex(matching: ["lambda", "lamfa", "lamsbg"]),
+               let lam = value(frame: f, channel: lamCh), lam > 1.30 && lam < 5.0 {
+                return false
+            }
+            if let afrCh = channelIndex(matching: ["afr"]),
+               let afr = value(frame: f, channel: afrCh), afr > 19.0 {
+                return false
+            }
+        }
+        if config.warmEngineOnly {
+            if let ectCh = channelIndex(matching: ["ect", "coolant", "tmot", "kühl", "water"]),
+               let ect = value(frame: f, channel: ectCh), ect < 75 {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// Bilinear 4-cell proximity weights for a frame on `(xAxis, yAxis)`.
+    func bilinearWeights(frame: Int, xChannel: Int?, yChannel: Int?, xAxis: [Double], yAxis: [Double]) -> [(Cell, Double)] {
+        func bracket(_ v: Double, in axis: [Double]) -> [(Int, Double)] {
+            guard !axis.isEmpty else { return [] }
+            if axis.count == 1 { return [(0, 1.0)] }
+            if v <= axis[0] { return [(0, 1.0)] }
+            if v >= axis[axis.count - 1] { return [(axis.count - 1, 1.0)] }
+            for i in 0..<(axis.count - 1) {
+                let lo = axis[i], hi = axis[i + 1]
+                if (v >= lo && v <= hi) || (v <= lo && v >= hi) {
+                    let span = hi - lo
+                    let t = abs(span) > 1e-9 ? (v - lo) / span : 0
+                    return [(i, 1.0 - t), (i + 1, t)]
+                }
+            }
+            if let idx = Self.nearestIndex(for: v, in: axis) { return [(idx, 1.0)] }
+            return []
+        }
+        let xs: [(Int, Double)] = xChannel.flatMap { value(frame: frame, channel: $0) }.map { bracket($0, in: xAxis) }
+            ?? (xAxis.count == 1 ? [(0, 1.0)] : [])
+        let ys: [(Int, Double)] = yChannel.flatMap { value(frame: frame, channel: $0) }.map { bracket($0, in: yAxis) }
+            ?? (yAxis.count == 1 ? [(0, 1.0)] : [])
+        var out: [(Cell, Double)] = []
+        for (r, wy) in ys where wy > 0.01 {
+            for (c, wx) in xs where wx > 0.01 {
+                out.append((Cell(r: r, c: c), wx * wy))
+            }
+        }
+        return out
+    }
+
+    /// Appends a derived math channel evaluated over `A` (channel A) and `B` (channel B).
+    mutating func appendMathChannel(name: String, unit: String, formula: String, channelA: Int, channelB: Int) -> Bool {
+        guard let expr = Expr.parse(formula) else { return false }
+        channels.append(name)
+        units.append(unit)
+        for f in 0..<samples.count {
+            let a = value(frame: f, channel: channelA) ?? .nan
+            let b = value(frame: f, channel: channelB) ?? .nan
+            let res = (a.isFinite || b.isFinite) ? expr.eval(["X": a, "A": a, "B": b]) : .nan
+            samples[f].append(res.isFinite ? res : .nan)
+        }
+        return true
+    }
+
+    /// Computes log-based tuning suggestions per visited cell from Target vs Measured channels
+    /// with optional operating-state filtering and bilinear 4-cell weighting.
     func suggestions(
         item: XDFItem,
         bin: [UInt8],
@@ -89,26 +192,34 @@ struct Datalog {
         yAxis: [Double],
         minHits: Int,
         damping: Double,
-        mode: SuggestionMode
+        mode: SuggestionMode,
+        filter: FilterConfig = FilterConfig(),
+        useBilinear: Bool = true
     ) -> [CellSuggestion] {
-        var acc: [Cell: (hits: Int, targetSum: Double, measSum: Double)] = [:]
+        var acc: [Cell: (weight: Double, hits: Int, targetSum: Double, measSum: Double)] = [:]
         for f in 0..<samples.count {
-            guard let cell = activeCell(frame: f, xChannel: xChannel, yChannel: yChannel, xAxis: xAxis, yAxis: yAxis),
+            guard passesFilter(frame: f, config: filter),
                   let t = value(frame: f, channel: targetChannel),
                   let m = value(frame: f, channel: measuredChannel) else { continue }
-            var cur = acc[cell] ?? (0, 0, 0)
-            cur.hits += 1
-            cur.targetSum += t
-            cur.measSum += m
-            acc[cell] = cur
+            let weightedCells: [(Cell, Double)] = useBilinear
+                ? bilinearWeights(frame: f, xChannel: xChannel, yChannel: yChannel, xAxis: xAxis, yAxis: yAxis)
+                : (activeCell(frame: f, xChannel: xChannel, yChannel: yChannel, xAxis: xAxis, yAxis: yAxis).map { [($0, 1.0)] } ?? [])
+            for (cell, w) in weightedCells {
+                var cur = acc[cell] ?? (0, 0, 0, 0)
+                cur.weight += w
+                cur.hits += 1
+                cur.targetSum += t * w
+                cur.measSum += m * w
+                acc[cell] = cur
+            }
         }
 
         let l = item.data, s = item.scaling
         var out: [CellSuggestion] = []
-        for (cell, stat) in acc where stat.hits >= minHits {
+        for (cell, stat) in acc where stat.hits >= minHits && stat.weight > 0.1 {
             guard let curVal = BinCodec.raw(l, cell, in: bin).map(s.value(raw:)) else { continue }
-            let avgT = stat.targetSum / Double(stat.hits)
-            let avgM = stat.measSum / Double(stat.hits)
+            let avgT = stat.targetSum / stat.weight
+            let avgM = stat.measSum / stat.weight
             let suggested: Double
             switch mode {
             case .multiplicative:
@@ -181,23 +292,49 @@ enum DatalogParser {
             .filter { !$0.isEmpty && !$0.hasPrefix("#") && !$0.hasPrefix("//") }
         guard rawLines.count >= 2 else { throw LogError.empty(url.lastPathComponent) }
 
-        let headerLine = rawLines[0]
-        let sep: Character = headerLine.contains("\t") ? "\t" : (headerLine.contains(";") ? ";" : ",")
+        // Auto-detect real header row (skips VCDS / ME7Logger / MHD / BM3 / Cobb metadata preambles)
+        var headerIdx = 0
+        var sep: Character = ","
+        let scanLimit = min(rawLines.count - 1, 40)
+        var bestHeaderScore = -1
+        for idx in 0..<scanLimit {
+            let line = rawLines[idx]
+            let candSep: Character = line.contains("\t") ? "\t" : (line.contains(";") ? ";" : ",")
+            let cols = line.split(separator: candSep, omittingEmptySubsequences: false)
+            guard cols.count >= 2 else { continue }
+            // Check if one of the next 2 rows is predominantly numeric
+            let nextNumeric = ((idx + 1)...min(rawLines.count - 1, idx + 2)).contains { r in
+                let p = rawLines[r].split(separator: candSep, omittingEmptySubsequences: false)
+                let nums = p.compactMap { Double($0.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "\""))).replacingOccurrences(of: ",", with: ".")) }.count
+                return nums >= max(2, p.count / 2)
+            }
+            let ownNums = cols.compactMap { Double($0.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "\""))).replacingOccurrences(of: ",", with: ".")) }.count
+            if nextNumeric && ownNums == 0 && cols.count > bestHeaderScore {
+                bestHeaderScore = cols.count
+                headerIdx = idx
+                sep = candSep
+            }
+        }
+
+        let headerLine = rawLines[headerIdx]
+        if bestHeaderScore < 0 {
+            sep = headerLine.contains("\t") ? "\t" : (headerLine.contains(";") ? ";" : ",")
+        }
         let channels = headerLine.split(separator: sep, omittingEmptySubsequences: false).map {
             $0.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "\"")))
         }
 
         var units = Array(repeating: "", count: channels.count)
-        var startRow = 1
+        var startRow = headerIdx + 1
         // Detect optional second units row (non-numeric row right under headers)
-        if rawLines.count >= 3 {
-            let second = rawLines[1].split(separator: sep, omittingEmptySubsequences: false).map {
+        if rawLines.count > startRow + 1 {
+            let second = rawLines[startRow].split(separator: sep, omittingEmptySubsequences: false).map {
                 $0.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "\"")))
             }
             let numericCount = second.compactMap { Double($0.replacingOccurrences(of: ",", with: ".")) }.count
             if numericCount == 0 && second.count == channels.count {
                 units = second
-                startRow = 2
+                startRow += 1
             }
         }
 

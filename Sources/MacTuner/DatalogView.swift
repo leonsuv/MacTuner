@@ -14,6 +14,17 @@ struct DatalogView: View {
     @State private var suggestions: [Datalog.CellSuggestion] = []
     @State private var selectedMapID: Int?
     @State private var plottedChannels: Set<Int> = [0, 1]
+    @State private var filterConfig = Datalog.FilterConfig()
+    @State private var useBilinear = true
+    // Math channel builder
+    @State private var mathName = "Boost Error"
+    @State private var mathUnit = "mbar"
+    @State private var mathFormula = "A - B"
+    @State private var mathChA = 0
+    @State private var mathChB = 1
+    // Virtual Dyno
+    @State private var dynoProfile = VirtualDyno.VehicleProfile.presets[0]
+    @State private var dynoResult: VirtualDyno.DynoResult?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -40,6 +51,8 @@ struct DatalogView: View {
                         playbackCard(log)
                         timeSeriesCard(log)
                         suggestionsCard(log)
+                        mathChannelCard(log)
+                        virtualDynoCard(log)
                     }
                 }
             } else {
@@ -182,6 +195,18 @@ struct DatalogView: View {
                 Text("Wähle mindestens einen Kanal, um den zeitlichen Verlauf anzuzeigen.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
+                // Live physical value readouts at current cursor frame
+                HStack(spacing: 12) {
+                    ForEach(activeChannels.prefix(6), id: \.self) { idx in
+                        let vStr = log.value(frame: model.logFrame, channel: idx).map { String(format: "%.2f", $0) } ?? "—"
+                        let u = idx < log.units.count && !log.units[idx].isEmpty ? " \(log.units[idx])" : ""
+                        Text("\(log.channels[idx]): \(vStr)\(u)")
+                            .font(.caption.monospacedDigit())
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 4))
+                    }
+                    Spacer()
+                }
                 Chart {
                     ForEach(pts) { p in
                         LineMark(
@@ -247,6 +272,17 @@ struct DatalogView: View {
             }
             .controlSize(.small)
 
+            HStack(spacing: 12) {
+                Text("Filter:").font(.caption).foregroundStyle(.secondary)
+                Toggle("WOT (Vollast)", isOn: $filterConfig.wotOnly).toggleStyle(.checkbox)
+                Toggle("Stationär (Steady-State)", isOn: $filterConfig.steadyStateOnly).toggleStyle(.checkbox)
+                Toggle("DFCO / Schubabschaltung aus", isOn: $filterConfig.rejectDFCO).toggleStyle(.checkbox)
+                Toggle("Warm (≥75 °C)", isOn: $filterConfig.warmEngineOnly).toggleStyle(.checkbox)
+                Toggle("Bilinear (4 Zellen)", isOn: $useBilinear).toggleStyle(.checkbox)
+                Spacer()
+            }
+            .controlSize(.small)
+
             if !suggestions.isEmpty, let item = activeTable {
                 HStack {
                     Text("\(suggestions.count) Zellvorschläge berechnet").font(.caption).foregroundStyle(.secondary)
@@ -285,7 +321,89 @@ struct DatalogView: View {
         suggestions = log.suggestions(
             item: item, bin: model.bin, xChannel: xc, yChannel: yc,
             targetChannel: targetChannel, measuredChannel: measuredChannel,
-            xAxis: xv, yAxis: yv, minHits: minHits, damping: damping, mode: mode
+            xAxis: xv, yAxis: yv, minHits: minHits, damping: damping, mode: mode,
+            filter: filterConfig, useBilinear: useBilinear
         )
+    }
+
+    private func mathChannelCard(_ log: Datalog) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label("Mathe-Kanäle (Berechnete Kanäle)", systemImage: "function").font(.headline)
+                Spacer()
+                Menu("Vorlagen") {
+                    Button("Ladedruck-Abweichung (A - B)") { mathName = "Boost Error"; mathUnit = "mbar"; mathFormula = "A - B" }
+                    Button("Lambda / AFR Fehler % ((A-B)/B*100)") { mathName = "Lambda Err %"; mathUnit = "%"; mathFormula = "(A - B) / B * 100" }
+                    Button("Düsenauslastung IDC % (A*B/1200)") { mathName = "IDC %"; mathUnit = "%"; mathFormula = "A * B / 1200" }
+                }
+                .controlSize(.small)
+            }
+            HStack(spacing: 8) {
+                TextField("Name", text: $mathName).textFieldStyle(.roundedBorder).frame(width: 130)
+                TextField("Einheit", text: $mathUnit).textFieldStyle(.roundedBorder).frame(width: 64)
+                Picker("A", selection: $mathChA) {
+                    ForEach(Array(log.channels.enumerated()), id: \.offset) { i, ch in Text("A: \(ch)").tag(i) }
+                }.frame(maxWidth: 160)
+                Picker("B", selection: $mathChB) {
+                    ForEach(Array(log.channels.enumerated()), id: \.offset) { i, ch in Text("B: \(ch)").tag(i) }
+                }.frame(maxWidth: 160)
+                TextField("Formel (A, B)", text: $mathFormula).textFieldStyle(.roundedBorder).font(.caption.monospaced())
+                Button("Kanal hinzufügen") {
+                    if model.addDatalogMathChannel(name: mathName, unit: mathUnit, formula: mathFormula, channelA: mathChA, channelB: mathChB) {
+                        if let newIdx = model.datalog.map({ $0.channels.count - 1 }) {
+                            plottedChannels.insert(newIdx)
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .controlSize(.small)
+        }
+        .card(padding: 14)
+    }
+
+    private func virtualDynoCard(_ log: Datalog) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label("Virtual Road Dyno (PS / Nm)", systemImage: "gauge.with.dots.needle.67percent").font(.headline)
+                Spacer()
+                Picker("Fahrzeugprofil", selection: $dynoProfile) {
+                    ForEach(VirtualDyno.VehicleProfile.presets) { p in Text(p.name).tag(p) }
+                }
+                .frame(maxWidth: 260)
+                Button("Leistung berechnen") {
+                    let rpmCh = log.channelIndex(matching: ["rpm", "drehzahl", "nmot"]) ?? 0
+                    let timeCh = log.channelIndex(matching: ["time", "zeit", "sec"])
+                    let tpsCh = log.channelIndex(matching: ["tps", "throttle", "pedal", "drossel"])
+                    dynoResult = VirtualDyno.compute(log: log, rpmChannel: rpmCh, timeChannel: timeCh, tpsChannel: tpsCh, profile: dynoProfile)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .controlSize(.small)
+
+            if let res = dynoResult {
+                HStack(spacing: 16) {
+                    Chip(text: String(format: "Peak: %.0f PS @ %.0f RPM", res.peakPS, res.peakPSRPM), icon: "flame.fill")
+                    Chip(text: String(format: "Drehmoment: %.0f Nm @ %.0f RPM", res.peakNm, res.peakNmRPM), icon: "bolt.fill")
+                    Text(String(format: "SAE-Faktor: %.3f", res.saeFactor)).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                }
+                Chart {
+                    ForEach(res.points) { p in
+                        LineMark(x: .value("RPM", p.rpm), y: .value("PS", p.powerPS))
+                            .foregroundStyle(Color.red)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                        LineMark(x: .value("RPM", p.rpm), y: .value("Nm", p.torqueNm))
+                            .foregroundStyle(Color.blue)
+                            .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                    }
+                }
+                .frame(height: 180)
+            } else {
+                Text("Erkennt automatisch den längsten Vollast-Beschleunigungslauf (WOT-Pull) und berechnet SAE-korrigierte Rad-/Motorleistung (PS & Nm).")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .card(padding: 14)
     }
 }

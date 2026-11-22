@@ -13,6 +13,7 @@ enum MapDiagnostics {
         case outlier = "Ausreißer / Spike"
         case clipped = "Abgeschnittene Kurve (Sättigung)"
         case outOfBounds = "Adresse außerhalb der BIN"
+        case shiftHysteresis = "TCU Schalt-Hysterese verletzt"
     }
 
     struct Finding: Identifiable {
@@ -118,6 +119,44 @@ enum MapDiagnostics {
                 if spikeCount > 0 {
                     findings.append(Finding(itemID: item.id, itemTitle: item.title, kind: .outlier, severity: .warning,
                                             detail: "\(spikeCount) auffällige Zelle(n), z. B. \(firstSpike)"))
+                }
+            }
+        }
+
+        // 5. TCU Shift-Hysteresis Validator: auto-pair Upshift vs Downshift curves and flag inversions
+        let tables = definition.items.filter { $0.isTable && $0.data.byteRange.upperBound <= bin.count }
+        let upTables = tables.filter {
+            let t = $0.title.lowercased()
+            return t.contains("upshift") || t.contains("hochschalt") || t.contains("1->2") || t.contains("2->3") || t.contains("3->4") || t.contains("4->5") || t.contains("5->6")
+        }
+        let downTables = tables.filter {
+            let t = $0.title.lowercased()
+            return t.contains("downshift") || t.contains("rückschalt") || t.contains("runterschalt") || t.contains("2->1") || t.contains("3->2") || t.contains("4->3") || t.contains("5->4") || t.contains("6->5")
+        }
+        for up in upTables {
+            let upLow = up.title.lowercased()
+            let pairKey = upLow.replacingOccurrences(of: "upshift", with: "downshift")
+                .replacingOccurrences(of: "hochschalt", with: "rückschalt")
+            if let down = downTables.first(where: {
+                $0.data.rows == up.data.rows && $0.data.cols == up.data.cols &&
+                ($0.title.lowercased() == pairKey || ($0.xAxis?.layout?.address != nil && $0.xAxis?.layout?.address == up.xAxis?.layout?.address))
+            }) {
+                var violations = 0
+                for r in 0..<up.data.rows {
+                    for c in 0..<up.data.cols {
+                        let cell = Cell(r: r, c: c)
+                        if let uv = BinCodec.raw(up.data, cell, in: bin).map(up.scaling.value(raw:)),
+                           let dv = BinCodec.raw(down.data, cell, in: bin).map(down.scaling.value(raw:)),
+                           dv >= uv && uv > 0 {
+                            violations += 1
+                        }
+                    }
+                }
+                if violations > 0 {
+                    findings.append(Finding(
+                        itemID: up.id, itemTitle: up.title, kind: .shiftHysteresis, severity: .error,
+                        detail: "\(violations) Stützstelle(n): Rückschaltpunkt („\(down.title)“) ≥ Hochschaltpunkt (Schaltpendeln!)"
+                    ))
                 }
             }
         }
