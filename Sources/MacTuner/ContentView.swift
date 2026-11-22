@@ -56,9 +56,7 @@ struct ContentView: View {
         .navigationTitle(model.windowTitle)
         .navigationSubtitle(model.hasBin ? (model.definition?.title ?? "") : "")
         .dropDestination(for: URL.self) { urls, _ in
-            // XDF first, so a dropped pair opens in the right order.
-            urls.sorted { ($0.pathExtension.lowercased() == "xdf") && !($1.pathExtension.lowercased() == "xdf") }
-                .forEach(model.open)
+            model.openDroppedURLs(urls)
             return !urls.isEmpty
         }
         .alert("Hinweis", isPresented: Binding(get: { model.alert != nil }, set: { if !$0 { model.alert = nil } })) {
@@ -129,7 +127,7 @@ struct ContentView: View {
     }
 
     @ViewBuilder private var detail: some View {
-        if model.selection == AppModel.outsideSelection, model.hasBin, model.definition != nil {
+        if model.selection == AppModel.outsideSelection, model.hasBin {
             OutsideChangesView()
         } else if model.selection == AppModel.hexDiffSelection, model.hasBin {
             HexDiffView { range in
@@ -157,12 +155,39 @@ struct ContentView: View {
             PluginsView()
         } else if let item = model.selectedItem {
             if model.hasBin {
-                ItemDetailView(item: item).id(item.id)
+                if let pinnedID = model.pinnedItemID,
+                   pinnedID != item.id,
+                   let def = model.definition,
+                   pinnedID >= 0, pinnedID < def.items.count {
+                    HSplitView {
+                        ItemDetailView(item: item).id(item.id)
+                            .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+                        VStack(spacing: 0) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "pin.fill").font(.caption2).foregroundStyle(Color.accentColor)
+                                Text("Angeheftet: \(def.items[pinnedID].title)").font(.caption.weight(.semibold)).lineLimit(1)
+                                Spacer()
+                                Button { model.pinnedItemID = nil } label: {
+                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Geteilte Ansicht schließen")
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 5)
+                            .background(.bar)
+                            Divider()
+                            ItemDetailView(item: def.items[pinnedID]).id(pinnedID)
+                        }
+                        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                } else {
+                    ItemDetailView(item: item).id(item.id)
+                }
             } else {
                 ContentUnavailableView("Keine BIN geladen", systemImage: "memorychip",
                                        description: Text("BIN öffnen (⇧⌘O) oder Datei ins Fenster ziehen."))
             }
-        } else if model.definition != nil && model.hasBin {
+        } else if model.hasBin {
             OverviewView()
         } else {
             WelcomeView()
@@ -222,31 +247,69 @@ struct StatusBar: View {
             .fixedSize()
             .help("Heatmap-Farbpalette wählen")
 
-            if model.definition != nil, model.hasBin {
-                let n = model.changedItems.count
-                if n > 0 {
-                    Button { model.scope = .changed } label: {
-                        Text("\(n) geändert")
+            if model.xdfDirty {
+                Button { model.saveXDF() } label: {
+                    HStack(spacing: 4) {
+                        Circle().fill(.orange).frame(width: 6, height: 6)
+                        Text("XDF speichern")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Color.orange.opacity(0.14), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Ungespeicherte XDF-Änderungen sichern (⌥⌘S)")
+            }
+
+            if model.hasBin {
+                if model.definition != nil {
+                    let n = model.changedItems.count
+                    if n > 0 {
+                        Button { model.scope = .changed } label: {
+                            Text("\(n) geändert")
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(Theme.changed)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(Theme.changed.opacity(0.14), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Alle geänderten Kennfelder anzeigen (⌘2)")
+                    }
+                } else if !model.outsideChanges.isEmpty {
+                    Button { model.selection = AppModel.outsideSelection } label: {
+                        Text("\(model.outsideChanges.count) Diff-Blöcke")
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(Theme.changed)
                             .padding(.horizontal, 7).padding(.vertical, 2)
                             .background(Theme.changed.opacity(0.14), in: Capsule())
                     }
                     .buttonStyle(.plain)
-                    .help("Alle geänderten Kennfelder anzeigen (⌘2)")
+                    .help("Alle geänderten Byte-Bereiche im Bin-vs-Bin-Vergleich anzeigen")
                 }
             }
 
             if let rep = model.checksumReport {
                 Button { model.selection = AppModel.checksumSelection } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: rep.allValid ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
-                        Text(rep.allValid ? "Prüfsumme OK" as LocalizedStringKey : "Prüfsumme ungültig (\(rep.invalidCount))")
+                    if rep.advisoryWarning != nil {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.shield.fill")
+                            Text("TPROT / Flash-Tool")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.14), in: Capsule())
+                    } else {
+                        HStack(spacing: 4) {
+                            Image(systemName: rep.allValid ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                            Text(rep.allValid ? "Prüfsumme OK" as LocalizedStringKey : "Prüfsumme ungültig (\(rep.invalidCount))")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(rep.allValid ? Color.green : Color.red)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background((rep.allValid ? Color.green : Color.red).opacity(0.14), in: Capsule())
                     }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(rep.allValid ? Color.green : Color.red)
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background((rep.allValid ? Color.green : Color.red).opacity(0.14), in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .help("Prüfsummen & Flash-Export öffnen")

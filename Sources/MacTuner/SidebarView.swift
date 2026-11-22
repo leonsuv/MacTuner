@@ -47,9 +47,84 @@ struct SidebarView: View {
             }
             .onAppear { expandSelection(def) }
             .onChange(of: model.selection) { expandSelection(def) }
+        } else if model.hasBin {
+            standaloneBinSidebar
         } else {
-            ContentUnavailableView("Keine XDF", systemImage: "doc.badge.plus",
-                                   description: Text("XDF öffnen (⌘O)"))
+            ContentUnavailableView("Keine Datei geladen", systemImage: "doc.badge.plus",
+                                   description: Text("XDF (⌘O) oder BIN (⇧⌘O) öffnen — oder zwei BINs ins Fenster ziehen."))
+        }
+    }
+
+    @ViewBuilder private var standaloneBinSidebar: some View {
+        let ranges = model.outsideChanges
+        let q = search.trimmingCharacters(in: .whitespaces).lowercased()
+        let filteredRanges = q.isEmpty ? ranges : ranges.filter { r in
+            String(format: "0x%05x", r.lowerBound).contains(q) ||
+            String(format: "%05x", r.lowerBound).contains(q)
+        }
+        VStack(spacing: 0) {
+            HStack {
+                Label("Bin-vs-Bin Modus", systemImage: "arrow.left.arrow.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("XDF …") { model.openXDFPanel() }
+                    .controlSize(.mini)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            Divider()
+
+            if ranges.isEmpty {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: model.compareURL == nil ? "arrow.left.arrow.right.circle" : "checkmark.circle")
+                        .font(.system(size: 32))
+                        .foregroundStyle(model.compareURL == nil ? Color.accentColor : Color.green)
+                    Text(model.compareURL == nil ? "Vergleichs-BIN laden" : "Keine Byte-Unterschiede")
+                        .font(.headline)
+                    Text(model.compareURL == nil
+                         ? "Lade eine zweite BIN (⌥⌘O), um alle geänderten Bereiche ohne XDF zu vergleichen."
+                         : "BIN und Vergleichs-BIN sind byte-identisch.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                    if model.compareURL == nil {
+                        Button("Vergleichs-BIN öffnen …") { model.openComparePanel() }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                    }
+                    Button("Im Hex-Diff öffnen") { model.selection = AppModel.hexDiffSelection }
+                        .controlSize(.small)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    Section("Diff-Bereiche (\(filteredRanges.count) · \(model.outsideByteCount) B)") {
+                        ForEach(filteredRanges, id: \.lowerBound) { r in
+                            Button {
+                                model.hexJumpTarget = r
+                                model.selection = AppModel.hexDiffSelection
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Circle().fill(Theme.changed).frame(width: 6, height: 6)
+                                    Text(String(format: "0x%05X", r.lowerBound))
+                                        .font(.caption.monospaced().weight(.semibold))
+                                    Text("– \(String(format: "0x%05X", r.upperBound - 1))")
+                                        .font(.caption2.monospaced()).foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text("\(r.count) B")
+                                        .font(.caption2.monospacedDigit()).foregroundStyle(Theme.changed)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) { compareFooter }
+            }
         }
     }
 

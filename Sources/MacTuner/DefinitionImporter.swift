@@ -33,6 +33,7 @@ enum DefinitionImporter {
         var units: String = ""
         var equation: String = "X"
         var decimals: Int = 2
+        var vtabRef: String? = nil
     }
 
     private struct RecordLayoutInfo {
@@ -57,13 +58,15 @@ enum DefinitionImporter {
 
         let tokens = tokenizeA2L(text)
         var compuMethods: [String: CompuMethod] = [:]
+        var compuVTabs: [String: [(String, String)]] = [:]
         var recordLayouts: [String: RecordLayoutInfo] = [:]
         var axisPts: [String: AxisPtsInfo] = [:]
         var categories: [Int: String] = [:]
         var itemCategories: [String: Int] = [:]
+        var memorySegmentBases: [Int] = []
         var defaultLSB = true
 
-        // Pass 1: COMPU_METHOD, RECORD_LAYOUT, AXIS_PTS, FUNCTION, MOD_COMMON
+        // Pass 1: COMPU_METHOD, COMPU_VTAB, RECORD_LAYOUT, FUNCTION, MOD_COMMON, MEMORY_SEGMENT
         var i = 0
         while i < tokens.count {
             if tokens[i] == "/begin", i + 1 < tokens.count {
@@ -76,6 +79,29 @@ enum DefinitionImporter {
                         if tokens[k] == "MSB_LAST" { defaultLSB = true }
                     }
                     i = end
+                case "MEMORY_SEGMENT":
+                    let end = findEnd(tokens, from: i + 2, kind: kind)
+                    // MEMORY_SEGMENT Name LongId PrgType MemoryType Attribute Address Size ...
+                    if i + 7 < end, let base = XDFParser.int(tokens[i + 7]), base > 0 {
+                        memorySegmentBases.append(base)
+                    }
+                    i = end
+                case "COMPU_VTAB":
+                    let end = findEnd(tokens, from: i + 2, kind: kind)
+                    // COMPU_VTAB Name LongId ConversionType NumberValuePairs [Val Str]...
+                    if i + 6 < end {
+                        let name = tokens[i + 2]
+                        let pairCount = Int(tokens[i + 5]) ?? 0
+                        var pairs: [(String, String)] = []
+                        var k = i + 6
+                        while pairs.count < pairCount && k + 1 < end {
+                            if tokens[k] == "DEFAULT_VALUE" { break }
+                            pairs.append((tokens[k], unquote(tokens[k + 1])))
+                            k += 2
+                        }
+                        if !pairs.isEmpty { compuVTabs[name] = pairs }
+                    }
+                    i = end
                 case "COMPU_METHOD":
                     let end = findEnd(tokens, from: i + 2, kind: kind)
                     if i + 6 < end {
@@ -84,11 +110,18 @@ enum DefinitionImporter {
                         var cm = CompuMethod(units: units)
                         for k in (i + 2)..<end {
                             if tokens[k] == "COEFFS", k + 6 < end {
-                                // f(x) = (a*x^2 + b*x + c) / (d*x^2 + e*x + f) -> linear when a=d=e=0: phys = (f*raw - c)/b
+                                // ASAP2 RAT_FUNC: raw = (a*p^2 + b*p + c) / (d*p^2 + e*p + f)
+                                // When a=0, d=0: p = (f*raw - c) / (b - e*raw)
                                 let b = Double(tokens[k + 2]) ?? 1
                                 let c = Double(tokens[k + 3]) ?? 0
+                                let e = Double(tokens[k + 5]) ?? 0
                                 let f = Double(tokens[k + 6]) ?? 1
-                                if b != 0 {
+                                if abs(e) > 1e-12 {
+                                    // General rational inverse: (f*X - c)/(b - e*X)
+                                    let num = formatLinearEquation(slope: f, offset: -c)
+                                    let den = formatLinearEquation(slope: -e, offset: b)
+                                    cm.equation = "(\(num))/(\(den))"
+                                } else if b != 0 {
                                     let slope = f / b
                                     let offset = -c / b
                                     cm.equation = formatLinearEquation(slope: slope, offset: offset)
@@ -97,6 +130,8 @@ enum DefinitionImporter {
                                 let slope = Double(tokens[k + 1]) ?? 1
                                 let offset = Double(tokens[k + 2]) ?? 0
                                 cm.equation = formatLinearEquation(slope: slope, offset: offset)
+                            } else if tokens[k] == "COMPU_TAB_REF", k + 1 < end {
+                                cm.vtabRef = tokens[k + 1]
                             }
                         }
                         compuMethods[name] = cm
@@ -189,6 +224,11 @@ enum DefinitionImporter {
                         decimals: cm.decimals,
                         output: .float
                     )
+                    var fullDesc = desc
+                    if let vref = cm.vtabRef, let pairs = compuVTabs[vref], !pairs.isEmpty {
+                        let enumSummary = pairs.prefix(12).map { "\($0.0)=\($0.1)" }.joined(separator: ", ")
+                        fullDesc = fullDesc.isEmpty ? enumSummary : "\(fullDesc)\n[\(enumSummary)]"
+                    }
                     let cats = itemCategories[name].map { [$0] } ?? []
 
                     // Collect AXIS_DESCR blocks inside CHARACTERISTIC
@@ -200,25 +240,55 @@ enum DefinitionImporter {
                             var aCount = 1
                             var aCompu = CompuMethod()
                             var aRef: AxisPtsInfo?
+                            var fixLabels: [String]? = nil
                             if k + 5 < aEnd {
                                 aCompu = compuMethods[tokens[k + 4]] ?? CompuMethod()
                                 aCount = max(1, Int(tokens[k + 5]) ?? 1)
                             }
-                            for m in (k + 2)..<aEnd {
+                            let aSc = Scaling(equation: aCompu.equation, expr: Expr.parse(aCompu.equation) ?? .x,
+                                              units: aCompu.units, decimals: aCompu.decimals, output: .float)
+                            var m = k + 2
+                            while m < aEnd {
                                 if tokens[m] == "AXIS_PTS_REF", m + 1 < aEnd {
                                     aRef = axisPts[tokens[m + 1]]
+                                    m += 2
+                                } else if tokens[m] == "FIX_AXIS_PAR", m + 3 < aEnd,
+                                          let off = Double(tokens[m + 1]),
+                                          let shift = Int(tokens[m + 2]),
+                                          let cnt = Int(tokens[m + 3]), cnt > 0, cnt <= 512 {
+                                    let step = pow(2.0, Double(shift))
+                                    aCount = cnt
+                                    fixLabels = (0..<cnt).map { idx in aSc.format(aSc.value(raw: off + Double(idx) * step)) }
+                                    m += 4
+                                } else if tokens[m] == "FIX_AXIS_PAR_DIST", m + 3 < aEnd,
+                                          let off = Double(tokens[m + 1]),
+                                          let dist = Double(tokens[m + 2]),
+                                          let cnt = Int(tokens[m + 3]), cnt > 0, cnt <= 512 {
+                                    aCount = cnt
+                                    fixLabels = (0..<cnt).map { idx in aSc.format(aSc.value(raw: off + Double(idx) * dist)) }
+                                    m += 4
+                                } else if tokens[m] == "/begin", m + 1 < aEnd, tokens[m + 1] == "FIX_AXIS_PAR_LIST" {
+                                    let lEnd = findEnd(tokens, from: m + 2, kind: "FIX_AXIS_PAR_LIST")
+                                    let vals = tokens[(m + 2)..<lEnd].compactMap { Double($0) }
+                                    if !vals.isEmpty {
+                                        aCount = vals.count
+                                        fixLabels = vals.map { aSc.format(aSc.value(raw: $0)) }
+                                    }
+                                    m = lEnd
+                                } else {
+                                    m += 1
                                 }
                             }
                             if let ref = aRef {
                                 let al = DataLayout(address: ref.address, bits: ref.layout.bits, signed: ref.layout.signed,
                                                     lsbFirst: defaultLSB, columnMajor: false, isFloat: ref.layout.isFloat,
                                                     rows: 1, cols: ref.count)
-                                let aSc = Scaling(equation: ref.compu.equation, expr: Expr.parse(ref.compu.equation) ?? .x,
+                                let rSc = Scaling(equation: ref.compu.equation, expr: Expr.parse(ref.compu.equation) ?? .x,
                                                   units: ref.compu.units, decimals: ref.compu.decimals, output: .float)
-                                axes.append(Axis(source: .data(al), count: ref.count, scaling: aSc))
+                                axes.append(Axis(source: .data(al), count: ref.count, scaling: rSc))
+                            } else if let labels = fixLabels {
+                                axes.append(Axis(source: .labels(labels), count: labels.count, scaling: aSc))
                             } else {
-                                let aSc = Scaling(equation: aCompu.equation, expr: Expr.parse(aCompu.equation) ?? .x,
-                                                  units: aCompu.units, decimals: aCompu.decimals, output: .float)
                                 axes.append(Axis(source: .none, count: aCount, scaling: aSc))
                             }
                             k = aEnd
@@ -231,21 +301,21 @@ enum DefinitionImporter {
                     case "VALUE", "ASCII":
                         let dl = DataLayout(address: addr, bits: rl.bits, signed: rl.signed, lsbFirst: defaultLSB,
                                             columnMajor: false, isFloat: rl.isFloat, rows: 1, cols: 1)
-                        items.append(XDFItem(id: items.count, title: name, description: desc, categories: cats,
+                        items.append(XDFItem(id: items.count, title: name, description: fullDesc, categories: cats,
                                              kind: .constant, data: dl, scaling: scaling))
                     case "CURVE", "VAL_BLK":
                         let xAxis = axes.first ?? Axis(source: .none, count: 8, scaling: .identity)
                         let dl = DataLayout(address: addr, bits: rl.bits, signed: rl.signed, lsbFirst: defaultLSB,
                                             columnMajor: false, isFloat: rl.isFloat, rows: 1, cols: xAxis.count)
                         let yAxis = Axis(source: .none, count: 1, scaling: .identity)
-                        items.append(XDFItem(id: items.count, title: name, description: desc, categories: cats,
+                        items.append(XDFItem(id: items.count, title: name, description: fullDesc, categories: cats,
                                              kind: .table(x: xAxis, y: yAxis), data: dl, scaling: scaling))
                     case "MAP":
                         let xAxis = axes.count > 0 ? axes[0] : Axis(source: .none, count: 8, scaling: .identity)
                         let yAxis = axes.count > 1 ? axes[1] : Axis(source: .none, count: 8, scaling: .identity)
                         let dl = DataLayout(address: addr, bits: rl.bits, signed: rl.signed, lsbFirst: defaultLSB,
                                             columnMajor: false, isFloat: rl.isFloat, rows: yAxis.count, cols: xAxis.count)
-                        items.append(XDFItem(id: items.count, title: name, description: desc, categories: cats,
+                        items.append(XDFItem(id: items.count, title: name, description: fullDesc, categories: cats,
                                              kind: .table(x: xAxis, y: yAxis), data: dl, scaling: scaling))
                     default:
                         break
@@ -258,9 +328,51 @@ enum DefinitionImporter {
         }
 
         guard !items.isEmpty else { throw ImportError.empty(url.lastPathComponent) }
+
+        // Normalize physical MCU memory addresses (e.g. 0x80000000 TriCore, 0xA0000000, 0x00800000 C167) to 0-based BIN offsets.
+        let baseOffset = detectA2LBaseOffset(items: items, segmentBases: memorySegmentBases)
+        if baseOffset > 0 {
+            items = items.map { item in
+                var copy = item
+                if copy.data.address >= baseOffset { copy.data.address -= baseOffset }
+                if case .table(var x, var y) = copy.kind {
+                    if case .data(var xl) = x.source, xl.address >= baseOffset {
+                        xl.address -= baseOffset
+                        x.source = .data(xl)
+                    }
+                    if case .data(var yl) = y.source, yl.address >= baseOffset {
+                        yl.address -= baseOffset
+                        y.source = .data(yl)
+                    }
+                    copy.kind = .table(x: x, y: y)
+                }
+                return copy
+            }
+        }
+
+        let baseNote = baseOffset > 0 ? String(format: " (Basis-Offset 0x%X abgezogen)", baseOffset) : ""
         return XDFDefinition(title: url.deletingPathExtension().lastPathComponent + " (A2L)",
-                             description: "Importiert aus \(url.lastPathComponent)",
+                             description: "Importiert aus \(url.lastPathComponent)\(baseNote)",
                              categories: categories, items: items, regionSize: nil)
+    }
+
+    private static func detectA2LBaseOffset(items: [XDFItem], segmentBases: [Int]) -> Int {
+        let addrs = items.map(\.data.address).filter { $0 > 0 }
+        guard let minAddr = addrs.min(), let maxAddr = addrs.max() else { return 0 }
+        // Only apply when addresses clearly exceed typical 16 MB flat BIN offsets.
+        guard maxAddr >= 0x800000 else { return 0 }
+        // Prefer declared MEMORY_SEGMENT base if it covers the majority of items.
+        let candidates = segmentBases.sorted(by: >) + [0xA0000000, 0x80000000, 0x00800000, 0x00400000]
+        for base in candidates where base > 0 && base <= minAddr {
+            let shiftedMax = maxAddr - base
+            if shiftedMax < 0x1000000 { // fits within 16 MB flash
+                return base
+            }
+        }
+        // Fallback: mask off common high MCU region nibble if all addresses share the same 16 MB window.
+        let window = minAddr & ~0xFFFFFF
+        if window > 0 && (maxAddr - window) < 0x1000000 { return window }
+        return 0
     }
 
     // MARK: - WinOLS Project / Map Pack (.ols / .kp / .csv) Importer

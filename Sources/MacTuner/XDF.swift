@@ -156,6 +156,9 @@ struct XDFItem: Identifiable {
     var isFlag: Bool { if case .flag = kind { return true } else { return false } }
     var isPatch: Bool { if case .patch = kind { return true } else { return false } }
 
+    var xAxis: Axis? { if case .table(let x, _) = kind { return x } else { return nil } }
+    var yAxis: Axis? { if case .table(_, let y) = kind { return y } else { return nil } }
+
     /// Axis data stored in the bin (x first, then y).
     var axisLayouts: [DataLayout] {
         guard case .table(let x, let y) = kind else { return [] }

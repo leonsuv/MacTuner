@@ -56,28 +56,38 @@ struct ChecksumAndFlashView: View {
             }
 
             if let report {
-                HStack(spacing: 10) {
-                    if report.allValid {
-                        Label("Alle \(report.blocks.count) Prüfsummen-Blöcke gültig", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.subheadline.weight(.semibold))
-                    } else if report.blocks.isEmpty {
-                        Label("Keine passenden Blöcke für dieses Profil gefunden", systemImage: "questionmark.circle")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Label("\(report.invalidCount) von \(report.blocks.count) Prüfsummen stimmen nicht überein!", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                            .font(.subheadline.weight(.semibold))
+                if let warn = report.advisoryWarning {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.shield.fill").foregroundStyle(.orange)
+                        Text(warn).font(.caption).foregroundStyle(.primary)
                     }
-                    Spacer()
-                    if report.invalidCount > 0 {
-                        Button {
-                            model.correctChecksums()
-                        } label: {
-                            Label("Prüfsummen korrigieren", systemImage: "wand.and.stars")
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+                } else {
+                    HStack(spacing: 10) {
+                        if report.allValid {
+                            Label("Alle \(report.blocks.count) Prüfsummen-Blöcke gültig", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .font(.subheadline.weight(.semibold))
+                        } else if report.blocks.isEmpty {
+                            Label("Keine passenden Blöcke für dieses Profil gefunden", systemImage: "questionmark.circle")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Label("\(report.invalidCount) von \(report.blocks.count) Prüfsummen stimmen nicht überein!", systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                                .font(.subheadline.weight(.semibold))
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
+                        Spacer()
+                        if report.canFix && report.invalidCount > 0 {
+                            Button {
+                                model.correctChecksums()
+                            } label: {
+                                Label("Prüfsummen korrigieren", systemImage: "wand.and.stars")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
                     }
                 }
 
@@ -126,9 +136,9 @@ struct ChecksumAndFlashView: View {
 
             HStack(spacing: 16) {
                 Toggle("Prüfsumme vor Export korrigieren", isOn: $fixChecksumBeforeExport)
-                    .disabled(model.checksumPluginID == nil)
+                    .disabled(model.checksumPluginID == nil || model.checksumReport?.canFix == false)
                 Toggle("Änderungsliste (.txt) beilegen", isOn: $includeChangelog)
-                    .disabled(model.definition == nil)
+                    .disabled(model.compare == nil)
                 Toggle("Im Finder anzeigen", isOn: $revealInFinder)
             }
             .controlSize(.small)

@@ -64,16 +64,21 @@ struct MacTunerApp: App {
                     .disabled(!model.hasBin)
                 Divider()
                 Button("XDF speichern") { model.saveXDF() }
+                    .keyboardShortcut("s", modifiers: [.command, .option])
                     .disabled(model.definition == nil)
                 Button("XDF exportieren / speichern unter …") { model.saveXDFAs() }
+                    .disabled(model.definition == nil)
+                Button("Als WinOLS Map-Pack (.csv) exportieren …") { model.exportDefinitionCSV() }
+                    .disabled(model.definition == nil)
+                Button("Als ASAP2 (.a2l) exportieren …") { model.exportDefinitionA2L() }
                     .disabled(model.definition == nil)
                 Divider()
                 Button("Änderungsliste exportieren …") { model.exportChangeReport() }
                     .keyboardShortcut("e")
-                    .disabled(!model.hasBin || model.definition == nil)
+                    .disabled(!model.hasBin || model.compare == nil)
                 Button("Änderungsliste kopieren") { model.copyChangeReport() }
                     .keyboardShortcut("c", modifiers: [.command, .shift])
-                    .disabled(!model.hasBin || model.definition == nil)
+                    .disabled(!model.hasBin || model.compare == nil)
                 Divider()
                 Button("PDF-Bericht exportieren …") { model.exportPDFReport() }
                     .keyboardShortcut("e", modifiers: [.command, .shift])

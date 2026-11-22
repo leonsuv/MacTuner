@@ -1,7 +1,8 @@
+import Charts
 import SwiftUI
 
-/// Dedicated Datalog Workbench: load CSV/ADX logs, map channels to axes, scrub/play live trace,
-/// toggle hit-count overlay, and compute/apply log-based tuning suggestions.
+/// Dedicated Datalog Workbench: load CSV/ADX logs, visualize multi-channel time-series charts,
+/// map channels to axes, scrub/play live trace, toggle hit-count overlay, and compute/apply tuning suggestions.
 struct DatalogView: View {
     @Environment(AppModel.self) private var model
 
@@ -12,6 +13,7 @@ struct DatalogView: View {
     @State private var mode: Datalog.SuggestionMode = .multiplicative
     @State private var suggestions: [Datalog.CellSuggestion] = []
     @State private var selectedMapID: Int?
+    @State private var plottedChannels: Set<Int> = [0, 1]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -33,8 +35,13 @@ struct DatalogView: View {
             .controlSize(.small)
 
             if let log = model.datalog {
-                playbackCard(log)
-                suggestionsCard(log)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        playbackCard(log)
+                        timeSeriesCard(log)
+                        suggestionsCard(log)
+                    }
+                }
             } else {
                 ContentUnavailableView(
                     "Kein Datalog geladen",
@@ -115,6 +122,81 @@ struct DatalogView: View {
                 Text("\(model.logFrame + 1) / \(log.frameCount)")
                     .font(.caption.monospacedDigit())
                     .frame(width: 90, alignment: .trailing)
+            }
+        }
+        .card(padding: 14)
+    }
+
+    private struct TimeSeriesPoint: Identifiable {
+        let id: Int
+        let frame: Int
+        let channel: String
+        let normalized: Double
+    }
+
+    private func timeSeriesCard(_ log: Datalog) -> some View {
+        let activeChannels = plottedChannels.filter { $0 < log.channels.count }.sorted()
+        let step = max(1, log.frameCount / 260)
+        var pts: [TimeSeriesPoint] = []
+        var pid = 0
+        for chIdx in activeChannels {
+            let name = log.channels[chIdx]
+            var lo = Double.infinity, hi = -Double.infinity
+            var f = 0
+            while f < log.frameCount {
+                if let v = log.value(frame: f, channel: chIdx) {
+                    if v < lo { lo = v }
+                    if v > hi { hi = v }
+                }
+                f += step
+            }
+            let span = (hi > lo && hi.isFinite && lo.isFinite) ? (hi - lo) : 1.0
+            f = 0
+            while f < log.frameCount {
+                if let v = log.value(frame: f, channel: chIdx) {
+                    pts.append(TimeSeriesPoint(id: pid, frame: f, channel: name, normalized: (v - lo) / span * 100.0))
+                    pid += 1
+                }
+                f += step
+            }
+        }
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label("Zeitverlaufs-Diagramm (normiert 0–100 %)", systemImage: "chart.xyaxis.line").font(.headline)
+                Spacer()
+                Menu("Kanäle (\(activeChannels.count))") {
+                    ForEach(Array(log.channels.enumerated()), id: \.offset) { idx, ch in
+                        Button {
+                            if plottedChannels.contains(idx) { plottedChannels.remove(idx) }
+                            else { plottedChannels.insert(idx) }
+                        } label: {
+                            if plottedChannels.contains(idx) { Label(ch, systemImage: "checkmark") } else { Text(ch) }
+                        }
+                    }
+                }
+                .controlSize(.small)
+            }
+
+            if activeChannels.isEmpty || log.frameCount < 2 {
+                Text("Wähle mindestens einen Kanal, um den zeitlichen Verlauf anzuzeigen.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Chart {
+                    ForEach(pts) { p in
+                        LineMark(
+                            x: .value("Frame", p.frame),
+                            y: .value("%", p.normalized)
+                        )
+                        .foregroundStyle(by: .value("Kanal", p.channel))
+                        .lineStyle(StrokeStyle(lineWidth: 1.6))
+                    }
+                    RuleMark(x: .value("Aktiv", model.logFrame))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
+                }
+                .chartYScale(domain: 0...100)
+                .frame(height: 170)
             }
         }
         .card(padding: 14)

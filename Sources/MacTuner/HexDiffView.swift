@@ -182,11 +182,14 @@ struct HexDiffView: View {
     @State private var compareSyncOffset = 0
     @State private var entropyMode = false
 
-    // Search, Bookmarks, Twin-Map Detector
+    // Search, Bookmarks, Twin-Map Detector, Direct Editing & Diff-Only Filter
     @State private var searchQuery = ""
     @State private var searchHits: [Int] = []
     @State private var searchHitIndex = 0
-    @State private var bookmarks: [HexBookmark] = []
+    @State private var onlyDiffRows = false
+    @State private var showEditPopover = false
+    @State private var editValueInput = ""
+    @State private var fillByteInput = "FF"
     @State private var twinMatches: [BinaryAnalysis.TwinMatch] = []
     @State private var showTwinsPopover = false
 
@@ -399,6 +402,9 @@ struct HexDiffView: View {
 
             // Diff navigation
             if !cachedDiffOffsets.isEmpty {
+                Toggle("Nur Diffs", isOn: $onlyDiffRows)
+                    .toggleStyle(.checkbox)
+                    .help("Nur Zeilen mit Unterschieden anzeigen")
                 ControlGroup {
                     Button { jumpDiff(step: -1) } label: { Image(systemName: "chevron.up") }
                         .help("Vorheriger Unterschied")
@@ -426,11 +432,11 @@ struct HexDiffView: View {
             Menu {
                 Button("Aktuelle Adresse merken (\(String(format: "0x%05X", selectedStart ?? viewportOffset)))") {
                     let addr = selectedStart ?? viewportOffset
-                    bookmarks.append(HexBookmark(name: String(format: "Marker 0x%05X", addr), address: addr))
+                    model.addHexBookmark(name: String(format: "Marker 0x%05X", addr), address: addr)
                 }
-                if !bookmarks.isEmpty {
+                if !model.hexBookmarks.isEmpty {
                     Divider()
-                    ForEach(bookmarks) { bm in
+                    ForEach(model.hexBookmarks) { bm in
                         Button("\(bm.name)") {
                             viewportOffset = bm.address
                             selectedStart = bm.address
@@ -438,13 +444,15 @@ struct HexDiffView: View {
                         }
                     }
                     Divider()
-                    Button("Alle löschen", role: .destructive) { bookmarks.removeAll() }
+                    Button("Alle löschen", role: .destructive) {
+                        for bm in model.hexBookmarks { model.removeHexBookmark(id: bm.id) }
+                    }
                 }
             } label: {
-                Image(systemName: bookmarks.isEmpty ? "bookmark" : "bookmark.fill")
+                Image(systemName: model.hexBookmarks.isEmpty ? "bookmark" : "bookmark.fill")
             }
             .fixedSize()
-            .help("Lesezeichen im Hexdump")
+            .help("Lesezeichen im Hexdump (dauerhaft gespeichert)")
 
             HStack(spacing: 4) {
                 TextField("0x00000", text: $addressInput)
@@ -467,12 +475,13 @@ struct HexDiffView: View {
         let addrWidth: CGFloat = 72
 
         return GeometryReader { geo in
-            let xdfW = min(max(140, xdfColWidth), geo.size.width * 0.35)
+            let xdfW: CGFloat = model.definition == nil ? 0 : min(max(140, xdfColWidth), geo.size.width * 0.35)
             let visibleRows = max(1, Int((geo.size.height - 26) / rowHeight))
             let barAreaWidth: CGFloat = showBars ? max(100, (geo.size.width - addrWidth - xdfW - 24) * barWidthRatio) : 0
             let dataAreaWidth = max(200, geo.size.width - addrWidth - barAreaWidth - xdfW - 24)
             let cellW = dataAreaWidth / CGFloat(columns)
             let startAddr = alignedStart(viewportOffset)
+            let visibleRowBases = computeVisibleRowBases(startAddr: startAddr, count: visibleRows, binCount: bin.count)
 
             ZStack(alignment: .topLeading) {
                 Canvas { ctx, size in
@@ -491,19 +500,20 @@ struct HexDiffView: View {
                                  at: CGPoint(x: addrWidth + dataAreaWidth + 10, y: headerH / 2), anchor: .leading)
                     }
                     let xdfStartX = size.width - xdfW
-                    ctx.draw(Text("XDF-Kennfeld").font(.caption2.bold()).foregroundStyle(.secondary),
-                             at: CGPoint(x: xdfStartX + 8, y: headerH / 2), anchor: .leading)
-                    // Subtle vertical separator before XDF column
-                    var sep = Path()
-                    sep.move(to: CGPoint(x: xdfStartX, y: 0))
-                    sep.addLine(to: CGPoint(x: xdfStartX, y: size.height))
-                    ctx.stroke(sep, with: .color(.secondary.opacity(0.22)), lineWidth: 1)
+                    if xdfW > 0 {
+                        ctx.draw(Text("XDF-Kennfeld").font(.caption2.bold()).foregroundStyle(.secondary),
+                                 at: CGPoint(x: xdfStartX + 8, y: headerH / 2), anchor: .leading)
+                        // Subtle vertical separator before XDF column
+                        var sep = Path()
+                        sep.move(to: CGPoint(x: xdfStartX, y: 0))
+                        sep.addLine(to: CGPoint(x: xdfStartX, y: size.height))
+                        ctx.stroke(sep, with: .color(.secondary.opacity(0.22)), lineWidth: 1)
+                    }
 
                     // Compute min/max in visible window for crisp bar-graph scaling
                     var visMin = Double.infinity, visMax = -Double.infinity
                     if showBars {
-                        for r in 0..<visibleRows {
-                            let rowBase = startAddr + r * rowStride
+                        for rowBase in visibleRowBases {
                             if rowBase >= bin.count { break }
                             for c in 0..<columns {
                                 let off = rowBase + c * elemBytes
@@ -536,9 +546,8 @@ struct HexDiffView: View {
                     var cellDraws: [CellDraw] = []
                     cellDraws.reserveCapacity(visibleRows * columns)
 
-                    for r in 0..<visibleRows {
+                    for (r, rowBase) in visibleRowBases.enumerated() {
                         let y = headerH + CGFloat(r) * rowHeight
-                        let rowBase = startAddr + r * rowStride
                         if rowBase >= bin.count { break }
                         let rowEnd = min(bin.count, rowBase + rowStride)
 
@@ -609,7 +618,7 @@ struct HexDiffView: View {
                         }
 
                         // XDF item labels on far right (shows up to 2 cleanly + "+N" pill when more share a row)
-                        let uniqueSpans = uniqueRowSpans(rowSpans)
+                        let uniqueSpans = xdfW > 0 ? uniqueRowSpans(rowSpans) : []
                         if !uniqueSpans.isEmpty {
                             let xdfStartX = size.width - xdfW
                             let visibleCount = min(uniqueSpans.count, 2)
@@ -729,10 +738,10 @@ struct HexDiffView: View {
                             let headerH: CGFloat = 22
                             let xdfStartX = geo.size.width - xdfW
                             // Click on XDF label column jumps straight to the clicked map!
-                            if val.startLocation.x >= xdfStartX, abs(val.translation.width) < 4, abs(val.translation.height) < 4 {
+                            if xdfW > 0, val.startLocation.x >= xdfStartX, abs(val.translation.width) < 4, abs(val.translation.height) < 4 {
                                 let r = Int((val.startLocation.y - headerH) / rowHeight)
-                                if r >= 0, r < visibleRows {
-                                    let rowBase = startAddr + r * rowStride
+                                if r >= 0, r < visibleRowBases.count {
+                                    let rowBase = visibleRowBases[r]
                                     let unique = uniqueRowSpans(cachedIndex.spansOverlapping(rowBase, min(bin.count, rowBase + rowStride)))
                                     if !unique.isEmpty {
                                         let visibleCount = min(unique.count, 2)
@@ -748,8 +757,8 @@ struct HexDiffView: View {
                             let hitOffset = { (pt: CGPoint) -> Int? in
                                 let r = Int((pt.y - headerH) / rowHeight)
                                 let c = Int((pt.x - addrWidth) / cellW)
-                                guard r >= 0, r < visibleRows, c >= 0, c < columns else { return nil }
-                                let off = startAddr + r * rowStride + c * elemBytes
+                                guard r >= 0, r < visibleRowBases.count, c >= 0, c < columns else { return nil }
+                                let off = visibleRowBases[r] + c * elemBytes
                                 return off < bin.count ? off : nil
                             }
                             if let s = hitOffset(val.startLocation), let e = hitOffset(val.location) {
@@ -762,8 +771,8 @@ struct HexDiffView: View {
                             let headerH: CGFloat = 22
                             let r = Int((val.startLocation.y - headerH) / rowHeight)
                             let c = Int((val.startLocation.x - addrWidth) / cellW)
-                            guard r >= 0, r < visibleRows, c >= 0, c < columns else { return }
-                            let off = startAddr + r * rowStride + c * elemBytes
+                            guard r >= 0, r < visibleRowBases.count, c >= 0, c < columns else { return }
+                            let off = visibleRowBases[r] + c * elemBytes
                             let now = Date()
                             if lastClickOffset == off && now.timeIntervalSince(lastClickTime) < 0.35 {
                                 if let span = cachedIndex.span(at: off) {
@@ -1107,8 +1116,28 @@ struct HexDiffView: View {
         }
 
         Divider()
+        if let range = selectedRange {
+            if model.compare != nil {
+                Button {
+                    copySelectionFromCompare(range)
+                } label: {
+                    Label("Auswahl aus Vergleich übernehmen", systemImage: "arrow.left.arrow.right")
+                }
+            }
+            Button {
+                fillSelection(range, byte: 0x00)
+            } label: {
+                Label("Auswahl mit 0x00 füllen", systemImage: "square.fill")
+            }
+            Button {
+                fillSelection(range, byte: 0xFF)
+            } label: {
+                Label("Auswahl mit 0xFF füllen", systemImage: "square.dashed")
+            }
+            Divider()
+        }
         Button {
-            bookmarks.append(HexBookmark(name: "Marker \(addrStr)", address: targetAddr))
+            model.addHexBookmark(name: "Marker \(addrStr)", address: targetAddr)
         } label: {
             Label("Lesezeichen bei \(addrStr) setzen", systemImage: "bookmark.fill")
         }
@@ -1564,6 +1593,68 @@ struct HexDiffView: View {
                     NSPasteboard.general.setString(Changes.hex(bin[range]), forType: .string)
                 }
                 .controlSize(.small)
+                ControlGroup {
+                    Button { stepSelection(range, delta: -1) } label: { Image(systemName: "minus") }
+                        .help("Ausgewählte Werte um 1 verringern")
+                    Button { stepSelection(range, delta: 1) } label: { Image(systemName: "plus") }
+                        .help("Ausgewählte Werte um 1 erhöhen")
+                }
+                .fixedSize()
+                .controlSize(.small)
+                Button("Bearbeiten …") {
+                    if let cur = readElement(bin, at: range.lowerBound) {
+                        editValueInput = dataFormat == .f32 ? String(format: "%.4g", cur) : formatElement(bin, at: range.lowerBound)
+                    }
+                    showEditPopover = true
+                }
+                .controlSize(.small)
+                .popover(isPresented: $showEditPopover) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Direkt bearbeiten (\(range.count / elemBytes) Werte)").font(.headline)
+                        HStack(spacing: 6) {
+                            TextField("Wert (\(numberBase.rawValue))", text: $editValueInput)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.body.monospaced())
+                                .frame(width: 140)
+                                .onSubmit {
+                                    applyInlineEdit(range)
+                                    showEditPopover = false
+                                }
+                            Button("Setzen") {
+                                applyInlineEdit(range)
+                                showEditPopover = false
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        Divider()
+                        HStack(spacing: 6) {
+                            Text("Füllen:").font(.caption).foregroundStyle(.secondary)
+                            Button("0x00") { fillSelection(range, byte: 0x00); showEditPopover = false }
+                            Button("0xFF") { fillSelection(range, byte: 0xFF); showEditPopover = false }
+                            TextField("FF", text: $fillByteInput)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.caption.monospaced())
+                                .frame(width: 40)
+                            Button("Byte") {
+                                if let b = UInt8(fillByteInput.trimmingCharacters(in: .whitespaces), radix: 16) {
+                                    fillSelection(range, byte: b)
+                                    showEditPopover = false
+                                }
+                            }
+                        }
+                        .controlSize(.small)
+                    }
+                    .padding(12)
+                }
+                if model.compare != nil {
+                    Button {
+                        copySelectionFromCompare(range)
+                    } label: {
+                        Label("← Cmp", systemImage: "arrow.uturn.backward")
+                    }
+                    .controlSize(.small)
+                    .help("Ausgewählte Bytes aus Vergleichs-BIN übernehmen (rückgängig machbar)")
+                }
                 Button("Zwillinge suchen") {
                     twinMatches = BinaryAnalysis.findTwins(for: range, in: bin, elemBytes: elemBytes,
                                                            lsbFirst: lsbFirst, isSigned: isSigned)
@@ -1614,6 +1705,122 @@ struct HexDiffView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .card(padding: 0)
+    }
+
+    // MARK: - Direct Hex Editing & Diff-Only Row Filtering
+
+    private func computeVisibleRowBases(startAddr: Int, count: Int, binCount: Int) -> [Int] {
+        guard count > 0, binCount > 0 else { return [] }
+        if !onlyDiffRows || cachedDiffOffsets.isEmpty {
+            var out: [Int] = []
+            out.reserveCapacity(count)
+            for r in 0..<count {
+                let base = startAddr + r * rowStride
+                if base >= binCount { break }
+                out.append(base)
+            }
+            return out
+        }
+        // Binary search first diff offset >= startAddr
+        var lo = 0, hi = cachedDiffOffsets.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if cachedDiffOffsets[mid] < startAddr { lo = mid + 1 } else { hi = mid }
+        }
+        var out: [Int] = []
+        out.reserveCapacity(count)
+        var lastRowBase = -1
+        var idx = lo
+        while idx < cachedDiffOffsets.count && out.count < count {
+            let off = cachedDiffOffsets[idx]
+            let rowBase = alignedStart(off)
+            if rowBase != lastRowBase && rowBase < binCount {
+                out.append(rowBase)
+                lastRowBase = rowBase
+            }
+            idx += 1
+        }
+        return out
+    }
+
+    private var currentEditLayout: DataLayout {
+        DataLayout(address: 0, bits: elemBytes * 8, signed: isSigned, lsbFirst: lsbFirst,
+                   columnMajor: false, isFloat: dataFormat == .f32, rows: 1, cols: 1)
+    }
+
+    private func copySelectionFromCompare(_ range: Range<Int>) {
+        guard let cmp = model.compare else { return }
+        let clampedEnd = min(range.upperBound, min(model.bin.count, cmp.count))
+        guard range.lowerBound >= 0, range.lowerBound < clampedEnd else { return }
+        let r = range.lowerBound ..< clampedEnd
+        let old = Array(model.bin[r])
+        let new = Array(cmp[r])
+        guard old != new else { return }
+        model.applyRawPatches([Patch(offset: r.lowerBound, old: old, new: new)],
+                              label: String(format: "Aus Vergleich übernommen (0x%05X, %d B)", r.lowerBound, r.count))
+    }
+
+    private func fillSelection(_ range: Range<Int>, byte: UInt8) {
+        let clampedEnd = min(range.upperBound, model.bin.count)
+        guard range.lowerBound >= 0, range.lowerBound < clampedEnd else { return }
+        let r = range.lowerBound ..< clampedEnd
+        let old = Array(model.bin[r])
+        let new = [UInt8](repeating: byte, count: r.count)
+        guard old != new else { return }
+        model.applyRawPatches([Patch(offset: r.lowerBound, old: old, new: new)],
+                              label: String(format: "Mit 0x%02X gefüllt (0x%05X, %d B)", byte, r.lowerBound, r.count))
+    }
+
+    private func stepSelection(_ range: Range<Int>, delta: Double) {
+        let clampedEnd = min(range.upperBound, model.bin.count)
+        guard range.lowerBound >= 0, range.lowerBound + elemBytes <= clampedEnd else { return }
+        let layout = currentEditLayout
+        var patches: [Patch] = []
+        var off = range.lowerBound
+        while off + elemBytes <= clampedEnd {
+            if let cur = readElement(model.bin, at: off) {
+                let encoded = BinCodec.encode(layout, raw: cur + delta)
+                let old = Array(model.bin[off ..< off + elemBytes])
+                if encoded != old { patches.append(Patch(offset: off, old: old, new: encoded)) }
+            }
+            off += elemBytes
+        }
+        guard !patches.isEmpty else { return }
+        model.applyRawPatches(patches, label: String(format: "Hex %+.0f (%d Werte)", delta, patches.count))
+    }
+
+    private func applyInlineEdit(_ range: Range<Int>) {
+        let clampedEnd = min(range.upperBound, model.bin.count)
+        guard range.lowerBound >= 0, range.lowerBound + elemBytes <= clampedEnd else { return }
+        let rawStr = editValueInput.trimmingCharacters(in: .whitespaces)
+        guard !rawStr.isEmpty else { return }
+        let parsed: Double?
+        if dataFormat == .f32 {
+            parsed = Double(rawStr.replacingOccurrences(of: ",", with: "."))
+        } else if numberBase == .hex || rawStr.lowercased().hasPrefix("0x") {
+            let clean = rawStr.lowercased().hasPrefix("0x") ? String(rawStr.dropFirst(2)) : rawStr
+            if let u = UInt64(clean, radix: 16) {
+                parsed = isSigned ? Double(Int64(bitPattern: u)) : Double(u)
+            } else {
+                parsed = nil
+            }
+        } else if numberBase == .bin {
+            parsed = UInt64(rawStr, radix: 2).map(Double.init)
+        } else {
+            parsed = Double(rawStr.replacingOccurrences(of: ",", with: "."))
+        }
+        guard let val = parsed else { return }
+        let layout = currentEditLayout
+        let encoded = BinCodec.encode(layout, raw: val)
+        var patches: [Patch] = []
+        var off = range.lowerBound
+        while off + elemBytes <= clampedEnd {
+            let old = Array(model.bin[off ..< off + elemBytes])
+            if encoded != old { patches.append(Patch(offset: off, old: old, new: encoded)) }
+            off += elemBytes
+        }
+        guard !patches.isEmpty else { return }
+        model.applyRawPatches(patches, label: String(format: "Hex = %@ (0x%05X, %d Werte)", rawStr, range.lowerBound, patches.count))
     }
 
     // MARK: - Element Decoding & Caching

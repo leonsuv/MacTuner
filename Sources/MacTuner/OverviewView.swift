@@ -113,6 +113,9 @@ struct OverviewView: View {
                                 .frame(maxWidth: 900, alignment: .leading)
                         }
                     }
+                    if !model.ecuIdentity.isEmpty {
+                        ecuIdentityCard
+                    }
                     HStack(spacing: 10) {
                         stat("Kennfelder", def.items.filter(\.isTable).count)
                         stat("Konstanten", def.items.filter { !$0.isTable && !$0.isFlag && !$0.isPatch }.count)
@@ -128,7 +131,154 @@ struct OverviewView: View {
                 .frame(maxWidth: 1000, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+        } else if model.hasBin {
+            standaloneBinOverview
         }
+    }
+
+    private var standaloneBinOverview: some View {
+        let ranges = model.outsideChanges
+        let diffBytes = model.outsideByteCount
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.binURL?.lastPathComponent ?? "BIN").font(.system(size: 24, weight: .bold)).textSelection(.enabled)
+                        Text("Bin-vs-Bin Modus (ohne XDF) · \(model.binFormat.rawValue) · \(model.bin.count / 1024) KB")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("XDF öffnen …") { model.openXDFPanel() }
+                        .controlSize(.small)
+                    Button("Vergleichs-BIN …") { model.openComparePanel() }
+                        .controlSize(.small)
+                        .buttonStyle(.borderedProminent)
+                }
+
+                if !model.ecuIdentity.isEmpty {
+                    ecuIdentityCard
+                }
+
+                HStack(spacing: 10) {
+                    stat("Größe (KB)", model.bin.count / 1024)
+                    stat("Diff-Bereiche", ranges.count, highlight: !ranges.isEmpty)
+                    stat("Geänderte Bytes", diffBytes, highlight: diffBytes > 0)
+                    stat("Lesezeichen", model.hexBookmarks.count)
+                }
+
+                workbenchCards
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Bin-vs-Bin Unterschiede").font(.headline)
+                        Text("gegenüber \(model.compareName)").font(.caption).foregroundStyle(.secondary)
+                        CompareMenu().font(.caption)
+                        Spacer()
+                        Button("Hex-Diff öffnen") { model.selection = AppModel.hexDiffSelection }
+                        Button("Kopieren") { model.copyChangeReport() }
+                        Button("Exportieren …") { model.exportChangeReport() }
+                    }
+                    .controlSize(.small)
+
+                    if ranges.isEmpty {
+                        Text(model.compareURL == nil
+                             ? "Lade eine Vergleichs-BIN (⌥⌘O) oder ziehe zwei BINs ins Fenster, um Unterschiede ohne XDF zu vergleichen."
+                             : "Die beiden BIN-Dateien sind byte-identisch.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(ranges.prefix(40), id: \.lowerBound) { r in
+                                Button {
+                                    model.hexJumpTarget = r
+                                    model.selection = AppModel.hexDiffSelection
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Text(String(format: "0x%05X – 0x%05X", r.lowerBound, r.upperBound - 1))
+                                            .font(.caption.monospaced().weight(.semibold))
+                                        Text("\(r.count) B")
+                                            .font(.caption.monospacedDigit())
+                                            .foregroundStyle(Theme.changed)
+                                            .frame(width: 56, alignment: .trailing)
+                                        if let cmp = model.compare, r.upperBound <= cmp.count {
+                                            Text(Changes.hex(cmp[r].prefix(8)))
+                                                .font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+                                            Text("→").font(.caption2).foregroundStyle(.tertiary)
+                                        }
+                                        if r.upperBound <= model.bin.count {
+                                            Text(Changes.hex(model.bin[r].prefix(8)))
+                                                .font(.caption2.monospaced()).foregroundStyle(Theme.changed).lineLimit(1)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                                    }
+                                    .padding(.vertical, 6)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                Divider()
+                            }
+                            if ranges.count > 40 {
+                                Button("Alle \(ranges.count) Bereiche anzeigen …") {
+                                    model.selection = AppModel.outsideSelection
+                                }
+                                .font(.caption)
+                                .padding(.top, 8)
+                            }
+                        }
+                    }
+                }
+                .card(padding: 14)
+            }
+            .padding(20)
+            .frame(maxWidth: 1000, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var ecuIdentityCard: some View {
+        let id = model.ecuIdentity
+        let swMismatch: Bool = {
+            guard let cmpID = model.compareIdentity,
+                  let a = id.softwareNumber?.value,
+                  let b = cmpID.softwareNumber?.value else { return false }
+            return a != b
+        }()
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label("ECU / TCU Identifikation", systemImage: "cpu")
+                    .font(.subheadline.weight(.semibold))
+                if id.hasTPROT {
+                    Chip(text: "TPROT / RSA", icon: "lock.shield")
+                }
+                if swMismatch {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("SW-Version weicht vom Vergleich ab (\(model.compareIdentity?.softwareNumber?.value ?? ""))")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                }
+                Spacer()
+            }
+            HStack(spacing: 8) {
+                ForEach(id.allMatches.prefix(6)) { m in
+                    Button {
+                        model.hexJumpTarget = m.offset ..< min(model.bin.count, m.offset + m.value.count)
+                        model.selection = AppModel.hexDiffSelection
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(m.label).font(.caption2).foregroundStyle(.secondary)
+                            Text(m.value).font(.caption.monospaced().weight(.semibold)).lineLimit(1)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .help(String(format: "Im Hex-Editor zu 0x%05X springen", m.offset))
+                }
+            }
+        }
+        .card(padding: 12)
     }
 
     private var workbenchCards: some View {
@@ -287,8 +437,10 @@ struct OutsideChangesView: View {
         let ranges = model.outsideChanges
         let compare = model.compare ?? []
         VStack(alignment: .leading, spacing: 12) {
-            Text("Außerhalb der XDF").font(.system(size: 22, weight: .bold))
-            Text("Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version.")
+            Text(model.definition == nil ? "Bin-vs-Bin Diff-Bereiche" : "Außerhalb der XDF").font(.system(size: 22, weight: .bold))
+            Text(model.definition == nil
+                 ? "Alle geänderten Byte-Bereiche zwischen der geladenen BIN und der Vergleichs-BIN."
+                 : "Diese Bytes unterscheiden sich vom Vergleich, gehören aber zu keinem Kennfeld und keiner Achse der XDF – zum Beispiel Prüfsummen, nicht definierte Kennfelder oder ein Vergleich mit einer anderen Software-Version.")
                 .font(.callout).foregroundStyle(.secondary)
                 .frame(maxWidth: 900, alignment: .leading)
             HStack(spacing: 6) {

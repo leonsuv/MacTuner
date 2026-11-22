@@ -14,6 +14,8 @@ struct ChecksumReport {
     let pluginID: String
     let pluginName: String
     let blocks: [ChecksumBlockResult]
+    var canFix: Bool = true
+    var advisoryWarning: String? = nil
     var allValid: Bool { !blocks.isEmpty && blocks.allSatisfy(\.valid) }
     var invalidCount: Int { blocks.filter { !$0.valid }.count }
 }
@@ -23,9 +25,16 @@ protocol ChecksumPlugin {
     var name: String { get }
     var family: String { get }
     var description: String { get }
+    var canFix: Bool { get }
+    var advisoryWarning: String? { get }
     func matches(bin: [UInt8]) -> Bool
     func verify(bin: [UInt8]) -> ChecksumReport
     func correct(bin: [UInt8]) -> [Patch]
+}
+
+extension ChecksumPlugin {
+    var canFix: Bool { true }
+    var advisoryWarning: String? { nil }
 }
 
 enum ChecksumMath {
@@ -159,51 +168,33 @@ struct BoschME7ChecksumPlugin: ChecksumPlugin {
 
 struct BoschMED17ChecksumPlugin: ChecksumPlugin {
     let id = "bosch-med17"
-    let name = "Bosch MED17 / EDC17"
+    let name = "Bosch MED17 / EDC17 / MG1 / MD1 (TPROT)"
     let family = "Bosch"
-    let description = "TriCore Flash (1.5 MB / 2 MB / 4 MB): IEEE CRC-32 Kalibrierungs-Sektor-Prüfsumme."
+    let description = "TriCore Flash (1.5 MB / 2 MB / 4 MB): Multi-Block-Prüfsummen & RSA/TPROT-Signatur — schreibgeschützter Prüfhinweis."
+    let canFix = false
+    let advisoryWarning: String? = "RSA/TPROT-Steuergerät erkannt: MED17/EDC17/MG1/MD1 nutzen Multi-Block-Prüfsummen + RSA-Signaturen. MacTuner überschreibt keine Bytes blind — bitte Prüfsummen beim Schreiben vom Flash-Tool (KESS3, Flex, PCMFlash, Autotuner) berechnen lassen."
 
     func matches(bin: [UInt8]) -> Bool {
-        guard bin.count == 1_572_864 || bin.count == 2_097_152 || bin.count == 4_194_304 else { return false }
+        guard bin.count == 1_572_864 || bin.count == 2_097_152 || bin.count == 4_194_304 || bin.count == 8_388_608 else { return false }
         if let str = String(bytes: bin.prefix(min(bin.count, 262_144)), encoding: .isoLatin1),
-           str.contains("MED17") || str.contains("EDC17") || str.contains("TC17") { return true }
+           str.contains("MED17") || str.contains("EDC17") || str.contains("TC17") || str.contains("MG1CS") || str.contains("MD1CS") { return true }
         return false
     }
 
     func verify(bin: [UInt8]) -> ChecksumReport {
-        guard bin.count >= 0x40000 else { return ChecksumReport(pluginID: id, pluginName: name, blocks: []) }
-        let sectorSize = 0x40000
-        let start = max(0, bin.count - sectorSize)
-        let storeAddr = bin.count - 4
-        let stored = ChecksumMath.readU32LE(bin, storeAddr)
-        let computed = ChecksumMath.crc32(bin[start ..< storeAddr])
-        let block = ChecksumBlockResult(
-            name: String(format: "TriCore Kalibrierungs-Sektor (0x%06X)", start),
-            range: start ..< storeAddr,
-            storeAddress: storeAddr,
-            storedHex: String(format: "%08X", stored),
-            computedHex: String(format: "%08X", computed)
-        )
-        return ChecksumReport(pluginID: id, pluginName: name, blocks: [block])
+        ChecksumReport(pluginID: id, pluginName: name, blocks: [], canFix: false, advisoryWarning: advisoryWarning)
     }
 
-    func correct(bin: [UInt8]) -> [Patch] {
-        let report = verify(bin: bin)
-        return report.blocks.compactMap { b -> Patch? in
-            guard !b.valid else { return nil }
-            let computed = ChecksumMath.crc32(bin[b.range])
-            let newBytes = ChecksumMath.encodeU32LE(computed)
-            let oldBytes = Array(bin[b.storeAddress ..< (b.storeAddress + 4)])
-            return newBytes != oldBytes ? Patch(offset: b.storeAddress, old: oldBytes, new: newBytes) : nil
-        }
-    }
+    func correct(bin: [UInt8]) -> [Patch] { [] }
 }
 
 struct SiemensChecksumPlugin: ChecksumPlugin {
     let id = "siemens-simos"
-    let name = "Siemens MS4x / MSS5x / SIMOS"
+    let name = "Siemens / Continental (MS4x / MSS5x / SIMOS)"
     let family = "Siemens"
-    let description = "CRC-16-CCITT (0x1021) Kalibrierungsblock-Prüfsumme."
+    let description = "Multi-Block / TPROT-fähige Siemens- & Continental-Steuergeräte — schreibgeschützter Prüfhinweis."
+    let canFix = false
+    let advisoryWarning: String? = "Siemens/Continental-Steuergeräte nutzen modellspezifische Multi-Block-CRCs bzw. RSA-Signaturen (z. B. SIMOS18). Bitte Prüfsummen vom Flash-Tool oder einem modellspezifischen Plugin korrigieren lassen."
 
     func matches(bin: [UInt8]) -> Bool {
         guard bin.count >= 65_536 else { return false }
@@ -213,38 +204,19 @@ struct SiemensChecksumPlugin: ChecksumPlugin {
     }
 
     func verify(bin: [UInt8]) -> ChecksumReport {
-        guard bin.count >= 0x10000 else { return ChecksumReport(pluginID: id, pluginName: name, blocks: []) }
-        let start = 0
-        let storeAddr = bin.count - 2
-        let stored = ChecksumMath.readU16BE(bin, storeAddr)
-        let computed = ChecksumMath.crc16CCITT(bin[start ..< storeAddr])
-        let block = ChecksumBlockResult(
-            name: "Siemens Kalibrierung (CRC-16-CCITT)",
-            range: start ..< storeAddr,
-            storeAddress: storeAddr,
-            storedHex: String(format: "%04X", stored),
-            computedHex: String(format: "%04X", computed)
-        )
-        return ChecksumReport(pluginID: id, pluginName: name, blocks: [block])
+        ChecksumReport(pluginID: id, pluginName: name, blocks: [], canFix: false, advisoryWarning: advisoryWarning)
     }
 
-    func correct(bin: [UInt8]) -> [Patch] {
-        let report = verify(bin: bin)
-        return report.blocks.compactMap { b -> Patch? in
-            guard !b.valid else { return nil }
-            let computed = ChecksumMath.crc16CCITT(bin[b.range])
-            let newBytes = ChecksumMath.encodeU16BE(computed)
-            let oldBytes = Array(bin[b.storeAddress ..< (b.storeAddress + 2)])
-            return newBytes != oldBytes ? Patch(offset: b.storeAddress, old: oldBytes, new: newBytes) : nil
-        }
-    }
+    func correct(bin: [UInt8]) -> [Patch] { [] }
 }
 
 struct TemicDQ250ChecksumPlugin: ChecksumPlugin {
     let id = "temic-dq250"
     let name = "Temic DQ250 / DSG"
     let family = "Temic"
-    let description = "32-Bit Big-Endian Summen-Prüfsumme für DQ250/DSG Getriebesteuergeräte."
+    let description = "Temic DQ250/DSG Getriebesteuergeräte — schreibgeschützter Prüfhinweis."
+    let canFix = false
+    let advisoryWarning: String? = "DQ250/DSG-Binaries nutzen mehrteilige Sektor-Prüfsummen. MacTuner überschreibt das Dateiende nicht blind — bitte Prüfsummen vom Flash-Tool korrigieren lassen."
 
     func matches(bin: [UInt8]) -> Bool {
         guard bin.count == 524_288 || bin.count == 1_048_576 || bin.count == 1_572_864 else { return false }
@@ -254,30 +226,10 @@ struct TemicDQ250ChecksumPlugin: ChecksumPlugin {
     }
 
     func verify(bin: [UInt8]) -> ChecksumReport {
-        guard bin.count >= 0x10000 else { return ChecksumReport(pluginID: id, pluginName: name, blocks: []) }
-        let storeAddr = bin.count - 4
-        let stored = ChecksumMath.readU32BE(bin, storeAddr)
-        let computed = ChecksumMath.sum32BE(bin[0 ..< storeAddr])
-        let block = ChecksumBlockResult(
-            name: "DQ250 Flash-Summe (32-Bit BE)",
-            range: 0 ..< storeAddr,
-            storeAddress: storeAddr,
-            storedHex: String(format: "%08X", stored),
-            computedHex: String(format: "%08X", computed)
-        )
-        return ChecksumReport(pluginID: id, pluginName: name, blocks: [block])
+        ChecksumReport(pluginID: id, pluginName: name, blocks: [], canFix: false, advisoryWarning: advisoryWarning)
     }
 
-    func correct(bin: [UInt8]) -> [Patch] {
-        let report = verify(bin: bin)
-        return report.blocks.compactMap { b -> Patch? in
-            guard !b.valid else { return nil }
-            let computed = ChecksumMath.sum32BE(bin[b.range])
-            let newBytes = ChecksumMath.encodeU32BE(computed)
-            let oldBytes = Array(bin[b.storeAddress ..< (b.storeAddress + 4)])
-            return newBytes != oldBytes ? Patch(offset: b.storeAddress, old: oldBytes, new: newBytes) : nil
-        }
-    }
+    func correct(bin: [UInt8]) -> [Patch] { [] }
 }
 
 struct GenericCRC32ChecksumPlugin: ChecksumPlugin {

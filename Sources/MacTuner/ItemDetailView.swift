@@ -11,6 +11,7 @@ struct ItemDetailView: View {
     @State private var safeMaxText = ""
     @State private var showNotes = false
     @State private var noteText = ""
+    @State private var showSharedAxis = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -41,6 +42,9 @@ struct ItemDetailView: View {
         let locked = model.isLocked(item)
         let violations = item.scaling.output != .hex ? model.outOfSafeRangeCount(item) : 0
         let sr = model.safeRange(for: item)
+        let sharedX = item.xAxis?.layout.map { model.itemsSharingAxis(at: $0.address, excluding: item.id) } ?? []
+        let sharedY = item.yAxis?.layout.map { model.itemsSharingAxis(at: $0.address, excluding: item.id) } ?? []
+        let sharedCount = Set(sharedX.map(\.id) + sharedY.map(\.id)).count
 
         return VStack(alignment: .leading, spacing: 8) {
             if let c = item.categories.first, let name = model.definition?.categories[c] {
@@ -98,10 +102,67 @@ struct ItemDetailView: View {
                     .buttonStyle(.plain)
                 }
 
+                if sharedCount > 0 {
+                    Button { showSharedAxis.toggle() } label: {
+                        Label("Geteilte Achse (\(sharedCount))", systemImage: "arrow.triangle.branch")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color.orange.opacity(0.16), in: Capsule())
+                            .foregroundStyle(.orange)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Achtung: Eine Achse dieses Kennfelds wird von \(sharedCount) weiteren Kennfeldern genutzt!")
+                    .popover(isPresented: $showSharedAxis) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Geteilte Achsen (\(sharedCount) weitere Kennfelder)").font(.headline)
+                            Text("Änderungen an geteilten Achsen-Stützstellen wirken sich sofort auf alle verknüpften Kennfelder aus.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    if !sharedX.isEmpty {
+                                        Text("X-Achse geteilt mit:").font(.caption.bold()).foregroundStyle(.secondary)
+                                        ForEach(sharedX.prefix(20)) { other in
+                                            Button(other.title) {
+                                                model.selection = other.id
+                                                showSharedAxis = false
+                                            }
+                                            .buttonStyle(.link)
+                                            .font(.caption)
+                                        }
+                                    }
+                                    if !sharedY.isEmpty {
+                                        Text("Y-Achse geteilt mit:").font(.caption.bold()).foregroundStyle(.secondary).padding(.top, 4)
+                                        ForEach(sharedY.prefix(20)) { other in
+                                            Button(other.title) {
+                                                model.selection = other.id
+                                                showSharedAxis = false
+                                            }
+                                            .buttonStyle(.link)
+                                            .font(.caption)
+                                        }
+                                    }
+                                }
+                            }
+                            .frame(maxHeight: 220)
+                        }
+                        .padding(12)
+                        .frame(width: 300)
+                    }
+                }
+
                 Spacer(minLength: 12)
 
                 // Clean labeled secondary action cluster
                 HStack(spacing: 6) {
+                    Button {
+                        model.pinnedItemID = (model.pinnedItemID == item.id) ? nil : item.id
+                    } label: {
+                        Label(model.pinnedItemID == item.id ? "Angeheftet" : "Anheften",
+                              systemImage: model.pinnedItemID == item.id ? "pin.fill" : "pin")
+                            .foregroundStyle(model.pinnedItemID == item.id ? Color.accentColor : Color.primary)
+                    }
+                    .help("Kennfeld für geteilte Neben-einander-Ansicht anheften (z. B. Bank 1/2, Hoch-/Runterschalten)")
+
                     Button { model.showInHexEditor(item) } label: {
                         Label("Hex", systemImage: "doc.text.magnifyingglass")
                     }

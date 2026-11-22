@@ -45,13 +45,15 @@ struct MultiCompareView: View {
         VStack(alignment: .leading, spacing: 12) {
             headerBar(slots: allSlots, baseIdx: baseIdx)
 
-            if allSlots.count < 2 || model.definition == nil {
+            if allSlots.count < 2 {
                 ContentUnavailableView(
                     "Mehrdatei-Vergleich",
                     systemImage: "square.split.2x1",
-                    description: Text("Öffne eine XDF, eine BIN und füge beliebig viele weitere Dateien (z. B. Original, Stage 1, Stage 2) hinzu.")
+                    description: Text("Öffne eine BIN und füge beliebig viele weitere Dateien (z. B. Original, Stage 1, Stage 2) hinzu — mit oder ohne XDF.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if model.definition == nil {
+                rawMultiDiffView(slots: allSlots, baseIdx: baseIdx)
             } else {
                 HSplitView {
                     itemList(slots: allSlots, baseIdx: baseIdx)
@@ -299,5 +301,83 @@ struct MultiCompareView: View {
         }
         let f = scaling.format(d)
         return (d > 0 && !f.hasPrefix("+")) ? "+\(f)" : f
+    }
+
+    // MARK: Standalone Bin-vs-Bin Multi-Compare (no XDF)
+
+    private func rawMultiDiffView(slots: [Slot], baseIdx: Int) -> some View {
+        let baseBytes = slots[baseIdx].bytes
+        let maxLen = slots.map(\.bytes.count).min() ?? 0
+        // Collect union of byte ranges where any slot differs from baseline
+        var ranges: [Range<Int>] = []
+        var i = 0
+        while i < maxLen {
+            let b0 = baseBytes[i]
+            let differs = slots.enumerated().contains { idx, s in idx != baseIdx && s.bytes[i] != b0 }
+            if differs {
+                let start = i
+                i += 1
+                while i < maxLen {
+                    let bx = baseBytes[i]
+                    let d = slots.enumerated().contains { idx, s in idx != baseIdx && s.bytes[i] != bx }
+                    if !d { break }
+                    i += 1
+                }
+                ranges.append(start ..< i)
+            } else {
+                i += 1
+            }
+        }
+        let totalBytes = ranges.reduce(0) { $0 + $1.count }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Bin-vs-Bin Mehrdatei-Diff (ohne XDF)").font(.headline)
+                Chip(text: "\(ranges.count) Bereiche · \(totalBytes) B", icon: "square.split.1x2")
+                Spacer()
+            }
+            if ranges.isEmpty {
+                ContentUnavailableView("Alle \(slots.count) Dateien sind byte-identisch", systemImage: "checkmark.circle")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView([.vertical, .horizontal]) {
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+                        GridRow {
+                            Text("Adresse").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text("Länge").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            ForEach(Array(slots.enumerated()), id: \.element.id) { idx, s in
+                                Text(idx == baseIdx ? "\(s.name) (Basis)" : s.name)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(idx == baseIdx ? Color.accentColor : .primary)
+                            }
+                        }
+                        Divider()
+                        ForEach(ranges.prefix(300), id: \.lowerBound) { r in
+                            GridRow {
+                                Button {
+                                    model.hexJumpTarget = r
+                                    model.selection = AppModel.hexDiffSelection
+                                } label: {
+                                    Text(String(format: "0x%05X–0x%05X", r.lowerBound, r.upperBound - 1))
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                                Text("\(r.count) B").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                ForEach(Array(slots.enumerated()), id: \.element.id) { idx, s in
+                                    let slice = s.bytes[r]
+                                    let isDiff = idx != baseIdx && slice != baseBytes[r]
+                                    Text(Changes.hex(slice.prefix(12)) + (r.count > 12 ? " …" : ""))
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(isDiff ? Theme.changed : .secondary)
+                                }
+                            }
+                        }
+                    }
+                    .padding(10)
+                }
+                .card(padding: 6)
+            }
+        }
     }
 }

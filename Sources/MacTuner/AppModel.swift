@@ -134,10 +134,18 @@ final class AppModel {
     private(set) var xdfURL: URL?
     private(set) var binURL: URL?
     private(set) var bin: [UInt8] = []
+    private(set) var binFormat: BinaryFormatCodec.Format = .raw
+    private(set) var binBaseAddress: UInt64 = 0
+    private(set) var ecuIdentity = ECUIdentity()
+    private(set) var compareIdentity: ECUIdentity?
     /// Reference for change marks: a chosen file, or the bin as it was when opened.
     private(set) var compare: [UInt8]?
     private(set) var compareURL: URL?
     private(set) var compareLabelOverride: String?
+    /// Side-by-side pinned map ID for split editing (e.g. Torque/Inverse, Upshift/Downshift).
+    var pinnedItemID: Int?
+    /// Persistent Hex bookmarks per BIN path.
+    private(set) var hexBookmarks: [HexBookmark] = []
     /// Additional comparison files (Stage 1, Stage 2, Snapshots, …).
     private(set) var extraCompares: [CompareFile] = []
     /// Persistent per-map edit history across sessions.
@@ -423,6 +431,43 @@ final class AppModel {
         }
     }
 
+    /// Handles drag-and-drop of 1 or more files: XDF/definitions first, then 1st binary as BIN, 2nd as Compare, 3rd+ as Extra Compares.
+    func openDroppedURLs(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        let defExts: Set<String> = ["xdf", "a2l", "kp", "ols"]
+        let logExts: Set<String> = ["csv", "adx", "ads"]
+        let projExts: Set<String> = ["mtproj"]
+
+        var defs: [URL] = []
+        var bins: [URL] = []
+        var others: [URL] = []
+
+        for u in urls {
+            let ext = u.pathExtension.lowercased()
+            if defExts.contains(ext) { defs.append(u) }
+            else if logExts.contains(ext) || projExts.contains(ext) { others.append(u) }
+            else { bins.append(u) }
+        }
+
+        for u in defs { open(u) }
+        for u in others { open(u) }
+
+        if bins.count == 1 {
+            openBin(bins[0])
+        } else if bins.count >= 2 {
+            openBin(bins[0])
+            loadCompare(bins[1])
+            for extra in bins.dropFirst(2) {
+                addExtraCompare(extra)
+            }
+            if bins.count >= 3 {
+                selection = Self.multiCompareSelection
+            } else if definition == nil {
+                selection = Self.hexDiffSelection
+            }
+        }
+    }
+
     // MARK: Projects (.mtproj)
 
     func openProjectPanel() {
@@ -525,10 +570,91 @@ final class AppModel {
         commit(patches)
     }
 
+    /// Commits raw byte patches from HexDiffView (inline edit, fill, copy from compare) with undo & history.
+    func applyRawPatches(_ patches: [Patch], label: String) {
+        guard !patches.isEmpty else { return }
+        commit(patches)
+        if let key = binStorageKey, let first = patches.first {
+            let entry = EditHistoryEntry(itemKey: "hex@\(first.offset)", itemTitle: "Hex-Editor",
+                                         address: first.offset, summary: label, note: "")
+            history.insert(entry, at: 0)
+            if history.count > 2000 { history = Array(history.prefix(2000)) }
+            HistoryStore.save(history, for: key)
+        }
+    }
+
+    func addHexBookmark(name: String, address: Int) {
+        if hexBookmarks.contains(where: { $0.address == address }) { return }
+        hexBookmarks.append(HexBookmark(name: name, address: address))
+        saveHexBookmarks()
+    }
+
+    func removeHexBookmark(id: UUID) {
+        hexBookmarks.removeAll { $0.id == id }
+        saveHexBookmarks()
+    }
+
+    private func loadHexBookmarks() {
+        guard let key = binStorageKey,
+              let dict = UserDefaults.standard.dictionary(forKey: "hexBookmarks"),
+              let data = dict[key] as? Data,
+              let decoded = try? JSONDecoder().decode([HexBookmark].self, from: data) else {
+            hexBookmarks = []
+            return
+        }
+        hexBookmarks = decoded
+    }
+
+    private func saveHexBookmarks() {
+        guard let key = binStorageKey, let data = try? JSONEncoder().encode(hexBookmarks) else { return }
+        var dict = UserDefaults.standard.dictionary(forKey: "hexBookmarks") ?? [:]
+        dict[key] = data
+        UserDefaults.standard.set(dict, forKey: "hexBookmarks")
+    }
+
+    /// Returns all XDF items that reference an embedded axis at the given flash address.
+    func itemsSharingAxis(at address: Int, excluding itemID: Int? = nil) -> [XDFItem] {
+        guard let def = definition else { return [] }
+        return def.items.filter { item in
+            if let ex = itemID, item.id == ex { return false }
+            if item.xAxis?.layout?.address == address { return true }
+            if item.yAxis?.layout?.address == address { return true }
+            return false
+        }
+    }
+
     func openXDFPanel() { if let u = chooseFile(String(localized: "XDF öffnen"), types: ["xdf"]) { loadXDF(u) } }
     func importDefinitionPanel() { if let u = chooseFile(String(localized: "A2L / WinOLS .kp importieren"), types: ["a2l", "ols", "kp", "csv"]) { importDefinition(u) } }
-    func openBinPanel() { if let u = chooseFile(String(localized: "BIN öffnen"), types: ["bin"]) { openBin(u) } }
-    func openComparePanel() { if let u = chooseFile(String(localized: "Vergleichs-BIN öffnen"), types: ["bin"]) { loadCompare(u) } }
+    func openBinPanel() { if let u = chooseFile(String(localized: "BIN öffnen"), types: BinaryFormatCodec.binaryExtensions) { openBin(u) } }
+    func openComparePanel() { if let u = chooseFile(String(localized: "Vergleichs-BIN öffnen"), types: BinaryFormatCodec.binaryExtensions) { loadCompare(u) } }
+
+    func exportDefinitionCSV() {
+        guard let def = definition else { return }
+        let p = NSSavePanel()
+        p.allowedContentTypes = [.commaSeparatedText]
+        p.nameFieldStringValue = "\(def.title).csv"
+        p.directoryURL = xdfURL?.deletingLastPathComponent() ?? binURL?.deletingLastPathComponent()
+        guard p.runModal() == .OK, let url = p.url else { return }
+        do {
+            try DefinitionExporter.exportWinOLSCSV(def).write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            alert = String(localized: "Export fehlgeschlagen:\n\(error.localizedDescription)")
+        }
+    }
+
+    func exportDefinitionA2L() {
+        guard let def = definition else { return }
+        let p = NSSavePanel()
+        p.allowedContentTypes = [UTType(filenameExtension: "a2l") ?? .plainText]
+        p.nameFieldStringValue = "\(def.title).a2l"
+        p.directoryURL = xdfURL?.deletingLastPathComponent() ?? binURL?.deletingLastPathComponent()
+        guard p.runModal() == .OK, let url = p.url else { return }
+        do {
+            try DefinitionExporter.exportA2L(def).write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            alert = String(localized: "Export fehlgeschlagen:\n\(error.localizedDescription)")
+        }
+    }
 
     func importDefinition(_ url: URL) {
         do {
@@ -774,15 +900,23 @@ final class AppModel {
 
     private func loadBin(_ url: URL) {
         do {
-            bin = [UInt8](try Data(contentsOf: url))
+            let loaded = try BinaryFormatCodec.load(url: url)
+            bin = loaded.bytes
+            binFormat = loaded.format
+            binBaseAddress = loaded.baseAddress
             binURL = url
             openedSnapshot = bin
-            if compareURL == nil && compareLabelOverride == nil { compare = bin }
+            ecuIdentity = ECUIdentifier.identify(bin)
+            if compareURL == nil && compareLabelOverride == nil {
+                compare = bin
+                compareIdentity = ecuIdentity
+            }
             dirty = false
             undoStack = []
             redoStack = []
             history = HistoryStore.load(for: url.path)
             snapshots = SnapshotStore.loadIndex(for: url.path)
+            loadHexBookmarks()
             checksumPluginID = ChecksumRegistry.shared.autoDetect(bin: bin)?.id
             checksumCache = nil
             UserDefaults.standard.set(url.path, forKey: "binPath")
@@ -798,9 +932,11 @@ final class AppModel {
 
     func loadCompare(_ url: URL) {
         do {
-            compare = [UInt8](try Data(contentsOf: url))
+            let loaded = try BinaryFormatCodec.load(url: url)
+            compare = loaded.bytes
             compareURL = url
             compareLabelOverride = nil
+            compareIdentity = ECUIdentifier.identify(loaded.bytes)
             UserDefaults.standard.set(url.path, forKey: "comparePath")
             recentBins = Self.remember(url, in: "recentBin")
             touch()
@@ -829,7 +965,7 @@ final class AppModel {
     func addExtraComparePanel() {
         let p = NSOpenPanel()
         p.title = String(localized: "Weitere Vergleichs-BIN öffnen")
-        p.allowedContentTypes = [UTType(filenameExtension: "bin")].compactMap { $0 } + [.data]
+        p.allowedContentTypes = BinaryFormatCodec.binaryExtensions.compactMap { UTType(filenameExtension: $0) } + [.data]
         p.allowsMultipleSelection = true
         guard p.runModal() == .OK else { return }
         for url in p.urls { addExtraCompare(url) }
@@ -837,9 +973,9 @@ final class AppModel {
 
     func addExtraCompare(_ url: URL) {
         do {
-            let bytes = [UInt8](try Data(contentsOf: url))
+            let loaded = try BinaryFormatCodec.load(url: url)
             if extraCompares.contains(where: { $0.url == url }) { return }
-            extraCompares.append(CompareFile(name: url.lastPathComponent, url: url, bytes: bytes))
+            extraCompares.append(CompareFile(name: url.lastPathComponent, url: url, bytes: loaded.bytes))
             recentBins = Self.remember(url, in: "recentBin")
             touch()
         } catch {
@@ -967,7 +1103,7 @@ final class AppModel {
     }
 
     private func confirmChecksumBeforeSave() -> Bool {
-        guard let rep = checksumReport, rep.invalidCount > 0 else { return true }
+        guard let rep = checksumReport, rep.canFix, rep.invalidCount > 0 else { return true }
         let a = NSAlert()
         a.alertStyle = .warning
         a.messageText = String(localized: "Prüfsumme stimmt nicht überein (\(rep.pluginName))")
@@ -1005,7 +1141,8 @@ final class AppModel {
 
     private func write(to url: URL) {
         do {
-            try Data(bin).write(to: url, options: .atomic)
+            let encoded = BinaryFormatCodec.encode(bin, to: url, baseAddress: binBaseAddress)
+            try encoded.write(to: url, options: .atomic)
             dirty = false
         } catch {
             alert = String(localized: "Speichern fehlgeschlagen:\n\(error.localizedDescription)")
@@ -1014,18 +1151,41 @@ final class AppModel {
 
     /// true = go ahead (saved or discarded), false = cancelled.
     func confirmDiscard() -> Bool {
-        guard dirty else { return true }
-        let a = NSAlert()
-        a.messageText = String(localized: "Ungespeicherte Änderungen in \(binURL?.lastPathComponent ?? "BIN")")
-        a.informativeText = String(localized: "Sollen die Änderungen gespeichert werden?")
-        a.addButton(withTitle: String(localized: "Speichern"))
-        a.addButton(withTitle: String(localized: "Verwerfen"))
-        a.addButton(withTitle: String(localized: "Abbrechen"))
-        switch a.runModal() {
-        case .alertFirstButtonReturn: save(); return !dirty
-        case .alertSecondButtonReturn: return true
-        default: return false
+        if dirty {
+            let a = NSAlert()
+            a.messageText = String(localized: "Ungespeicherte Änderungen in \(binURL?.lastPathComponent ?? "BIN")")
+            a.informativeText = String(localized: "Sollen die Änderungen gespeichert werden?")
+            a.addButton(withTitle: String(localized: "Speichern"))
+            a.addButton(withTitle: String(localized: "Verwerfen"))
+            a.addButton(withTitle: String(localized: "Abbrechen"))
+            switch a.runModal() {
+            case .alertFirstButtonReturn:
+                save()
+                if dirty { return false }
+            case .alertSecondButtonReturn:
+                break
+            default:
+                return false
+            }
         }
+        if xdfDirty {
+            let a = NSAlert()
+            a.messageText = String(localized: "Ungespeicherte Änderungen in der Definition (\(xdfURL?.lastPathComponent ?? definition?.title ?? "XDF"))")
+            a.informativeText = String(localized: "Soll die XDF-Definition gespeichert werden?")
+            a.addButton(withTitle: String(localized: "XDF speichern"))
+            a.addButton(withTitle: String(localized: "Verwerfen"))
+            a.addButton(withTitle: String(localized: "Abbrechen"))
+            switch a.runModal() {
+            case .alertFirstButtonReturn:
+                saveXDF()
+                if xdfDirty { return false }
+            case .alertSecondButtonReturn:
+                xdfDirty = false
+            default:
+                return false
+            }
+        }
+        return true
     }
 
     func chooseFile(_ title: String, types: [String]) -> URL? {
@@ -1188,12 +1348,13 @@ final class AppModel {
         return def.items.filter(isChanged)
     }
 
-    /// Changed bytes that belong to no item of the XDF (checksums, undefined maps, another software version).
+    /// Changed bytes outside the XDF (or all raw diff blocks when no XDF is loaded).
     var outsideChanges: [Range<Int>] {
-        guard hasBin, definition != nil, let compare else { return [] }
+        guard hasBin, let compare else { return [] }
         _ = bin.count // keeps views that only show this list observing the bin, also when it comes from the cache
         if let c = outsideCache, c.revision == revision { return c.ranges }
-        let ranges = Changes.outside(bin, compare, covered: covered)
+        let cov = definition != nil ? covered : IndexSet()
+        let ranges = Changes.outside(bin, compare, covered: cov)
         outsideCache = (revision, ranges)
         return ranges
     }
@@ -1251,9 +1412,31 @@ final class AppModel {
     }
 
     func changeReport() -> String? {
-        guard let def = definition, let compare, hasBin else { return nil }
-        return Changes.report(def, bin: bin, compare: compare, xdfName: xdfURL?.lastPathComponent ?? "—",
-                              binName: binURL?.lastPathComponent ?? "—", compareName: compareName)
+        guard let compare, hasBin else { return nil }
+        if let def = definition {
+            return Changes.report(def, bin: bin, compare: compare, xdfName: xdfURL?.lastPathComponent ?? "—",
+                                  binName: binURL?.lastPathComponent ?? "—", compareName: compareName)
+        }
+        // Standalone Bin-vs-Bin raw diff report
+        let ranges = outsideChanges
+        let totalBytes = ranges.reduce(0) { $0 + $1.count }
+        var lines: [String] = [
+            "MacTuner Bin-vs-Bin Diff",
+            "BIN:       \(binURL?.lastPathComponent ?? "—") (\(bin.count) Bytes)",
+            "Vergleich: \(compareName) (\(compare.count) Bytes)",
+        ]
+        if !ecuIdentity.shortSummary.isEmpty {
+            lines.append("ECU ID:    \(ecuIdentity.shortSummary)")
+        }
+        lines.append("Geändert:  \(totalBytes) Bytes in \(ranges.count) Bereichen")
+        lines.append("")
+        for r in ranges {
+            let cmpHex = Changes.hex(compare[r].prefix(16)) + (r.count > 16 ? " …" : "")
+            let binHex = Changes.hex(bin[r].prefix(16)) + (r.count > 16 ? " …" : "")
+            lines.append(String(format: "0x%06X – 0x%06X (%5d B)  [%@] -> [%@]",
+                                r.lowerBound, r.upperBound - 1, r.count, cmpHex, binHex))
+        }
+        return lines.joined(separator: "\n") + "\n"
     }
 
     func copyChangeReport() {

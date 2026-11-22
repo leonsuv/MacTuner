@@ -41,24 +41,44 @@ enum CLI {
         mactuner — MacTuner Command Line Interface
 
         Usage:
+          mactuner diff <bin> <compare>
           mactuner diff <xdf> <bin> <compare>
           mactuner export <xdf> <bin> <compare> <out.txt|out.pdf>
           mactuner apply <xdf> <patch.mtpatch> <in.bin> <out.bin> [--mode absolute|delta|percent]
           mactuner info <xdf>
           mactuner checksum <bin> [--plugin <id>] [--fix <out.bin>]
-          mactuner convert <in.a2l|in.kp> <out.xdf>
+          mactuner convert <in.a2l|in.kp|in.ols|in.xdf> <out.xdf|out.csv|out.a2l>
         """)
     }
 
     private static func runDiff(_ args: [String]) -> Int32 {
-        guard args.count >= 3 else { fputs("Usage: mactuner diff <xdf> <bin> <compare>\n", stderr); return 2 }
+        guard args.count >= 2 else {
+            fputs("Usage: mactuner diff <bin> <compare>  OR  mactuner diff <xdf> <bin> <compare>\n", stderr)
+            return 2
+        }
         do {
+            if args.count == 2 {
+                let binURL = URL(fileURLWithPath: args[0])
+                let cmpURL = URL(fileURLWithPath: args[1])
+                let bin = try BinaryFormatCodec.load(url: binURL).bytes
+                let cmp = try BinaryFormatCodec.load(url: cmpURL).bytes
+                let ranges = Changes.outside(bin, cmp, covered: IndexSet())
+                let total = ranges.reduce(0) { $0 + $1.count }
+                print("MacTuner Bin-vs-Bin Diff: \(binURL.lastPathComponent) vs \(cmpURL.lastPathComponent)")
+                print("Changed: \(total) bytes across \(ranges.count) regions\n")
+                for r in ranges {
+                    let a = Changes.hex(cmp[r].prefix(16)) + (r.count > 16 ? " ..." : "")
+                    let b = Changes.hex(bin[r].prefix(16)) + (r.count > 16 ? " ..." : "")
+                    print(String(format: "0x%06X - 0x%06X (%5d B)  [%@] -> [%@]", r.lowerBound, r.upperBound - 1, r.count, a, b))
+                }
+                return 0
+            }
             let xdfURL = URL(fileURLWithPath: args[0])
             let binURL = URL(fileURLWithPath: args[1])
             let cmpURL = URL(fileURLWithPath: args[2])
             let def = try XDFParser.load(xdfURL)
-            let bin = [UInt8](try Data(contentsOf: binURL))
-            let cmp = [UInt8](try Data(contentsOf: cmpURL))
+            let bin = try BinaryFormatCodec.load(url: binURL).bytes
+            let cmp = try BinaryFormatCodec.load(url: cmpURL).bytes
             let report = Changes.report(def, bin: bin, compare: cmp,
                                         xdfName: xdfURL.lastPathComponent,
                                         binName: binURL.lastPathComponent,
@@ -175,11 +195,24 @@ enum CLI {
     }
 
     private static func runConvert(_ args: [String]) -> Int32 {
-        guard args.count >= 2 else { fputs("Usage: mactuner convert <in.a2l|in.kp> <out.xdf>\n", stderr); return 2 }
+        guard args.count >= 2 else { fputs("Usage: mactuner convert <in.a2l|in.kp|in.ols|in.xdf> <out.xdf|out.csv|out.a2l>\n", stderr); return 2 }
         do {
-            let def = try DefinitionImporter.load(URL(fileURLWithPath: args[0]))
-            let xml = XDFWriter.serialize(def)
-            try xml.write(to: URL(fileURLWithPath: args[1]), atomically: true, encoding: .utf8)
+            let inURL = URL(fileURLWithPath: args[0])
+            let outURL = URL(fileURLWithPath: args[1])
+            let def: XDFDefinition
+            if inURL.pathExtension.lowercased() == "xdf" {
+                def = try XDFParser.load(inURL)
+            } else {
+                def = try DefinitionImporter.load(inURL)
+            }
+            let outExt = outURL.pathExtension.lowercased()
+            let output: String
+            switch outExt {
+            case "csv": output = DefinitionExporter.exportWinOLSCSV(def)
+            case "a2l": output = DefinitionExporter.exportA2L(def)
+            default: output = XDFWriter.serialize(def)
+            }
+            try output.write(to: outURL, atomically: true, encoding: .utf8)
             print("Converted \(def.items.count) items -> \(args[1])")
             return 0
         } catch {
