@@ -381,15 +381,20 @@ struct HexDiffView: View {
 
     private var winolsToolbar: some View {
         ViewThatFits(in: .horizontal) {
-            // Tier 1: Ultra-wide / high-DPI — single crisp row
+            // Tier 1: Ultra-wide / high-DPI — single crisp row (right-side nav pinned rock-solid!)
             HStack(spacing: 8) {
-                toolbarFormatGroup
-                Divider().frame(height: 18)
-                toolbarLayoutGroup
-                Spacer(minLength: 6)
-                toolbarNavigationGroup
+                HStack(spacing: 8) {
+                    toolbarFormatGroup
+                    Divider().frame(height: 18)
+                    toolbarLayoutGroup
+                }
+                .fixedSize()
+                Spacer(minLength: 8)
+                HStack(spacing: 8) {
+                    toolbarNavigationGroup
+                }
+                .fixedSize()
             }
-            .fixedSize(horizontal: true, vertical: false)
 
             // Tier 2: Standard / medium window — 2 clean rows
             VStack(alignment: .leading, spacing: 5) {
@@ -492,25 +497,24 @@ struct HexDiffView: View {
             Button { byteShift = 0 } label: {
                 Text(String(format: "+%X", ((byteShift % rowStride) + rowStride) % rowStride))
                     .font(.caption.monospacedDigit().weight(.semibold))
-                    .frame(minWidth: 22)
+                    .frame(width: 28)
             }
             .help("Aktueller Zeilen-Versatz in Bytes (Klicken = auf +0 zurücksetzen)")
             Button { byteShift = (byteShift + elemBytes) % rowStride } label: {
                 Image(systemName: "chevron.right")
             }
             .help("1 Wert (\(elemBytes) B) nach rechts schieben")
-            if elemBytes > 1 {
-                Button { byteShift = (byteShift + 1) % rowStride } label: { Text("±1B") }
-                    .help("Fein-Versatz um 1 einzelnes Byte (für ungerade 16/32-Bit-Ausrichtung)")
+            Button { byteShift = (byteShift + 1) % rowStride } label: { Text("±1B") }
+                .disabled(elemBytes <= 1)
+                .help("Fein-Versatz um 1 einzelnes Byte (für ungerade 16/32-Bit-Ausrichtung)")
+            Button {
+                if let sel = selectedStart { byteShift = sel % rowStride }
+            } label: {
+                Image(systemName: "arrow.left.to.line")
             }
-            if let sel = selectedStart {
-                Button {
-                    byteShift = sel % rowStride
-                } label: {
-                    Image(systemName: "arrow.left.to.line")
-                }
-                .help("Ausgewählte Adresse (\(String(format: "0x%05X", sel))) ganz links (Spalte +0) ausrichten")
-            }
+            .disabled(selectedStart == nil)
+            .help(selectedStart.map { "Ausgewählte Adresse (\(String(format: "0x%05X", $0))) ganz links (Spalte +0) ausrichten" }
+                  ?? "Ausgewählte Adresse ganz links (Spalte +0) ausrichten")
         }
         .fixedSize()
 
@@ -859,6 +863,7 @@ struct HexDiffView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(showPotentialMaps ? amber : .secondary)
                 .padding(.horizontal, 7).padding(.vertical, 3)
+                .frame(minWidth: 56)
                 .background(showPotentialMaps ? amber.opacity(0.16) : Color.secondary.opacity(0.10), in: Capsule())
                 .overlay(Capsule().strokeBorder(showPotentialMaps ? amber.opacity(0.45) : .clear, lineWidth: 0.75))
                 .fixedSize()
