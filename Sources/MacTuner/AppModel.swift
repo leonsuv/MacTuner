@@ -262,7 +262,21 @@ final class AppModel {
     var diffClusterGap: Int = 32 {
         didSet { diffClusterCache = nil }
     }
-    @ObservationIgnored private var diffClusterCache: (revision: Int, gap: Int, clusters: [DiffCluster])?
+    /// Global byte shift applied to the Comparison BIN (`cmp[i + compareSyncOffset]` vs `bin[i]`).
+    var compareSyncOffset: Int = 0 {
+        didSet {
+            if compareSyncOffset != oldValue {
+                outsideCache = nil
+                diffClusterCache = nil
+                touch()
+            }
+        }
+    }
+    /// Automatically detected minimum-difference offset suggestion for the current BIN vs Compare pair.
+    private(set) var suggestedSyncOffset: BinaryAnalysis.OffsetSuggestion?
+    var dismissedSyncDelta: Int?
+    @ObservationIgnored private var syncDetectTask: Task<Void, Never>?
+    @ObservationIgnored private var diffClusterCache: (revision: Int, gap: Int, sync: Int, clusters: [DiffCluster])?
     // Datalog state
     private(set) var datalog: Datalog?
     var logFrame = 0
@@ -1054,6 +1068,7 @@ final class AppModel {
             }
             checksumCache = nil
             persistOpenBins()
+            refreshSyncOffsetSuggestion()
             touch()
             checkSize()
             return doc.id
@@ -1094,6 +1109,7 @@ final class AppModel {
         clearAlignmentState()
         refreshEmbeddedSourceBin()
         persistOpenBins()
+        refreshSyncOffsetSuggestion()
         touch()
     }
 
@@ -1105,6 +1121,7 @@ final class AppModel {
             compareSource = source
         }
         persistOpenBins()
+        refreshSyncOffsetSuggestion()
         touch()
     }
 
@@ -1117,6 +1134,7 @@ final class AppModel {
         clearAlignmentState()
         refreshEmbeddedSourceBin()
         persistOpenBins()
+        refreshSyncOffsetSuggestion()
         touch()
     }
 
@@ -1597,13 +1615,52 @@ final class AppModel {
         return def.items.filter(isChanged)
     }
 
+    func setCompareSyncOffset(_ delta: Int) {
+        compareSyncOffset = delta
+    }
+
+    func dismissSyncSuggestion() {
+        dismissedSyncDelta = suggestedSyncOffset?.delta
+    }
+
+    func refreshSyncOffsetSuggestion() {
+        syncDetectTask?.cancel()
+        suggestedSyncOffset = nil
+        dismissedSyncDelta = nil
+        compareSyncOffset = 0
+        guard hasBin, case .bin = compareSource, let cmp = compare, !cmp.isEmpty else { return }
+        let b = bin
+        let activeID = activeBinID
+        let cmpSrc = compareSource
+        syncDetectTask = Task.detached(priority: .userInitiated) {
+            let suggestion = BinaryAnalysis.detectGlobalSyncOffset(bin: b, compare: cmp)
+            if Task.isCancelled { return }
+            await MainActor.run {
+                guard self.activeBinID == activeID, self.compareSource == cmpSrc else { return }
+                self.suggestedSyncOffset = suggestion
+            }
+        }
+    }
+
+    @discardableResult
+    func autoSyncLocalWindow(around center: Int) -> BinaryAnalysis.OffsetSuggestion? {
+        guard hasBin, let cmp = compare, !cmp.isEmpty else { return nil }
+        guard let suggestion = BinaryAnalysis.detectLocalSyncOffset(
+            bin: bin, compare: cmp, around: center, currentOffset: compareSyncOffset
+        ) else { return nil }
+        if suggestion.delta != compareSyncOffset {
+            compareSyncOffset = suggestion.delta
+        }
+        return suggestion
+    }
+
     /// Changed bytes outside the XDF (or all raw diff blocks when no XDF is loaded).
     var outsideChanges: [Range<Int>] {
         guard hasBin, let compare else { return [] }
         _ = bin.count // keeps views that only show this list observing the bin, also when it comes from the cache
         if let c = outsideCache, c.revision == revision { return c.ranges }
         let cov = definition != nil ? covered : IndexSet()
-        let ranges = Changes.outside(bin, compare, covered: cov)
+        let ranges = Changes.outside(bin, compare, covered: cov, syncOffset: compareSyncOffset)
         outsideCache = (revision, ranges)
         return ranges
     }
@@ -1614,9 +1671,12 @@ final class AppModel {
     var diffClusters: [DiffCluster] {
         guard hasBin, let compare else { return [] }
         _ = bin.count
-        if let c = diffClusterCache, c.revision == revision, c.gap == diffClusterGap { return c.clusters }
-        let clusters = BinaryAnalysis.clusterDiffs(ranges: outsideChanges, bin: bin, compare: compare, gap: diffClusterGap)
-        diffClusterCache = (revision, diffClusterGap, clusters)
+        if let c = diffClusterCache, c.revision == revision, c.gap == diffClusterGap, c.sync == compareSyncOffset {
+            return c.clusters
+        }
+        let clusters = BinaryAnalysis.clusterDiffs(ranges: outsideChanges, bin: bin, compare: compare,
+                                                   gap: diffClusterGap, syncOffset: compareSyncOffset)
+        diffClusterCache = (revision, diffClusterGap, compareSyncOffset, clusters)
         return clusters
     }
 
@@ -1667,9 +1727,15 @@ final class AppModel {
 
     private func restore(ranges: [Range<Int>]) {
         guard let compare else { return }
+        let sync = compareSyncOffset
         var patches: [Patch] = []
-        for r in ranges where r.lowerBound >= 0 && r.upperBound <= bin.count && r.upperBound <= compare.count {
-            if bin[r] != compare[r] { patches.append(Patch(offset: r.lowerBound, old: Array(bin[r]), new: Array(compare[r]))) }
+        for r in ranges {
+            let cmpLo = r.lowerBound + sync
+            let cmpHi = r.upperBound + sync
+            guard r.lowerBound >= 0, r.upperBound <= bin.count, cmpLo >= 0, cmpHi <= compare.count else { continue }
+            if bin[r] != compare[cmpLo ..< cmpHi] {
+                patches.append(Patch(offset: r.lowerBound, old: Array(bin[r]), new: Array(compare[cmpLo ..< cmpHi])))
+            }
         }
         commit(patches)
     }

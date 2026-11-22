@@ -63,14 +63,17 @@ enum Changes {
     }
 
     /// Contiguous ranges of changed bytes that no item of the definition covers.
-    static func outside(_ bin: [UInt8], _ compare: [UInt8], covered: IndexSet) -> [Range<Int>] {
-        let n = min(bin.count, compare.count)
+    /// Compares `bin[i]` against `compare[i + syncOffset]` over the valid overlapping range.
+    static func outside(_ bin: [UInt8], _ compare: [UInt8], covered: IndexSet, syncOffset: Int = 0) -> [Range<Int>] {
+        let lo = max(0, -syncOffset)
+        let hi = min(bin.count, compare.count - syncOffset)
+        guard lo < hi else { return [] }
         var out: [Range<Int>] = []
         var start: Int?
         bin.withUnsafeBufferPointer { b in
             compare.withUnsafeBufferPointer { c in
-                for i in 0..<n {
-                    if b[i] != c[i], !covered.contains(i) {
+                for i in lo..<hi {
+                    if b[i] != c[i + syncOffset], !covered.contains(i) {
                         if start == nil { start = i }
                     } else if let s = start {
                         out.append(s ..< i)
@@ -79,7 +82,7 @@ enum Changes {
                 }
             }
         }
-        if let s = start { out.append(s ..< n) }
+        if let s = start { out.append(s ..< hi) }
         return out
     }
 

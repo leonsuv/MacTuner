@@ -179,8 +179,10 @@ struct HexDiffView: View {
     @State private var showCompareIn2D = true
     @State private var barWidthRatio: CGFloat = 0.22
     @State private var xdfColWidth: CGFloat = 240
-    @State private var compareSyncOffset = 0
     @State private var entropyMode = false
+    @State private var localSyncFeedback: String? = nil
+
+    private var compareSyncOffset: Int { model.compareSyncOffset }
 
     // Search, Bookmarks, Twin-Map Detector, Direct Editing, Split Diff & Diff-Only Filter
     enum SplitRightDisplay: String, CaseIterable {
@@ -277,9 +279,10 @@ struct HexDiffView: View {
                 switch viewMode {
                 case .text:
                     VStack(spacing: 6) {
-                        if model.openBins.count >= 1 {
+                        if hasExternalCompare || model.openBins.count >= 2 {
                             hexPairSelectorBar
                         }
+                        syncSuggestionBanner
                         VSplitView {
                             Group {
                                 if splitDiffMode && model.compare != nil {
@@ -312,15 +315,31 @@ struct HexDiffView: View {
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
+            splitDiffMode = hasExternalCompare
             rebuildCaches()
             consumeJumpTarget()
         }
         .onChange(of: model.hexJumpTarget) { _, _ in consumeJumpTarget() }
         .onChange(of: model.bin.count) { _, _ in rebuildCaches() }
         .onChange(of: model.xdfURL) { _, _ in rebuildCaches() }
-        .onChange(of: model.activeBinID) { _, _ in rebuildCaches() }
-        .onChange(of: model.compareSource) { _, _ in rebuildCaches() }
+        .onChange(of: model.activeBinID) { _, _ in
+            splitDiffMode = hasExternalCompare
+            rebuildCaches()
+        }
+        .onChange(of: model.compareSource) { _, _ in
+            splitDiffMode = hasExternalCompare
+            rebuildCaches()
+        }
+        .onChange(of: model.compareSyncOffset) { _, _ in rebuildCaches() }
         .onChange(of: model.diffClusterGap) { _, _ in rebuildCaches() }
+    }
+
+    private var hasExternalCompare: Bool {
+        switch model.compareSource {
+        case .bin, .snapshot: return true
+        case .openedState: return model.dirty
+        case .none: return false
+        }
     }
 
     // MARK: - WinOLS Number Format & View Toolbar
@@ -584,6 +603,48 @@ struct HexDiffView: View {
 
             Spacer(minLength: 4)
 
+            if model.compare != nil {
+                if model.compareSyncOffset != 0 {
+                    let s = model.compareSyncOffset
+                    let hexStr = s >= 0 ? String(format: "+0x%X", s) : String(format: "-0x%X", -s)
+                    HStack(spacing: 4) {
+                        Text("Sync \(hexStr)")
+                            .font(.caption.monospaced().weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                        Button {
+                            model.setCompareSyncOffset(0)
+                            localSyncFeedback = nil
+                        } label: {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.caption2)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Sync-Versatz auf 0 zurücksetzen")
+                    }
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.16), in: Capsule())
+                }
+
+                Button {
+                    let center = selectedStart ?? (viewportOffset + 512)
+                    if let res = model.autoSyncLocalWindow(around: center) {
+                        localSyncFeedback = res.delta == 0
+                            ? "Bereits optimal (0)"
+                            : "Sync \(res.deltaHex) (\(Int(res.alignedMatchRate * 100))%)"
+                    }
+                } label: {
+                    Label("Auto-Sync", systemImage: "wand.and.stars")
+                }
+                .buttonStyle(.bordered)
+                .help("Minimalen Unterschied im aktuellen Fenster (±32 KB) berechnen und Vergleichs-BIN automatisch ausrichten")
+
+                if let fb = localSyncFeedback {
+                    Text(fb)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             if !model.diffClusters.isEmpty {
                 Text("\(model.diffClusters.count) Blöcke · \(model.outsideByteCount) B Δ")
                     .font(.caption.monospacedDigit().weight(.semibold))
@@ -594,6 +655,42 @@ struct HexDiffView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var syncSuggestionBanner: some View {
+        if let s = model.suggestedSyncOffset,
+           s.delta != model.dismissedSyncDelta,
+           s.delta != model.compareSyncOffset {
+            HStack(spacing: 10) {
+                Image(systemName: "wand.and.stars")
+                    .foregroundStyle(Theme.changed)
+                Text("Versatz erkannt (\(s.deltaHex)) — Übereinstimmung steigt von \(Int(s.baselineMatchRate * 100)) % auf \(Int(s.alignedMatchRate * 100)) % (−\(s.diffReductionPercent) % Diffs)")
+                    .font(.caption.weight(.medium))
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                Button("Auf \(s.deltaHex) ausrichten") {
+                    model.setCompareSyncOffset(s.delta)
+                    localSyncFeedback = nil
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.changed)
+                .controlSize(.small)
+                Button {
+                    model.dismissSyncSuggestion()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Vorschlag ausblenden")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Theme.changed.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Theme.changed.opacity(0.35), lineWidth: 0.75))
+        }
     }
 
     // MARK: - 60-FPS WinOLS Side-by-Side Dual-Pane Synchronized Hex-Diff Canvas
@@ -1750,12 +1847,12 @@ struct HexDiffView: View {
                                 .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                                 .frame(width: 78, alignment: .trailing)
                             Slider(value: Binding(
-                                get: { Double(compareSyncOffset) },
-                                set: { compareSyncOffset = Int($0.rounded()) }
+                                get: { Double(model.compareSyncOffset) },
+                                set: { model.setCompareSyncOffset(Int($0.rounded())) }
                             ), in: -4096...4096)
                             .frame(width: 90)
-                            if compareSyncOffset != 0 {
-                                Button("0") { compareSyncOffset = 0 }
+                            if model.compareSyncOffset != 0 {
+                                Button("0") { model.setCompareSyncOffset(0) }
                             }
                         }
                         .help("Vergleichs-Wellenform manuell verschieben (für unterschiedliche Softwareversionen)")
@@ -2360,11 +2457,13 @@ struct HexDiffView: View {
 
     private func copySelectionFromCompare(_ range: Range<Int>) {
         guard let cmp = model.compare else { return }
-        let clampedEnd = min(range.upperBound, min(model.bin.count, cmp.count))
-        guard range.lowerBound >= 0, range.lowerBound < clampedEnd else { return }
-        let r = range.lowerBound ..< clampedEnd
+        let sync = model.compareSyncOffset
+        let lo = max(range.lowerBound, -sync)
+        let hi = min(range.upperBound, min(model.bin.count, cmp.count - sync))
+        guard lo >= 0, lo < hi else { return }
+        let r = lo ..< hi
         let old = Array(model.bin[r])
-        let new = Array(cmp[r])
+        let new = Array(cmp[(lo + sync) ..< (hi + sync)])
         guard old != new else { return }
         model.applyRawPatches([Patch(offset: r.lowerBound, old: old, new: new)],
                               label: String(format: "Aus Vergleich übernommen (0x%05X, %d B)", r.lowerBound, r.count))
@@ -2494,15 +2593,19 @@ struct HexDiffView: View {
         let bin = model.bin
         let cmp = model.compare ?? []
 
-        // Collect contiguous diff start offsets
+        // Collect contiguous diff start offsets (respecting compareSyncOffset)
         var diffs: [Int] = []
-        let n = min(bin.count, cmp.count)
+        let sync = model.compareSyncOffset
+        let lo = max(0, -sync)
+        let hi = min(bin.count, cmp.count - sync)
         var inDiff = false
-        for i in 0..<n {
-            if bin[i] != cmp[i] {
-                if !inDiff { diffs.append(i); inDiff = true }
-            } else {
-                inDiff = false
+        if lo < hi {
+            for i in lo..<hi {
+                if bin[i] != cmp[i + sync] {
+                    if !inDiff { diffs.append(i); inDiff = true }
+                } else {
+                    inDiff = false
+                }
             }
         }
         cachedDiffOffsets = diffs
