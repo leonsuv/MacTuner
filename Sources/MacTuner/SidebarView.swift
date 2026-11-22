@@ -161,7 +161,7 @@ struct SidebarView: View {
                 } else {
                     List {
                         ForEach(filteredPotential) { cand in
-                            let hasDiff = clusters.contains { $0.range.overlaps(cand.dataRange) }
+                            let hasDiff = model.diffOverlaps(cand.dataRange)
                             HStack(spacing: 6) {
                                 Button {
                                     model.showCandidateInHex(cand)

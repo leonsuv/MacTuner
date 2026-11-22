@@ -380,7 +380,8 @@ struct HexDiffView: View {
     // MARK: - WinOLS Number Format & View Toolbar
 
     private var winolsToolbar: some View {
-        HStack(spacing: 8) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
             Picker("Ansicht", selection: $viewMode) {
                 ForEach(ViewMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) }
             }
@@ -514,6 +515,7 @@ struct HexDiffView: View {
                 }
                 .fixedSize()
                 Chip(text: "\(cachedDiffOffsets.count) Diffs", icon: "arrow.left.arrow.right")
+                    .fixedSize()
             }
 
             HStack(spacing: 4) {
@@ -562,9 +564,12 @@ struct HexDiffView: View {
                     .frame(width: 74)
                     .onSubmit { jumpToAddress() }
                 Button("Gehe zu") { jumpToAddress() }
+                    .fixedSize()
             }
+            }
+            .controlSize(.small)
+            .padding(.vertical, 1)
         }
-        .controlSize(.small)
     }
 
     // MARK: - Interactive Left / Right BIN Pair Selector Bar
@@ -805,14 +810,17 @@ struct HexDiffView: View {
                     }
                     Text(showPotentialMaps ? "\(count)" : "Aus")
                         .monospacedDigit()
+                        .lineLimit(1)
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(showPotentialMaps ? amber : .secondary)
                 .padding(.horizontal, 7).padding(.vertical, 3)
                 .background(showPotentialMaps ? amber.opacity(0.16) : Color.secondary.opacity(0.10), in: Capsule())
                 .overlay(Capsule().strokeBorder(showPotentialMaps ? amber.opacity(0.45) : .clear, lineWidth: 0.75))
+                .fixedSize()
             }
             .buttonStyle(.plain)
+            .fixedSize()
             .keyboardShortcut("p", modifiers: [.option])
             .help("Potenzielle Kennfelder im Hex-Viewer ein-/ausblenden (⌥P)")
 
@@ -3185,8 +3193,7 @@ struct HexDiffView: View {
         }
         cachedDiffOffsets = diffs
 
-        // Filter & index potential maps (fast O(N) over <450 cached candidates)
-        let diffClusters = model.diffClusters
+        // Filter & index potential maps (fast O(N log M) even with 5,000+ candidates)
         let filteredPot = model.activePotentialMaps.filter { c in
             guard c.confidence >= potentialMinConfidence else { return false }
             switch potentialPatternFilter {
@@ -3194,7 +3201,7 @@ struct HexDiffView: View {
             case .withAxes: return c.hasAxes
             case .maps2D: return c.is2D
             case .curves1D: return !c.is2D
-            case .modifiedOnly: return diffClusters.contains { $0.range.overlaps(c.dataRange) }
+            case .modifiedOnly: return model.diffOverlaps(c.dataRange)
             }
         }
         let potIdx = PotentialMapIndex(candidates: filteredPot)

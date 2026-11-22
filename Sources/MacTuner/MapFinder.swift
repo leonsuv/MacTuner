@@ -1,13 +1,14 @@
 import Foundation
 
 /// High-speed, multi-format OEM map & axis recognition engine for unknown ECU/TCU binaries
-/// (Bosch 8/16-bit axis headers, 1D curves, Signed ignition/torque surfaces, IEEE-754 Float32,
-/// and WinOLS-style row-pitch autocorrelated headerless 2D maps with nearby axis linking).
+/// (Bosch EDC15/EDC16/EDC17/ME7/MED9/MED17/MG1/MD1 2D headers & packed 1D curve chains,
+/// axis-anchored 2D surfaces, auto-Signed negative/zero maps, IEEE-754 Float32, and
+/// WinOLS-style row-pitch autocorrelated headerless 2D maps).
 enum MapFinder {
     enum MapPatternKind: String, Codable, Sendable, CaseIterable {
         case bosch2DHeader     // [rows, cols, yAxis, xAxis, data] (16-bit or 8-bit)
-        case bosch1DCurve      // [len, xAxis, data] (16-bit or 8-bit)
-        case splitAxis2D       // Smooth 2D surface + monotonic X/Y axes found within ±512 B
+        case bosch1DCurve      // [len, xAxis, data] (16-bit or 8-bit, incl. chained 2..3-pt & flat curves)
+        case splitAxis2D       // Smooth 2D surface anchored to monotonic X/Y axes
         case float32Surface    // IEEE-754 Float32 2D surface or 1D curve (MG1/MD1/Simos18/ZF8HP)
         case smooth2DSurface   // Headerless 2D surface with strong row-pitch autocorrelation
         case smooth1DCurve     // Headerless monotonic/smooth 1D curve
@@ -91,35 +92,35 @@ enum MapFinder {
         var signed: Bool = false
         var isFloat: Bool = false
         var lsbFirst: Bool = true
-        var minRows: Int = 4
-        var maxRows: Int = 24
-        var minCols: Int = 4
-        var maxCols: Int = 24
-        var maxResults: Int = 200
+        var minRows: Int = 3
+        var maxRows: Int = 32
+        var minCols: Int = 3
+        var maxCols: Int = 32
+        var maxResults: Int = 2500
     }
 
-    // MARK: - Workspace Auto-Scan (Multi-Format, Zero-Alloc, <120 ms on 4 MB BIN)
+    // MARK: - Workspace Auto-Scan (Full-Flash, Multi-Format, Zero-Alloc)
 
     /// Automatic multi-pass scan used by `AppModel` for live In-Hex Map Recognition.
-    /// Does NOT filter against XDF coverage so results can be cached per `BinDocument`
-    /// and filtered dynamically in <0.05 ms when XDF items are added/removed.
-    static func scanWorkspaceBin(bytes: [UInt8], ecu: ECUIdentity?, maxResults: Int = 450) -> [Candidate] {
+    /// Never truncates the second half of 2–4 MB ECUs (default `maxResults = 10_000`) and
+    /// does NOT filter against XDF coverage so results cache per `BinDocument` and filter in <0.05 ms.
+    static func scanWorkspaceBin(bytes: [UInt8], ecu: ECUIdentity?, maxResults: Int = 10_000) -> [Candidate] {
         guard bytes.count >= 64 else { return [] }
 
         return bytes.withUnsafeBufferPointer { buf -> [Candidate] in
             let count = buf.count
-            // Stage 0: 1 KB calibration block mask (skips empty/0xFF, ASCII, high-entropy machine code)
+            // Stage 0: 256 B calibration block mask (consistent blockShift = 8 everywhere!)
             let calMask = buildCalibrationMask(buf)
 
-            // Stage 1: Endianness & Float32 prior from ECUIdentity or fast 2 ms dual-endian probe
+            // Stage 1: Endianness & Float32 prior from ECUIdentity or fast dual-endian probe
             let (primaryLSB, scanBothEndians, includeFloat32) = detectProfile(buf: buf, calMask: calMask, ecu: ecu)
 
             var candidates: [Candidate] = []
-            candidates.reserveCapacity(256)
+            candidates.reserveCapacity(1024)
             var occupied = WordBitset(byteCount: count)
             var scratch = [Double](repeating: 0, count: 1024)
 
-            // Stage 2, Pass 1A: Bosch 16-bit 2D axis-prefixed maps [n1, n2, ax1, ax2, data] (Unsigned & auto-Signed)
+            // Stage 2, Pass 1A: Bosch 16-bit 2D axis-prefixed maps [n1, n2, ax1, ax2, data] (incl. Signed <=0 & flat/zero OEM tables)
             scanBosch16Headers(buf: buf, calMask: calMask, lsb: primaryLSB,
                                occupied: &occupied, scratch: &scratch, out: &candidates)
             if scanBothEndians {
@@ -127,22 +128,26 @@ enum MapFinder {
                                    occupied: &occupied, scratch: &scratch, out: &candidates)
             }
 
-            // Pass 1B: Bosch 16-bit 1D curves [len, ax, data]
+            // Pass 1B: Bosch 16-bit 1D curve chains [len, ax, data] (4..64, 128, 256 + chained 2..3-pt + flat/monotonic curves; SST-safe!)
             scanBosch16Curves1D(buf: buf, calMask: calMask, lsb: primaryLSB,
                                 occupied: &occupied, scratch: &scratch, out: &candidates)
 
-            // Pass 1C: Bosch 8-bit 2D headers [n1: u8, n2: u8, ax1, ax2, data] (ME7 / EDC15 / Motronic)
+            // Pass 1C: Axis-anchored 2D surfaces (2-byte aligned standalone X-axis immediately followed by R×C 2D data, e.g. 0x292EEE + 0x292F00)
+            scanAxisAnchored2D16(buf: buf, calMask: calMask, lsb: primaryLSB,
+                                 occupied: &occupied, scratch: &scratch, out: &candidates)
+
+            // Pass 1D: Bosch 8-bit 2D headers [n1: u8, n2: u8, ax1, ax2, data] (ME7 / EDC15 / Motronic)
             scanBosch8Headers(buf: buf, calMask: calMask, occupied: &occupied, scratch: &scratch, out: &candidates)
 
-            // Pass 1D: IEEE-754 Float32 2D/1D surfaces (MG1/MD1/Simos18/ZF8HP/Denso)
+            // Pass 1E: IEEE-754 Float32 2D/1D surfaces (only on Float32 ECUs / unknown non-Bosch binaries)
             if includeFloat32 {
                 scanFloat32Surfaces(buf: buf, calMask: calMask, lsb: primaryLSB,
                                     occupied: &occupied, scratch: &scratch, out: &candidates)
             }
 
-            // Pass 2: Headerless 16-bit 2D surfaces via WinOLS-style row-pitch (WrapContrast) + ±512B backward axis search
+            // Pass 2: Headerless 16-bit 2D surfaces via WinOLS-style row-pitch (WrapContrast) + ±512B axis linker (local cap 1500)
             scanHeaderless2D16(buf: buf, calMask: calMask, lsb: primaryLSB,
-                               occupied: &occupied, scratch: &scratch, out: &candidates, limit: maxResults * 2)
+                               occupied: &occupied, scratch: &scratch, out: &candidates, localLimit: 1500)
 
             // Stage 3: Greedy Interval NMS over dataRange so Z-regions never overlap
             return deduplicateNMS(candidates, maxResults: maxResults)
@@ -156,7 +161,6 @@ enum MapFinder {
         return bin.withUnsafeBufferPointer { buf -> [Candidate] in
             let calMask = buildCalibrationMask(buf)
             var occupied = WordBitset(byteCount: buf.count)
-            // Mark already-covered bytes in bitset
             for r in covered.rangeView {
                 occupied.mark(byteRange: r)
             }
@@ -172,13 +176,16 @@ enum MapFinder {
                                    occupied: &occupied, scratch: &scratch, out: &candidates)
                 scanBosch16Curves1D(buf: buf, calMask: calMask, lsb: options.lsbFirst,
                                     occupied: &occupied, scratch: &scratch, out: &candidates)
+                scanAxisAnchored2D16(buf: buf, calMask: calMask, lsb: options.lsbFirst,
+                                     forcedSigned: options.signed ? true : nil,
+                                     occupied: &occupied, scratch: &scratch, out: &candidates)
                 scanHeaderless2D16(buf: buf, calMask: calMask, lsb: options.lsbFirst,
                                    forcedSigned: options.signed ? true : nil,
-                                   occupied: &occupied, scratch: &scratch, out: &candidates, limit: options.maxResults * 2)
+                                   occupied: &occupied, scratch: &scratch, out: &candidates, localLimit: options.maxResults)
             } else {
                 scanBosch8Headers(buf: buf, calMask: calMask, occupied: &occupied, scratch: &scratch, out: &candidates)
                 scanHeaderless2D8(buf: buf, calMask: calMask, signed: options.signed,
-                                  occupied: &occupied, scratch: &scratch, out: &candidates, limit: options.maxResults * 2)
+                                  occupied: &occupied, scratch: &scratch, out: &candidates, localLimit: options.maxResults)
             }
             return deduplicateNMS(candidates, maxResults: options.maxResults)
         }
@@ -186,8 +193,6 @@ enum MapFinder {
 
     // MARK: - Smart Inference from Arbitrary Hex Selection
 
-    /// Analyzes an arbitrary manual byte selection in `HexDiffView`, infers the best `rows × cols`
-    /// via row-pitch correlation, and searches up to 512 bytes before the selection for matching monotonic axes.
     static func inferCandidate(fromSelection range: Range<Int>, in bin: [UInt8],
                                hintBits: Int, lsbFirst: Bool, signed: Bool, isFloat: Bool) -> Candidate {
         let clampedLo = max(0, min(bin.count, range.lowerBound))
@@ -201,7 +206,7 @@ enum MapFinder {
 
         var scratch = [Double](repeating: 0, count: min(1024, max(16, totalElems)))
         return bin.withUnsafeBufferPointer { buf -> Candidate in
-            let commonWidths = [16, 12, 8, 10, 20, 24, 6, 14, 18, 32, 4]
+            let commonWidths = [16, 12, 10, 9, 8, 20, 24, 6, 14, 18, 32, 4]
             for w in commonWidths where w <= totalElems && totalElems % w == 0 {
                 let r = totalElems / w
                 guard r >= 2 && r <= 32 else { continue }
@@ -214,7 +219,6 @@ enum MapFinder {
                 }
             }
             if bestScore < 0.35 {
-                // Fallback sensible split if totalElems is not cleanly divisible or is a 1D curve
                 if totalElems <= 32 {
                     bestRows = 1; bestCols = totalElems
                 } else {
@@ -251,9 +255,21 @@ enum MapFinder {
         }
     }
 
-    // MARK: - Stage 0: 1 KB Calibration Region Gate
+    // MARK: - Stage 0: 256 B Calibration Region Gate (Consistent blockShift = 8)
 
-    private static let blockSize = 1024
+    private static let blockShift = 8
+    private static let blockSize = 1 << blockShift // 256 B
+
+    @inline(__always)
+    private static func isCalibrated(_ off: Int, _ mask: [Bool]) -> Bool {
+        let idx = off >> blockShift
+        return idx < mask.count && mask[idx]
+    }
+
+    @inline(__always)
+    private static func nextBlock(_ off: Int) -> Int {
+        ((off >> blockShift) + 1) << blockShift
+    }
 
     private static func buildCalibrationMask(_ buf: UnsafeBufferPointer<UInt8>) -> [Bool] {
         let numBlocks = (buf.count + blockSize - 1) / blockSize
@@ -266,19 +282,23 @@ enum MapFinder {
             let len = end - start
             if len < 32 { continue }
 
-            var zeroFF = 0
+            var ffCount = 0
+            var zeroCount = 0
             var printable = 0
             for i in 0..<256 { hist[i] = 0 }
 
             for i in start..<end {
                 let v = buf[i]
                 hist[Int(v)] += 1
-                if v == 0x00 || v == 0xFF { zeroFF += 1 }
+                if v == 0xFF { ffCount += 1 }
+                else if v == 0x00 { zeroCount += 1 }
                 if v >= 0x20 && v <= 0x7E { printable += 1 }
             }
-            // Skip >85% erased/zero padding or >75% ASCII strings
-            if zeroFF * 100 > len * 85 { continue }
-            if printable * 100 > len * 75 { continue }
+            // Skip >95% erased 0xFF flash, 100% pure zero blocks, or >82% ASCII strings
+            // (NEVER lump valid 0x00 calibration values with 0xFF!)
+            if ffCount * 100 > len * 95 { continue }
+            if zeroCount == len { continue }
+            if printable * 100 > len * 82 { continue }
 
             // Compute Shannon entropy
             let invLen = 1.0 / Double(len)
@@ -287,7 +307,7 @@ enum MapFinder {
                 let p = Double(c) * invLen
                 entropy -= p * log2(p)
             }
-            if entropy > 6.75 {
+            if entropy > 6.80 {
                 // High-entropy block: check if 16-bit word deltas look like smooth data rather than machine code
                 var smallStepCount = 0
                 let pairs = (len - 2) / 2
@@ -300,7 +320,7 @@ enum MapFinder {
                         prev = cur
                         idx += 2
                     }
-                    if smallStepCount * 100 < pairs * 35 { continue }
+                    if smallStepCount * 100 < pairs * 32 { continue }
                 }
             }
             mask[b] = true
@@ -320,17 +340,19 @@ enum MapFinder {
         let floatKeywords = ["MG1", "MD1", "SIMOS 18", "SIMOS18", "SIMOS 19", "ZF 8HP", "8HP", "DENSO"]
         let littleEndianKeywords = ["MED17", "EDC17", "ME17", "ME7", "MG1", "MD1", "SIMOS", "PCR2", "DQ200", "DQ250", "DQ381", "DQ500", "DL501", "8HP"]
 
-        let wantFloat = floatKeywords.contains { fam.contains($0) } || buf.count >= 2_097_152
         if bigEndianKeywords.contains(where: { fam.contains($0) }) {
-            return (false, false, wantFloat)
+            return (false, false, floatKeywords.contains { fam.contains($0) })
         }
         if littleEndianKeywords.contains(where: { fam.contains($0) }) {
-            return (true, false, wantFloat)
+            return (true, false, floatKeywords.contains { fam.contains($0) })
         }
 
         // Fast dual-endian header probe
         let leHits = countQuickHeaderHits(buf: buf, calMask: calMask, lsb: true)
         let beHits = countQuickHeaderHits(buf: buf, calMask: calMask, lsb: false)
+        // Only enable Float32 fallback on large unknown binaries with few integer Bosch headers
+        let wantFloat = floatKeywords.contains { fam.contains($0) }
+            || (fam.trimmingCharacters(in: .whitespaces).isEmpty && (leHits + beHits) < 12 && buf.count >= 2_097_152)
         if beHits > leHits + 2 { return (false, false, wantFloat) }
         if leHits > beHits + 2 { return (true, false, wantFloat) }
         return (true, true, wantFloat)
@@ -341,7 +363,7 @@ enum MapFinder {
         var off = 0
         let count = buf.count
         while off + 24 < count && hits < 30 {
-            if !calMask[off >> 10] { off = ((off >> 10) + 1) << 10; continue }
+            if !isCalibrated(off, calMask) { off = nextBlock(off); continue }
             let n1 = readU16(buf, off, lsb: lsb)
             let n2 = readU16(buf, off + 2, lsb: lsb)
             if n1 >= 4 && n1 <= 24 && n2 >= 4 && n2 <= 24 {
@@ -349,8 +371,8 @@ enum MapFinder {
                 let ax2 = ax1 + n1 * 2
                 let data = ax2 + n2 * 2
                 if data + n1 * n2 * 2 <= count
-                    && isStrictlyIncreasingU16(buf, ax1, count: n1, lsb: lsb)
-                    && isStrictlyIncreasingU16(buf, ax2, count: n2, lsb: lsb)
+                    && validateAxis16(buf, ax1, count: n1, lsb: lsb)
+                    && validateAxis16(buf, ax2, count: n2, lsb: lsb)
                 {
                     hits += 1
                     off = data + n1 * n2 * 2
@@ -362,7 +384,7 @@ enum MapFinder {
         return hits
     }
 
-    // MARK: - Stage 2, Pass 1A: Bosch 16-Bit 2D Axis-Header Maps (Unsigned & Auto-Signed)
+    // MARK: - Stage 2, Pass 1A: Bosch 16-Bit 2D Axis-Header Maps (Signed/Unsigned/Flat/Sparse)
 
     private static func scanBosch16Headers(buf: UnsafeBufferPointer<UInt8>, calMask: [Bool], lsb: Bool,
                                            forcedSigned: Bool? = nil,
@@ -370,32 +392,38 @@ enum MapFinder {
                                            out: inout [Candidate]) {
         let count = buf.count
         var off = 0
-        while off + 24 < count {
-            if !calMask[off >> 10] { off = ((off >> 10) + 1) << 10; continue }
+        while off + 20 < count {
+            if !isCalibrated(off, calMask) { off = nextBlock(off); continue }
             if occupied.isSet(byteOffset: off) { off += 2; continue }
 
             let n1 = readU16(buf, off, lsb: lsb)
             let n2 = readU16(buf, off + 2, lsb: lsb)
-            if n1 >= 4 && n1 <= 32 && n2 >= 4 && n2 <= 32 {
+            if n1 >= 3 && n1 <= 32 && n2 >= 3 && n2 <= 32 && (n1 * n2) >= 12 {
                 let ax1Off = off + 4
                 let ax2Off = ax1Off + n1 * 2
                 let dataOff = ax2Off + n2 * 2
                 let dataBytes = n1 * n2 * 2
                 if dataOff + dataBytes <= count && !occupied.isSet(byteOffset: dataOff)
-                    && isStrictlyIncreasingU16(buf, ax1Off, count: n1, lsb: lsb)
-                    && isStrictlyIncreasingU16(buf, ax2Off, count: n2, lsb: lsb)
+                    && validateAxis16(buf, ax1Off, count: n1, lsb: lsb)
+                    && validateAxis16(buf, ax2Off, count: n2, lsb: lsb)
                 {
-                    let uRes = surfaceSmoothness(buf: buf, offset: dataOff, rows: n1, cols: n2,
-                                                 bits: 16, signed: false, isFloat: false, lsb: lsb, scratch: &scratch)
-                    let sRes = surfaceSmoothness(buf: buf, offset: dataOff, rows: n1, cols: n2,
-                                                 bits: 16, signed: true, isFloat: false, lsb: lsb, scratch: &scratch)
+                    // Test (rows=n1, cols=n2) vs (rows=n2, cols=n1) when non-square
+                    let (rows, cols, xOff, yOff) = chooseBoschOrientation(
+                        buf: buf, dataOff: dataOff, n1: n1, n2: n2, ax1Off: ax1Off, ax2Off: ax2Off, lsb: lsb, scratch: &scratch
+                    )
+                    let uRes = surfaceSmoothness(buf: buf, offset: dataOff, rows: rows, cols: cols,
+                                                 bits: 16, signed: false, isFloat: false, lsb: lsb,
+                                                 allowSparse: true, scratch: &scratch)
+                    let sRes = surfaceSmoothness(buf: buf, offset: dataOff, rows: rows, cols: cols,
+                                                 bits: 16, signed: true, isFloat: false, lsb: lsb,
+                                                 allowSparse: true, scratch: &scratch)
 
                     let useSigned: Bool
                     let bestRes: SmoothResult
                     if let fs = forcedSigned {
                         useSigned = fs
                         bestRes = fs ? sRes : uRes
-                    } else if sRes.score > uRes.score + 0.14 && sRes.minVal < 0 && sRes.maxVal > 0 {
+                    } else if shouldUseSigned16(uRes: uRes, sRes: sRes, count: rows * cols) {
                         useSigned = true
                         bestRes = sRes
                     } else {
@@ -403,19 +431,23 @@ enum MapFinder {
                         bestRes = uRes
                     }
 
-                    if bestRes.score > 0.44 {
-                        let conf = min(0.99, 0.62 + bestRes.score * 0.37)
-                        let hint = inferDomainHint(buf: buf, xAxisOff: ax2Off, xCount: n2, yAxisOff: ax1Off, yCount: n1,
-                                                   lsb: lsb, signed: useSigned)
-                        let sig = "\(dataOff):\(n1)x\(n2):16"
+                    // Accept smooth maps OR flat/zeroed OEM tables (when strict [n1,n2,ax1,ax2] header validated!)
+                    let isFlatValid = (bestRes.maxVal - bestRes.minVal) < 8 && bestRes.ffCount * 5 < (rows * cols)
+                    if bestRes.score > 0.38 || isFlatValid {
+                        let conf = isFlatValid ? 0.78 : min(0.99, 0.65 + bestRes.score * 0.34)
+                        let hint = isFlatValid
+                            ? "OEM-Kennfeld (konstant/0)"
+                            : inferDomainHint(buf: buf, xAxisOff: xOff, xCount: cols, yAxisOff: yOff, yCount: rows, lsb: lsb, signed: useSigned)
                         out.append(Candidate(
-                            signatureKey: sig, pattern: .bosch2DHeader, headerAddress: off,
-                            address: dataOff, rows: n1, cols: n2, bits: 16, signed: useSigned, isFloat: false,
+                            signatureKey: "\(dataOff):\(rows)x\(cols):16", pattern: .bosch2DHeader, headerAddress: off,
+                            address: dataOff, rows: rows, cols: cols, bits: 16, signed: useSigned, isFloat: false,
                             lsbFirst: lsb, columnMajor: false,
-                            xAxisAddress: ax2Off, yAxisAddress: ax1Off, axisBits: 16, axisInferred: false,
+                            xAxisAddress: xOff, yAxisAddress: yOff, axisBits: 16, axisInferred: false,
                             confidence: conf, minVal: bestRes.minVal, maxVal: bestRes.maxVal, meanVal: bestRes.meanVal,
                             domainHint: hint,
-                            reason: "Bosch 16-Bit Achsen-Header (\(n1)×\(n2)) + glatte 2D-Oberfläche"
+                            reason: isFlatValid
+                                ? "Bosch 16-Bit Achsen-Header (\(rows)×\(cols)) · konstante/Null-Tabelle"
+                                : "Bosch 16-Bit Achsen-Header (\(rows)×\(cols)) + glatte 2D-Oberfläche"
                         ))
                         occupied.mark(byteRange: off ..< (dataOff + dataBytes))
                         off = dataOff + dataBytes
@@ -427,40 +459,101 @@ enum MapFinder {
         }
     }
 
-    // MARK: - Stage 2, Pass 1B: Bosch 16-Bit 1D Curves [len, xAxis, data]
+    private static func chooseBoschOrientation(buf: UnsafeBufferPointer<UInt8>, dataOff: Int,
+                                               n1: Int, n2: Int, ax1Off: Int, ax2Off: Int, lsb: Bool,
+                                               scratch: inout [Double]) -> (rows: Int, cols: Int, xOff: Int, yOff: Int) {
+        if n1 == n2 { return (n1, n2, ax2Off, ax1Off) }
+        let s1 = evaluatePitchScore(buf: buf, offset: dataOff, rows: n1, cols: n2,
+                                    bits: 16, signed: false, isFloat: false, lsb: lsb, scratch: &scratch)
+        let s2 = evaluatePitchScore(buf: buf, offset: dataOff, rows: n2, cols: n1,
+                                    bits: 16, signed: false, isFloat: false, lsb: lsb, scratch: &scratch)
+        if s2 > s1 + 0.08 {
+            return (n2, n1, ax1Off, ax2Off)
+        }
+        return (n1, n2, ax2Off, ax1Off)
+    }
+
+    // MARK: - Stage 2, Pass 1B: Bosch 16-Bit 1D Curve Chains ([len, xAxis, data])
 
     private static func scanBosch16Curves1D(buf: UnsafeBufferPointer<UInt8>, calMask: [Bool], lsb: Bool,
                                             occupied: inout WordBitset, scratch: inout [Double],
                                             out: inout [Candidate]) {
         let count = buf.count
         var off = 0
-        while off + 28 < count {
-            if !calMask[off >> 10] { off = ((off >> 10) + 1) << 10; continue }
+        var lastBoschEnd = -9999
+        while off + 10 < count {
+            if !isCalibrated(off, calMask) { off = nextBlock(off); continue }
             if occupied.isSet(byteOffset: off) { off += 2; continue }
 
             let n = readU16(buf, off, lsb: lsb)
-            if (n >= 6 && n <= 32) || n == 64 || n == 128 {
+            let isSmallChainLen = (n == 2 || n == 3)
+            let isStandardLen = (n >= 4 && n <= 64) || n == 128 || n == 256
+            if isStandardLen || isSmallChainLen {
                 let axOff = off + 2
                 let dataOff = axOff + n * 2
-                let dataBytes = n * 2
-                if dataOff + dataBytes <= count && !occupied.isSet(byteOffset: dataOff)
-                    && isStrictlyIncreasingU16(buf, axOff, count: n, lsb: lsb)
+                let dataEnd = dataOff + n * 2
+                if dataEnd <= count && !occupied.isSet(byteOffset: dataOff)
+                    && validateAxis16(buf, axOff, count: n, lsb: lsb)
                 {
-                    let res = curve1DSmoothness(buf: buf, offset: dataOff, count: n, bits: 16, signed: false, lsb: lsb, scratch: &scratch)
-                    if res.score > 0.64 {
-                        let conf = min(0.94, 0.54 + res.score * 0.40)
-                        let hint = inferDomainHint(buf: buf, xAxisOff: axOff, xCount: n, yAxisOff: nil, yCount: 0, lsb: lsb, signed: false)
+                    // For 2-pt / 3-pt curves, require Bosch chain context (adjacent to previous curve or followed by another valid Bosch header!)
+                    if isSmallChainLen {
+                        let chainedFromPrev = (off - lastBoschEnd) <= 32
+                        let followedByHeader = hasBoschHeaderNear(buf: buf, offset: dataEnd, lsb: lsb)
+                            || hasBoschHeaderNear(buf: buf, offset: dataEnd + 2, lsb: lsb)
+                        if !chainedFromPrev && !followedByHeader {
+                            off += 2
+                            continue
+                        }
+                    }
+
+                    // SST Guard: Before claiming [n, ax[n], data[n]] as 1D, check if dataOff is actually a 2D surface (r × n)!
+                    if n >= 5 && n <= 24,
+                       let rows2D = detect2DRowsAfterAxis(buf: buf, dataOff: dataOff, cols: n, lsb: lsb,
+                                                          occupied: occupied, scratch: &scratch) {
+                        let dataBytes = rows2D.rows * n * 2
+                        out.append(Candidate(
+                            signatureKey: "\(dataOff):\(rows2D.rows)x\(n):16", pattern: .splitAxis2D, headerAddress: off,
+                            address: dataOff, rows: rows2D.rows, cols: n, bits: 16, signed: rows2D.signed, isFloat: false,
+                            lsbFirst: lsb, columnMajor: false,
+                            xAxisAddress: axOff, yAxisAddress: nil, axisBits: 16, axisInferred: false,
+                            confidence: min(0.95, 0.58 + rows2D.res.score * 0.37),
+                            minVal: rows2D.res.minVal, maxVal: rows2D.res.maxVal, meanVal: rows2D.res.meanVal,
+                            domainHint: inferDomainHint(buf: buf, xAxisOff: axOff, xCount: n, yAxisOff: nil, yCount: 0, lsb: lsb, signed: rows2D.signed),
+                            reason: "Bosch Achsen-Header (\(n)) + 2D-Kennfeld (\(rows2D.rows)×\(n))"
+                        ))
+                        occupied.mark(byteRange: off ..< (dataOff + dataBytes))
+                        lastBoschEnd = dataOff + dataBytes
+                        off = lastBoschEnd
+                        continue
+                    }
+
+                    let uRes = curve1DSmoothness(buf: buf, offset: dataOff, count: n, signed: false, lsb: lsb, scratch: &scratch)
+                    let sRes = curve1DSmoothness(buf: buf, offset: dataOff, count: n, signed: true, lsb: lsb, scratch: &scratch)
+                    let useSigned = shouldUseSigned16(uRes: uRes, sRes: sRes, count: n)
+                    let res = useSigned ? sRes : uRes
+
+                    // Accept monotonic, smooth, or flat/constant Bosch 1D curves (rejecting 0xFFFF erased blocks)
+                    let isFlatValid = (res.maxVal - res.minVal) < 8 && res.ffCount == 0
+                    let isShortValid = isSmallChainLen && res.ffCount == 0 && (isFlatValid || res.score >= 0.40)
+                    let accept = isShortValid || (res.score >= 0.55) || (isStandardLen && isFlatValid)
+
+                    if accept {
+                        let conf: Double = isFlatValid ? 0.78 : (res.isMonotonic ? min(0.94, 0.64 + res.score * 0.30) : min(0.91, 0.56 + res.score * 0.34))
+                        let hint = isFlatValid
+                            ? "1D-Kennlinie (konstant)"
+                            : (inferDomainHint(buf: buf, xAxisOff: axOff, xCount: n, yAxisOff: nil, yCount: 0, lsb: lsb, signed: useSigned) ?? "1D-Kennlinie")
                         out.append(Candidate(
                             signatureKey: "\(dataOff):1x\(n):16", pattern: .bosch1DCurve, headerAddress: off,
-                            address: dataOff, rows: 1, cols: n, bits: 16, signed: false, isFloat: false,
+                            address: dataOff, rows: 1, cols: n, bits: 16, signed: useSigned, isFloat: false,
                             lsbFirst: lsb, columnMajor: false,
                             xAxisAddress: axOff, yAxisAddress: nil, axisBits: 16, axisInferred: false,
                             confidence: conf, minVal: res.minVal, maxVal: res.maxVal, meanVal: res.meanVal,
-                            domainHint: hint ?? "1D-Kennlinie",
-                            reason: "1D-Kennlinie (\(n) Stützstellen) + inline X-Achse"
+                            domainHint: hint,
+                            reason: "Bosch 1D-Kennlinie (\(n) Stützstellen) + inline X-Achse"
                         ))
-                        occupied.mark(byteRange: off ..< (dataOff + dataBytes))
-                        off = dataOff + dataBytes
+                        occupied.mark(byteRange: off ..< dataEnd)
+                        lastBoschEnd = dataEnd
+                        off = dataEnd
                         continue
                     }
                 }
@@ -469,7 +562,129 @@ enum MapFinder {
         }
     }
 
-    // MARK: - Stage 2, Pass 1C: Bosch 8-Bit 2D Headers [n1: u8, n2: u8, ax1, ax2, data]
+    private static func hasBoschHeaderNear(buf: UnsafeBufferPointer<UInt8>, offset: Int, lsb: Bool) -> Bool {
+        guard offset + 10 <= buf.count else { return false }
+        let n = readU16(buf, offset, lsb: lsb)
+        if n >= 2 && n <= 32 {
+            let axOff = offset + 2
+            let dataEnd = axOff + n * 4
+            if dataEnd <= buf.count && validateAxis16(buf, axOff, count: n, lsb: lsb) {
+                return true
+            }
+        }
+        return false
+    }
+
+    // MARK: - Stage 2, Pass 1C: Axis-Anchored 2D Surfaces (2-Byte Aligned Standalone Axis → 2D Data)
+
+    /// Catches headerless / shared-axis 2D maps immediately preceded by a monotonic X-axis
+    /// (e.g. `0x292EEE` 9-pt axis `[00C8..0FA0]` → `0x292F00` `8×9` Signed `<= 0` map).
+    private static func scanAxisAnchored2D16(buf: UnsafeBufferPointer<UInt8>, calMask: [Bool], lsb: Bool,
+                                             forcedSigned: Bool? = nil,
+                                             occupied: inout WordBitset, scratch: inout [Double],
+                                             out: inout [Candidate]) {
+        let count = buf.count
+        var off = 0
+        while off + 64 < count {
+            if !isCalibrated(off, calMask) { off = nextBlock(off); continue }
+            if occupied.isSet(byteOffset: off) { off += 2; continue }
+
+            // Measure longest strictly increasing 16-bit sequence starting at `off` (up to 24 elems)
+            let v0 = readU16(buf, off, lsb: lsb)
+            let v1 = readU16(buf, off + 2, lsb: lsb)
+            guard v1 > v0 else { off += 2; continue }
+
+            var runLen = 2
+            var prev = v1
+            while runLen < 24 && (off + (runLen + 1) * 2) <= count {
+                let cur = readU16(buf, off + runLen * 2, lsb: lsb)
+                if cur <= prev || cur == 0xFFFF { break }
+                prev = cur
+                runLen += 1
+            }
+
+            if runLen >= 5 && runLen <= 24 && validateAxis16(buf, off, count: runLen, lsb: lsb) {
+                let dataOff = off + runLen * 2
+                if !occupied.isSet(byteOffset: dataOff),
+                   let found = detect2DRowsAfterAxis(buf: buf, dataOff: dataOff, cols: runLen, lsb: lsb,
+                                                     forcedSigned: forcedSigned, occupied: occupied, scratch: &scratch) {
+                    // Check if a Y-axis of length `found.rows` sits right before `off`
+                    var yOff: Int? = nil
+                    let yCand = off - found.rows * 2
+                    if yCand >= 0 && !occupied.isSet(byteOffset: yCand) && validateAxis16(buf, yCand, count: found.rows, lsb: lsb) {
+                        yOff = yCand
+                    }
+                    let dataBytes = found.rows * runLen * 2
+                    let conf = min(0.94, 0.56 + found.res.score * 0.36 + (yOff != nil ? 0.04 : 0))
+                    out.append(Candidate(
+                        signatureKey: "\(dataOff):\(found.rows)x\(runLen):16", pattern: .splitAxis2D, headerAddress: nil,
+                        address: dataOff, rows: found.rows, cols: runLen, bits: 16, signed: found.signed, isFloat: false,
+                        lsbFirst: lsb, columnMajor: false,
+                        xAxisAddress: off, yAxisAddress: yOff, axisBits: 16, axisInferred: true,
+                        confidence: conf, minVal: found.res.minVal, maxVal: found.res.maxVal, meanVal: found.res.meanVal,
+                        domainHint: inferDomainHint(buf: buf, xAxisOff: off, xCount: runLen, yAxisOff: yOff, yCount: found.rows, lsb: lsb, signed: found.signed),
+                        reason: "Achsen-verankertes 2D-Kennfeld (\(found.rows)×\(runLen) · \(found.signed ? "Signed" : "16-Bit"))"
+                    ))
+                    occupied.mark(byteRange: dataOff ..< (dataOff + dataBytes))
+                    off = dataOff + dataBytes
+                    continue
+                }
+            }
+            off += 2
+        }
+    }
+
+    private static func detect2DRowsAfterAxis(buf: UnsafeBufferPointer<UInt8>, dataOff: Int, cols: Int, lsb: Bool,
+                                              forcedSigned: Bool? = nil,
+                                              occupied: WordBitset, scratch: inout [Double])
+        -> (rows: Int, signed: Bool, res: SmoothResult)?
+    {
+        var best: (rows: Int, signed: Bool, rank: Double, res: SmoothResult)?
+        let candidateRows = [16, 12, 10, 9, 8, 6, 14, 20, 24, 5, 4]
+        for r in candidateRows {
+            let bytes = r * cols * 2
+            guard dataOff + bytes <= buf.count else { continue }
+            if occupied.isSet(byteOffset: dataOff + bytes - 2) { continue }
+
+            let uRes = surfaceSmoothness(buf: buf, offset: dataOff, rows: r, cols: cols,
+                                         bits: 16, signed: false, isFloat: false, lsb: lsb,
+                                         allowSparse: true, scratch: &scratch)
+            var chosenSigned = false
+            var chosenRes = uRes
+            if let fs = forcedSigned {
+                chosenSigned = fs
+                if fs {
+                    chosenRes = surfaceSmoothness(buf: buf, offset: dataOff, rows: r, cols: cols,
+                                                  bits: 16, signed: true, isFloat: false, lsb: lsb,
+                                                  allowSparse: true, scratch: &scratch)
+                }
+            } else {
+                let sRes = surfaceSmoothness(buf: buf, offset: dataOff, rows: r, cols: cols,
+                                             bits: 16, signed: true, isFloat: false, lsb: lsb,
+                                             allowSparse: true, scratch: &scratch)
+                if shouldUseSigned16(uRes: uRes, sRes: sRes, count: r * cols) {
+                    chosenSigned = true
+                    chosenRes = sRes
+                }
+            }
+            guard chosenRes.score >= 0.56 else { continue }
+            // Prefer larger valid 2D blocks that aren't trailing off into zero padding
+            let trailingZeroRow = isAllZeroRow16(buf: buf, offset: dataOff + (r - 1) * cols * 2, cols: cols)
+            let rank = chosenRes.score + Double(r) * 0.008 - (trailingZeroRow ? 0.12 : 0)
+            if rank > (best?.rank ?? 0) {
+                best = (r, chosenSigned, rank, chosenRes)
+            }
+        }
+        guard let b = best else { return nil }
+        return (b.rows, b.signed, b.res)
+    }
+
+    private static func isAllZeroRow16(buf: UnsafeBufferPointer<UInt8>, offset: Int, cols: Int) -> Bool {
+        for i in 0..<(cols * 2) where buf[offset + i] != 0 { return false }
+        return true
+    }
+
+    // MARK: - Stage 2, Pass 1D: Bosch 8-Bit 2D Headers [n1: u8, n2: u8, ax1, ax2, data]
 
     private static func scanBosch8Headers(buf: UnsafeBufferPointer<UInt8>, calMask: [Bool],
                                           occupied: inout WordBitset, scratch: inout [Double],
@@ -477,7 +692,7 @@ enum MapFinder {
         let count = buf.count
         var off = 0
         while off + 48 < count {
-            if !calMask[off >> 10] { off = ((off >> 10) + 1) << 10; continue }
+            if !isCalibrated(off, calMask) { off = nextBlock(off); continue }
             if occupied.isSet(byteOffset: off) { off += 2; continue }
 
             let n1 = Int(buf[off])
@@ -492,8 +707,9 @@ enum MapFinder {
                     && isStrictlyIncreasingU8(buf, ax2Off, count: n2)
                 {
                     let res = surfaceSmoothness(buf: buf, offset: dataOff, rows: n1, cols: n2,
-                                                bits: 8, signed: false, isFloat: false, lsb: true, scratch: &scratch)
-                    if res.score > 0.56 {
+                                                bits: 8, signed: false, isFloat: false, lsb: true,
+                                                allowSparse: true, scratch: &scratch)
+                    if res.score > 0.54 {
                         let conf = min(0.95, 0.56 + res.score * 0.39)
                         out.append(Candidate(
                             signatureKey: "\(dataOff):\(n1)x\(n2):8", pattern: .bosch2DHeader, headerAddress: off,
@@ -514,7 +730,7 @@ enum MapFinder {
         }
     }
 
-    // MARK: - Stage 2, Pass 1D: IEEE-754 Float32 Surfaces & Curves
+    // MARK: - Stage 2, Pass 1E: IEEE-754 Float32 Surfaces & Curves
 
     private static func scanFloat32Surfaces(buf: UnsafeBufferPointer<UInt8>, calMask: [Bool], lsb: Bool,
                                             occupied: inout WordBitset, scratch: inout [Double],
@@ -523,10 +739,9 @@ enum MapFinder {
         let shapes = [(16, 16), (12, 12), (8, 16), (16, 8), (8, 12), (8, 8), (6, 8), (1, 16), (1, 12)]
         var off = 0
         while off + 64 < count {
-            if !calMask[off >> 10] { off = ((off >> 10) + 1) << 10; continue }
+            if !isCalibrated(off, calMask) { off = nextBlock(off); continue }
             if occupied.isSet(byteOffset: off) { off += 16; continue }
 
-            // Fast integer exponent gate on first 4 floats (rejects non-floats in ~5 ns)
             if !looksLikePlausibleFloatBlock(buf: buf, offset: off, count: 6, lsb: lsb) {
                 off += 16
                 continue
@@ -537,7 +752,8 @@ enum MapFinder {
                 let bytesNeeded = r * c * 4
                 guard off + bytesNeeded <= count else { continue }
                 let res = surfaceSmoothness(buf: buf, offset: off, rows: r, cols: c,
-                                            bits: 32, signed: false, isFloat: true, lsb: lsb, scratch: &scratch)
+                                            bits: 32, signed: false, isFloat: true, lsb: lsb,
+                                            allowSparse: false, scratch: &scratch)
                 if res.score > 0.74, res.score > (best?.res.score ?? 0) {
                     best = (r, c, res)
                 }
@@ -568,13 +784,18 @@ enum MapFinder {
     private static func scanHeaderless2D16(buf: UnsafeBufferPointer<UInt8>, calMask: [Bool], lsb: Bool,
                                            forcedSigned: Bool? = nil,
                                            occupied: inout WordBitset, scratch: inout [Double],
-                                           out: inout [Candidate], limit: Int) {
+                                           out: inout [Candidate], localLimit: Int) {
         let count = buf.count
-        let shapes = [(16, 16), (12, 16), (16, 12), (12, 12), (8, 16), (16, 8), (8, 12), (12, 8), (8, 8), (6, 8)]
-        let step = 16
+        let shapes = [
+            (16, 16), (12, 16), (16, 12), (12, 12), (12, 10), (10, 12),
+            (10, 10), (9, 9), (9, 8), (8, 9), (8, 16), (16, 8),
+            (8, 12), (12, 8), (8, 10), (10, 8), (8, 8), (6, 8), (6, 6)
+        ]
+        let step = 8
         var off = 0
-        while off + 96 < count && out.count < limit {
-            if !calMask[off >> 10] { off = ((off >> 10) + 1) << 10; continue }
+        var added = 0
+        while off + 72 < count && added < localLimit {
+            if !isCalibrated(off, calMask) { off = nextBlock(off); continue }
             if occupied.isSet(byteOffset: off) { off += step; continue }
 
             var best: (r: Int, c: Int, signed: Bool, pitchScore: Double, res: SmoothResult)?
@@ -582,24 +803,27 @@ enum MapFinder {
                 let bytesNeeded = r * c * 2
                 guard off + bytesNeeded <= count else { continue }
                 let uRes = surfaceSmoothness(buf: buf, offset: off, rows: r, cols: c,
-                                             bits: 16, signed: false, isFloat: false, lsb: lsb, scratch: &scratch)
+                                             bits: 16, signed: false, isFloat: false, lsb: lsb,
+                                             allowSparse: false, scratch: &scratch)
                 var chosenSigned = false
                 var chosenRes = uRes
                 if let fs = forcedSigned {
                     chosenSigned = fs
                     if fs {
                         chosenRes = surfaceSmoothness(buf: buf, offset: off, rows: r, cols: c,
-                                                      bits: 16, signed: true, isFloat: false, lsb: lsb, scratch: &scratch)
+                                                      bits: 16, signed: true, isFloat: false, lsb: lsb,
+                                                      allowSparse: false, scratch: &scratch)
                     }
-                } else if uRes.score < 0.72 {
+                } else if uRes.score < 0.80 || uRes.minVal >= 0xE000 {
                     let sRes = surfaceSmoothness(buf: buf, offset: off, rows: r, cols: c,
-                                                 bits: 16, signed: true, isFloat: false, lsb: lsb, scratch: &scratch)
-                    if sRes.score > uRes.score + 0.14 && sRes.minVal < 0 && sRes.maxVal > 0 {
+                                                 bits: 16, signed: true, isFloat: false, lsb: lsb,
+                                                 allowSparse: false, scratch: &scratch)
+                    if shouldUseSigned16(uRes: uRes, sRes: sRes, count: r * c) {
                         chosenSigned = true
                         chosenRes = sRes
                     }
                 }
-                guard chosenRes.score > 0.73 else { continue }
+                guard chosenRes.score > 0.72 else { continue }
                 let wrap = rowWrapContrast(scratch: scratch, rows: r, cols: c)
                 let pScore = chosenRes.score + 0.18 * wrap
                 if pScore > (best?.pitchScore ?? 0) {
@@ -609,7 +833,6 @@ enum MapFinder {
 
             if let b = best {
                 let bytesNeeded = b.r * b.c * 2
-                // Backward ±512 B monotonic axis search
                 let axes = findNearbyAxes16(buf: buf, dataOff: off, rows: b.r, cols: b.c, lsb: lsb)
                 let hasAx = axes.xAxis != nil || axes.yAxis != nil
                 let conf = min(0.92, b.res.score * 0.94 + (hasAx ? 0.06 : 0))
@@ -629,6 +852,7 @@ enum MapFinder {
                 ))
                 occupied.mark(byteRange: off ..< (off + bytesNeeded))
                 off += bytesNeeded
+                added += 1
             } else {
                 off += step
             }
@@ -637,18 +861,20 @@ enum MapFinder {
 
     private static func scanHeaderless2D8(buf: UnsafeBufferPointer<UInt8>, calMask: [Bool], signed: Bool,
                                           occupied: inout WordBitset, scratch: inout [Double],
-                                          out: inout [Candidate], limit: Int) {
+                                          out: inout [Candidate], localLimit: Int) {
         let count = buf.count
         let shapes = [(16, 16), (12, 12), (8, 16), (8, 12), (8, 8)]
         var off = 0
-        while off + 64 < count && out.count < limit {
-            if !calMask[off >> 10] { off = ((off >> 10) + 1) << 10; continue }
+        var added = 0
+        while off + 64 < count && added < localLimit {
+            if !isCalibrated(off, calMask) { off = nextBlock(off); continue }
             if occupied.isSet(byteOffset: off) { off += 16; continue }
             var best: (r: Int, c: Int, res: SmoothResult)?
             for (r, c) in shapes {
                 guard off + r * c <= count else { continue }
                 let res = surfaceSmoothness(buf: buf, offset: off, rows: r, cols: c,
-                                            bits: 8, signed: signed, isFloat: false, lsb: true, scratch: &scratch)
+                                            bits: 8, signed: signed, isFloat: false, lsb: true,
+                                            allowSparse: false, scratch: &scratch)
                 if res.score > 0.74, res.score > (best?.res.score ?? 0) {
                     best = (r, c, res)
                 }
@@ -664,6 +890,7 @@ enum MapFinder {
                 ))
                 occupied.mark(byteRange: off ..< (off + b.r * b.c))
                 off += b.r * b.c
+                added += 1
             } else {
                 off += 16
             }
@@ -699,6 +926,8 @@ enum MapFinder {
         let minVal: Double
         let maxVal: Double
         let meanVal: Double
+        let ffCount: Int
+        let isMonotonic: Bool
     }
 
     private struct WordBitset {
@@ -738,17 +967,42 @@ enum MapFinder {
             : ((UInt32(buf[off]) << 24) | (UInt32(buf[off + 1]) << 16) | (UInt32(buf[off + 2]) << 8) | UInt32(buf[off + 3]))
     }
 
-    private static func isStrictlyIncreasingU16(_ buf: UnsafeBufferPointer<UInt8>, _ off: Int, count: Int, lsb: Bool) -> Bool {
-        guard count >= 3, off + count * 2 <= buf.count else { return false }
-        let first = readU16(buf, off, lsb: lsb)
-        var prev = first
+    /// Validates a strictly increasing 16-bit axis (supports `count >= 2`, dense Bosch breakpoints like `0640..0644`,
+    /// and zero-crossing Signed `Int16` temperature/torque axes).
+    private static func validateAxis16(_ buf: UnsafeBufferPointer<UInt8>, _ off: Int, count: Int, lsb: Bool) -> Bool {
+        guard count >= 2, off + count * 2 <= buf.count else { return false }
+
+        // 1) Unsigned strictly increasing check
+        let firstU = readU16(buf, off, lsb: lsb)
+        var prevU = firstU
+        var maxStepU = 0
+        var okU = true
         for i in 1..<count {
             let cur = readU16(buf, off + i * 2, lsb: lsb)
-            if cur <= prev { return false }
-            prev = cur
+            if cur <= prevU || cur == 0xFFFF { okU = false; break }
+            let step = cur - prevU
+            if step > maxStepU { maxStepU = step }
+            prevU = cur
         }
-        // Reject trivial +1 counters (0,1,2,3...) unless wide span
-        return (prev - first) > count * 2
+        if okU {
+            let span = prevU - firstU
+            // Reject trivial +1 index sequences starting at 0..4 (0,1,2,3...)
+            if firstU <= 4 && maxStepU == 1 { return false }
+            // For 2-pt axes require a meaningful physical span (e.g. >= 16)
+            if count == 2 { return span >= 16 }
+            return span >= count - 1
+        }
+
+        // 2) Signed Int16 zero-crossing axis check (e.g. coolant temp -40°C..+120°C or negative torque)
+        let firstS = Int(Int16(bitPattern: UInt16(firstU)))
+        guard firstS < 0 && firstS >= -16000 else { return false }
+        var prevS = firstS
+        for i in 1..<count {
+            let cur = Int(Int16(bitPattern: UInt16(readU16(buf, off + i * 2, lsb: lsb))))
+            if cur <= prevS { return false }
+            prevS = cur
+        }
+        return prevS >= 0 && (prevS - firstS) >= max(8, count * 2)
     }
 
     private static func isStrictlyIncreasingU8(_ buf: UnsafeBufferPointer<UInt8>, _ off: Int, count: Int) -> Bool {
@@ -757,10 +1011,18 @@ enum MapFinder {
         var prev = first
         for i in 1..<count {
             let cur = Int(buf[off + i])
-            if cur <= prev { return false }
+            if cur <= prev || cur == 0xFF { return false }
             prev = cur
         }
         return (prev - first) > count + 2
+    }
+
+    private static func shouldUseSigned16(uRes: SmoothResult, sRes: SmoothResult, count: Int) -> Bool {
+        // Case 1: Zero-crossing OR negative-to-zero signed map (e.g. -364...0): signed smoothness beats unsigned wrap!
+        if sRes.minVal < 0 && sRes.score > uRes.score + 0.06 { return true }
+        // Case 2: Purely negative map (all raw values >= 0xE000, e.g. -8192..-1) with few 0xFFFF erased cells
+        if uRes.minVal >= 0xE000 && uRes.ffCount * 2 < count { return true }
+        return false
     }
 
     private static func looksLikePlausibleFloatBlock(buf: UnsafeBufferPointer<UInt8>, offset: Int, count: Int, lsb: Bool) -> Bool {
@@ -770,7 +1032,7 @@ enum MapFinder {
             let u = readU32(buf, offset + i * 4, lsb: lsb)
             if u == 0 || u == 0x80000000 { continue }
             let exp = (u >> 23) & 0xFF
-            if exp < 112 || exp > 148 { return false } // outside ~1e-5 ... ~2e6
+            if exp < 112 || exp > 148 { return false }
             nonZero += 1
         }
         return nonZero >= 2
@@ -778,9 +1040,9 @@ enum MapFinder {
 
     private static func surfaceSmoothness(buf: UnsafeBufferPointer<UInt8>, offset: Int, rows: Int, cols: Int,
                                           bits: Int, signed: Bool, isFloat: Bool, lsb: Bool,
-                                          scratch: inout [Double]) -> SmoothResult {
+                                          allowSparse: Bool, scratch: inout [Double]) -> SmoothResult {
         let count = rows * cols
-        guard count >= 8 else { return SmoothResult(score: 0, minVal: 0, maxVal: 0, meanVal: 0) }
+        guard count >= 8 else { return SmoothResult(score: 0, minVal: 0, maxVal: 0, meanVal: 0, ffCount: 0, isMonotonic: false) }
         if scratch.count < count { scratch = [Double](repeating: 0, count: count) }
         let elemBytes = max(1, bits / 8)
         var minV = Double.infinity
@@ -798,9 +1060,9 @@ enum MapFinder {
                     zeroCount += 1; v = 0
                 } else {
                     let exp = (u >> 23) & 0xFF
-                    if exp < 110 || exp > 150 { return SmoothResult(score: 0, minVal: 0, maxVal: 0, meanVal: 0) }
+                    if exp < 110 || exp > 150 { return SmoothResult(score: 0, minVal: 0, maxVal: 0, meanVal: 0, ffCount: ffCount, isMonotonic: false) }
                     let f = Float(bitPattern: u)
-                    guard f.isFinite, abs(f) < 1e7 else { return SmoothResult(score: 0, minVal: 0, maxVal: 0, meanVal: 0) }
+                    guard f.isFinite, abs(f) < 1e7 else { return SmoothResult(score: 0, minVal: 0, maxVal: 0, meanVal: 0, ffCount: ffCount, isMonotonic: false) }
                     v = Double(f)
                 }
             } else if bits == 16 {
@@ -820,61 +1082,107 @@ enum MapFinder {
             sumV += v
         }
 
+        let meanV = sumV / Double(count)
         let range = maxV - minV
-        if isFloat ? (range < 0.01) : (range < 8) { return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: sumV / Double(count)) }
-        if Double(zeroCount + ffCount) / Double(count) > 0.65 { return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: sumV / Double(count)) }
+        if isFloat ? (range < 0.01) : (range < 8) {
+            return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: meanV, ffCount: ffCount, isMonotonic: false)
+        }
+        // Reject erased 0xFF blocks; allow sparse-zero diesel maps when `allowSparse == true`
+        if Double(ffCount) / Double(count) > 0.35 {
+            return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: meanV, ffCount: ffCount, isMonotonic: false)
+        }
+        if !allowSparse && Double(zeroCount + ffCount) / Double(count) > 0.72 {
+            return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: meanV, ffCount: ffCount, isMonotonic: false)
+        }
 
+        // Full-grid neighbor smoothness + interior-trimmed smoothness (handles zero-clamped outer border cols/rows!)
         var diffSum = 0.0
         var diffCount = 0
+        var intSum = 0.0
+        var intCount = 0
+        let hasInterior = rows >= 4 && cols >= 4
+
         for r in 0..<rows {
             let rowBase = r * cols
             for c in 0..<cols {
                 let v = scratch[rowBase + c]
                 if c + 1 < cols {
-                    diffSum += abs(scratch[rowBase + c + 1] - v)
+                    let d = abs(scratch[rowBase + c + 1] - v)
+                    diffSum += d
                     diffCount += 1
+                    if hasInterior && c >= 1 && c + 1 < cols - 1 {
+                        intSum += d; intCount += 1
+                    }
                 }
                 if r + 1 < rows {
-                    diffSum += abs(scratch[rowBase + cols + c] - v)
+                    let d = abs(scratch[rowBase + cols + c] - v)
+                    diffSum += d
                     diffCount += 1
+                    if hasInterior && r >= 1 && r + 1 < rows - 1 {
+                        intSum += d; intCount += 1
+                    }
                 }
             }
         }
-        guard diffCount > 0 else { return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: sumV / Double(count)) }
-        let avgStepNorm = (diffSum / Double(diffCount)) / range
-        if avgStepNorm < 0.004 || avgStepNorm > 0.30 {
-            return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: sumV / Double(count))
+        guard diffCount > 0 else { return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: meanV, ffCount: ffCount, isMonotonic: false) }
+        let fullNorm = (diffSum / Double(diffCount)) / range
+        let effNorm: Double = (intCount >= 8) ? min(fullNorm, (intSum / Double(intCount)) / range) : fullNorm
+        if effNorm < 0.002 || effNorm > 0.32 {
+            return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: meanV, ffCount: ffCount, isMonotonic: false)
         }
-        let score = max(0, min(1, 1.0 - avgStepNorm * 2.8))
-        return SmoothResult(score: score, minVal: minV, maxVal: maxV, meanVal: sumV / Double(count))
+        let score = max(0, min(1, 1.0 - effNorm * 2.6))
+        return SmoothResult(score: score, minVal: minV, maxVal: maxV, meanVal: meanV, ffCount: ffCount, isMonotonic: false)
     }
 
     private static func curve1DSmoothness(buf: UnsafeBufferPointer<UInt8>, offset: Int, count: Int,
-                                          bits: Int, signed: Bool, lsb: Bool,
+                                          signed: Bool, lsb: Bool,
                                           scratch: inout [Double]) -> SmoothResult {
-        guard count >= 6 else { return SmoothResult(score: 0, minVal: 0, maxVal: 0, meanVal: 0) }
+        guard count >= 2 else { return SmoothResult(score: 0, minVal: 0, maxVal: 0, meanVal: 0, ffCount: 0, isMonotonic: false) }
         if scratch.count < count { scratch = [Double](repeating: 0, count: count) }
         var minV = Double.infinity, maxV = -Double.infinity, sumV = 0.0
+        var ffCount = 0
         for i in 0..<count {
             let raw = readU16(buf, offset + i * 2, lsb: lsb)
+            if raw == 0xFFFF { ffCount += 1 }
             let v = signed ? Double(Int16(bitPattern: UInt16(raw))) : Double(raw)
             scratch[i] = v
             if v < minV { minV = v }
             if v > maxV { maxV = v }
             sumV += v
         }
+        let meanV = sumV / Double(count)
         let range = maxV - minV
-        guard range >= 8 else { return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: sumV / Double(count)) }
+        if range < 8 {
+            return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: meanV, ffCount: ffCount, isMonotonic: false)
+        }
+
+        // Check monotonicity (increasing or decreasing — super common for Bosch limiters/decay curves!)
+        var monoInc = true, monoDec = true
+        for i in 1..<count {
+            if scratch[i] < scratch[i - 1] { monoInc = false }
+            if scratch[i] > scratch[i - 1] { monoDec = false }
+        }
+        let isMono = monoInc || monoDec
+        if count == 2 {
+            return SmoothResult(score: 0.78, minVal: minV, maxVal: maxV, meanVal: meanV, ffCount: ffCount, isMonotonic: true)
+        }
+
         var curvSum = 0.0
         for i in 1..<(count - 1) {
             curvSum += abs(scratch[i + 1] - 2 * scratch[i] + scratch[i - 1])
         }
         let curvNorm = (curvSum / Double(count - 2)) / range
-        if curvNorm > 0.25 { return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: sumV / Double(count)) }
-        return SmoothResult(score: max(0, min(1, 1.0 - curvNorm * 3.5)), minVal: minV, maxVal: maxV, meanVal: sumV / Double(count))
+        if isMono {
+            return SmoothResult(score: max(0.75, min(0.98, 1.0 - curvNorm * 1.2)),
+                                minVal: minV, maxVal: maxV, meanVal: meanV, ffCount: ffCount, isMonotonic: true)
+        }
+        if curvNorm > 0.45 {
+            return SmoothResult(score: 0, minVal: minV, maxVal: maxV, meanVal: meanV, ffCount: ffCount, isMonotonic: false)
+        }
+        return SmoothResult(score: max(0, min(1, 1.0 - curvNorm * 2.1)),
+                            minVal: minV, maxVal: maxV, meanVal: meanV, ffCount: ffCount, isMonotonic: false)
     }
 
-    /// Measures how much larger row-wrap jumps are vs interior horizontal steps (high when `cols` is the true map width).
     private static func rowWrapContrast(scratch: [Double], rows: Int, cols: Int) -> Double {
         guard rows >= 2, cols >= 4 else { return 0 }
         var interiorSum = 0.0
@@ -903,7 +1211,8 @@ enum MapFinder {
                                            bits: Int, signed: Bool, isFloat: Bool, lsb: Bool,
                                            scratch: inout [Double]) -> Double {
         let res = surfaceSmoothness(buf: buf, offset: offset, rows: rows, cols: cols,
-                                    bits: bits, signed: signed, isFloat: isFloat, lsb: lsb, scratch: &scratch)
+                                    bits: bits, signed: signed, isFloat: isFloat, lsb: lsb,
+                                    allowSparse: true, scratch: &scratch)
         guard res.score > 0 else { return 0 }
         return res.score + 0.22 * rowWrapContrast(scratch: scratch, rows: rows, cols: cols)
     }
@@ -932,7 +1241,6 @@ enum MapFinder {
         return (lo.isFinite ? lo : 0, hi.isFinite ? hi : 0, sum / Double(count))
     }
 
-    /// Searches up to 512 bytes before `dataOff` for strictly increasing 16-bit sequences of length `cols` / `rows`.
     private static func findNearbyAxes16(buf: UnsafeBufferPointer<UInt8>, dataOff: Int, rows: Int, cols: Int, lsb: Bool)
         -> (xAxis: Int?, yAxis: Int?)
     {
@@ -940,21 +1248,19 @@ enum MapFinder {
         var xFound: Int?
         var yFound: Int?
 
-        // Check immediately preceding [yAxis][xAxis][data] or [xAxis][data] first (most common)
         let xImmediate = dataOff - cols * 2
-        if xImmediate >= searchStart && isStrictlyIncreasingU16(buf, xImmediate, count: cols, lsb: lsb) {
+        if xImmediate >= searchStart && validateAxis16(buf, xImmediate, count: cols, lsb: lsb) {
             xFound = xImmediate
             let yImmediate = xImmediate - rows * 2
-            if rows > 1 && yImmediate >= searchStart && isStrictlyIncreasingU16(buf, yImmediate, count: rows, lsb: lsb) {
+            if rows > 1 && yImmediate >= searchStart && validateAxis16(buf, yImmediate, count: rows, lsb: lsb) {
                 yFound = yImmediate
             }
             return (xFound, yFound)
         }
 
-        // Otherwise scan backwards in 2-byte steps for closest monotonic X/Y axes
         var off = dataOff - cols * 2
         while off >= searchStart {
-            if xFound == nil && isStrictlyIncreasingU16(buf, off, count: cols, lsb: lsb) {
+            if xFound == nil && validateAxis16(buf, off, count: cols, lsb: lsb) {
                 xFound = off
                 break
             }
@@ -964,7 +1270,7 @@ enum MapFinder {
             let yLimit = (xFound ?? dataOff) - rows * 2
             var yOff = yLimit
             while yOff >= searchStart {
-                if isStrictlyIncreasingU16(buf, yOff, count: rows, lsb: lsb) {
+                if validateAxis16(buf, yOff, count: rows, lsb: lsb) {
                     yFound = yOff
                     break
                 }
@@ -981,7 +1287,6 @@ enum MapFinder {
             guard let o = off, n >= 4, o + n * 2 <= buf.count else { return false }
             let first = readU16(buf, o, lsb: lsb)
             let last = readU16(buf, o + (n - 1) * 2, lsb: lsb)
-            // Direct RPM (400...8500) or Bosch ×0.25 RPM (1600...32000)
             return (first >= 300 && first <= 1500 && last >= 4000 && last <= 9500)
                 || (first >= 1600 && first <= 5000 && last >= 16000 && last <= 34000)
         }
