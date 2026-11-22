@@ -284,12 +284,15 @@ struct HexDiffView: View {
                         }
                         syncSuggestionBanner
                         VSplitView {
-                            Group {
-                                if splitDiffMode && model.compare != nil {
-                                    hexdumpSplitCanvasPane
-                                } else {
-                                    hexdumpCanvasPane
+                            HStack(spacing: 0) {
+                                Group {
+                                    if splitDiffMode && model.compare != nil {
+                                        hexdumpSplitCanvasPane
+                                    } else {
+                                        hexdumpCanvasPane
+                                    }
                                 }
+                                verticalHexScrollbar
                             }
                             .frame(minHeight: 240, maxHeight: .infinity)
                             waveform2DPane(compact: true)
@@ -691,6 +694,61 @@ struct HexDiffView: View {
             .background(Theme.changed.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Theme.changed.opacity(0.35), lineWidth: 0.75))
         }
+    }
+
+    // MARK: - Vertical Hex Scrollbar with Diff Overview Ticks
+
+    private var verticalHexScrollbar: some View {
+        let total = max(1, model.bin.count)
+        let maxOff = max(1, total - rowStride)
+        return GeometryReader { geo in
+            let trackH = max(1, geo.size.height - 8)
+            let thumbH = max(24, min(trackH * 0.45, trackH * CGFloat(rowStride * 28) / CGFloat(total)))
+            let frac = CGFloat(min(max(0, viewportOffset), maxOff)) / CGFloat(maxOff)
+            let thumbY = 4 + frac * (trackH - thumbH)
+
+            ZStack(alignment: .top) {
+                // Subtle track background
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(.quaternary.opacity(0.35))
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 1)
+
+                // Diff & XDF overview tick marks along the scrollbar track
+                Canvas { ctx, size in
+                    let n = cachedMinimap.count
+                    guard n > 0 else { return }
+                    let stepH = max(1.5, (size.height - 8) / CGFloat(n))
+                    for i in 0..<n {
+                        let b = cachedMinimap[i]
+                        guard b.hasDiff || b.hasXDF else { continue }
+                        let y = 4 + (CGFloat(i) / CGFloat(n)) * (size.height - 8)
+                        let c = b.hasDiff ? Theme.changed.opacity(0.85) : Color.accentColor.opacity(0.45)
+                        ctx.fill(Path(CGRect(x: 2, y: y, width: size.width - 4, height: stepH)), with: .color(c))
+                    }
+                }
+                .allowsHitTesting(false)
+
+                // Draggable thumb
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.primary.opacity(0.45))
+                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5))
+                    .frame(width: 8, height: thumbH)
+                    .offset(y: thumbY)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { val in
+                        let usable = max(1, trackH - thumbH)
+                        let t = min(max((val.location.y - 4 - thumbH * 0.5) / usable, 0), 1)
+                        let rawOff = Int(t * CGFloat(maxOff))
+                        viewportOffset = (rawOff / elemBytes) * elemBytes
+                    }
+            )
+        }
+        .frame(width: 14)
+        .padding(.leading, 2)
     }
 
     // MARK: - 60-FPS WinOLS Side-by-Side Dual-Pane Synchronized Hex-Diff Canvas
