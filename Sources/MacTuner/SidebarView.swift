@@ -5,6 +5,7 @@ struct SidebarView: View {
     @Environment(AppModel.self) private var model
     let search: String
     @State private var expanded: Set<Int> = []
+    @State private var binTab: Int = 0 // 0 = Diff-Blöcke, 1 = Lesezeichen
 
     private struct Group: Identifiable {
         let categoryID: Int
@@ -56,25 +57,87 @@ struct SidebarView: View {
     }
 
     @ViewBuilder private var standaloneBinSidebar: some View {
-        let ranges = model.outsideChanges
+        let clusters = model.diffClusters
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
-        let filteredRanges = q.isEmpty ? ranges : ranges.filter { r in
-            String(format: "0x%05x", r.lowerBound).contains(q) ||
-            String(format: "%05x", r.lowerBound).contains(q)
+        let filteredClusters = q.isEmpty ? clusters : clusters.filter { c in
+            String(format: "0x%05x", c.range.lowerBound).contains(q) ||
+            String(format: "%05x", c.range.lowerBound).contains(q) ||
+            c.shapeHint.lowercased().contains(q)
         }
         VStack(spacing: 0) {
-            HStack {
-                Label("Bin-vs-Bin Modus", systemImage: "arrow.left.arrow.right")
+            HStack(spacing: 6) {
+                Label("Bin-vs-Bin", systemImage: "arrow.left.arrow.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
+                if model.compareURL != nil {
+                    Button { model.swapWithCompare() } label: {
+                        Image(systemName: "arrow.left.arrow.right.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .help("BIN und Vergleich tauschen")
+                }
                 Button("XDF …") { model.openXDFPanel() }
                     .controlSize(.mini)
             }
-            .padding(.horizontal, 12).padding(.vertical, 8)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+
+            Picker("", selection: $binTab) {
+                Text("Blöcke (\(clusters.count))").tag(0)
+                Text("Marker (\(model.hexBookmarks.count))").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 10).padding(.bottom, 6)
+
+            if binTab == 0 && !clusters.isEmpty {
+                HStack(spacing: 6) {
+                    Text("Cluster:").font(.caption2).foregroundStyle(.secondary)
+                    ForEach([0, 16, 32, 64], id: \.self) { g in
+                        Button("\(g)B") { model.diffClusterGap = g }
+                            .buttonStyle(.plain)
+                            .font(.caption2.monospacedDigit().weight(model.diffClusterGap == g ? .bold : .regular))
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(model.diffClusterGap == g ? Color.accentColor.opacity(0.22) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 4))
+                            .foregroundStyle(model.diffClusterGap == g ? Color.accentColor : .secondary)
+                    }
+                    Spacer()
+                    Text("\(model.outsideByteCount) B Δ")
+                        .font(.caption2.monospacedDigit()).foregroundStyle(Theme.changed)
+                }
+                .padding(.horizontal, 10).padding(.bottom, 6)
+            }
             Divider()
 
-            if ranges.isEmpty {
+            if binTab == 1 {
+                if model.hexBookmarks.isEmpty {
+                    ContentUnavailableView("Keine Lesezeichen", systemImage: "bookmark",
+                                           description: Text("Setze im Hex-Diff Lesezeichen per Rechtsklick oder über das Lesezeichen-Menü."))
+                } else {
+                    List {
+                        ForEach(model.hexBookmarks) { bm in
+                            Button {
+                                model.hexJumpTarget = bm.address ..< min(model.bin.count, bm.address + 16)
+                                model.selection = AppModel.hexDiffSelection
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "bookmark.fill").font(.caption2).foregroundStyle(Color.accentColor)
+                                    Text(bm.name).font(.caption).lineLimit(1)
+                                    Spacer()
+                                    Text(String(format: "0x%05X", bm.address))
+                                        .font(.caption2.monospaced()).foregroundStyle(.secondary)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button("Löschen", role: .destructive) { model.removeHexBookmark(id: bm.id) }
+                            }
+                        }
+                    }
+                }
+            } else if clusters.isEmpty {
                 VStack(spacing: 12) {
                     Spacer()
                     Image(systemName: model.compareURL == nil ? "arrow.left.arrow.right.circle" : "checkmark.circle")
@@ -83,7 +146,7 @@ struct SidebarView: View {
                     Text(model.compareURL == nil ? "Vergleichs-BIN laden" : "Keine Byte-Unterschiede")
                         .font(.headline)
                     Text(model.compareURL == nil
-                         ? "Lade eine zweite BIN (⌥⌘O), um alle geänderten Bereiche ohne XDF zu vergleichen."
+                         ? "Lade eine zweite BIN (⌥⌘O), um alle Kennfeld-Blöcke im Side-by-Side Hex-Diff zu vergleichen."
                          : "BIN und Vergleichs-BIN sind byte-identisch.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -94,32 +157,82 @@ struct SidebarView: View {
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
                     }
-                    Button("Im Hex-Diff öffnen") { model.selection = AppModel.hexDiffSelection }
-                        .controlSize(.small)
+                    HStack(spacing: 8) {
+                        Button("Hex-Diff") { model.selection = AppModel.hexDiffSelection }
+                        Button("Kennfeld-Finder") { model.selection = AppModel.mapFinderSelection }
+                    }
+                    .controlSize(.small)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
-                    Section("Diff-Bereiche (\(filteredRanges.count) · \(model.outsideByteCount) B)") {
-                        ForEach(filteredRanges, id: \.lowerBound) { r in
-                            Button {
-                                model.hexJumpTarget = r
-                                model.selection = AppModel.hexDiffSelection
-                            } label: {
+                    ForEach(filteredClusters) { c in
+                        Button {
+                            model.hexJumpTarget = c.range
+                            model.selection = AppModel.hexDiffSelection
+                        } label: {
+                            VStack(alignment: .leading, spacing: 3) {
                                 HStack(spacing: 6) {
-                                    Circle().fill(Theme.changed).frame(width: 6, height: 6)
-                                    Text(String(format: "0x%05X", r.lowerBound))
+                                    Text(String(format: "0x%05X", c.range.lowerBound))
                                         .font(.caption.monospaced().weight(.semibold))
-                                    Text("– \(String(format: "0x%05X", r.upperBound - 1))")
-                                        .font(.caption2.monospaced()).foregroundStyle(.secondary)
+                                    Text(c.shapeHint)
+                                        .font(.caption2.weight(.medium))
+                                        .padding(.horizontal, 5).padding(.vertical, 1)
+                                        .background((c.isLikelySignature ? Color.secondary : Color.accentColor).opacity(0.16),
+                                                    in: Capsule())
+                                        .foregroundStyle(c.isLikelySignature ? .secondary : Color.accentColor)
                                     Spacer()
-                                    Text("\(r.count) B")
-                                        .font(.caption2.monospacedDigit()).foregroundStyle(Theme.changed)
+                                    Text("\(c.spanBytes) B")
+                                        .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                                 }
-                                .contentShape(Rectangle())
+                                HStack(spacing: 6) {
+                                    // Mini Coral (+) / Cyan (−) diverging bar
+                                    GeometryReader { g in
+                                        let w = g.size.width
+                                        let hiW = w * CGFloat(c.higherRatio)
+                                        HStack(spacing: 0) {
+                                            Rectangle().fill(Color(red: 0.90, green: 0.34, blue: 0.28)).frame(width: hiW)
+                                            Rectangle().fill(Color(red: 0.20, green: 0.62, blue: 0.96)).frame(width: max(0, w - hiW))
+                                        }
+                                        .clipShape(Capsule())
+                                    }
+                                    .frame(width: 44, height: 4)
+                                    Text("\(c.changedBytes) Δ")
+                                        .font(.caption2.monospacedDigit()).foregroundStyle(Theme.changed)
+                                    if c.higherCount > 0 {
+                                        Text("▲\(c.higherCount)").font(.caption2.monospacedDigit())
+                                            .foregroundStyle(Color(red: 0.90, green: 0.34, blue: 0.28))
+                                    }
+                                    if c.lowerCount > 0 {
+                                        Text("▼\(c.lowerCount)").font(.caption2.monospacedDigit())
+                                            .foregroundStyle(Color(red: 0.20, green: 0.62, blue: 0.96))
+                                    }
+                                    Spacer()
+                                }
                             }
-                            .buttonStyle(.plain)
+                            .padding(.vertical, 2)
+                            .opacity(c.isLikelySignature ? 0.6 : 1.0)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button {
+                                model.restoreRange(c.range)
+                            } label: {
+                                Label("Block aus Vergleich übernehmen (←)", systemImage: "arrow.uturn.backward")
+                            }
+                            Button {
+                                model.xdfEditorRequest = XDFEditorRequest(presetRange: c.range)
+                            } label: {
+                                Label("Als XDF-Kennfeld anlegen …", systemImage: "plus.rectangle.on.rectangle")
+                            }
+                            Button {
+                                model.addHexBookmark(name: String(format: "%@ 0x%05X", c.shapeHint, c.range.lowerBound),
+                                                     address: c.range.lowerBound)
+                            } label: {
+                                Label("Lesezeichen setzen", systemImage: "bookmark.fill")
+                            }
                         }
                     }
                 }

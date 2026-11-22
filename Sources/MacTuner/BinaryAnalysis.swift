@@ -178,3 +178,79 @@ struct HexBookmark: Identifiable, Codable, Hashable {
         self.address = address
     }
 }
+
+/// Logical map-sized diff region created by clustering nearby byte differences.
+struct DiffCluster: Identifiable, Hashable {
+    var id: Int { range.lowerBound }
+    let range: Range<Int>
+    let changedBytes: Int
+    let higherCount: Int
+    let lowerCount: Int
+    let shapeHint: String
+    let isLikelySignature: Bool
+
+    var spanBytes: Int { range.count }
+    var higherRatio: Double {
+        let tot = higherCount + lowerCount
+        return tot > 0 ? Double(higherCount) / Double(tot) : 0.5
+    }
+}
+
+extension BinaryAnalysis {
+    /// Merges adjacent byte-diff ranges separated by at most `gap` unchanged bytes into map-sized `DiffCluster`s.
+    static func clusterDiffs(ranges: [Range<Int>], bin: [UInt8], compare: [UInt8], gap: Int = 32) -> [DiffCluster] {
+        guard !ranges.isEmpty else { return [] }
+        var merged: [(range: Range<Int>, changed: Int)] = []
+        for r in ranges {
+            if let last = merged.last, r.lowerBound - last.range.upperBound <= gap {
+                merged[merged.count - 1] = (last.range.lowerBound ..< r.upperBound, last.changed + r.count)
+            } else {
+                merged.append((r, r.count))
+            }
+        }
+        let maxLen = min(bin.count, compare.count)
+        return merged.map { item in
+            let r = item.range
+            var hi = 0, lo = 0
+            // Compare as 16-bit LE words when span >= 4 bytes, else byte-by-byte
+            if r.count >= 4 {
+                var i = r.lowerBound & ~1
+                while i + 1 < min(r.upperBound, maxLen) {
+                    let a = UInt16(bin[i]) | (UInt16(bin[i + 1]) << 8)
+                    let b = UInt16(compare[i]) | (UInt16(compare[i + 1]) << 8)
+                    if a > b { hi += 1 } else if a < b { lo += 1 }
+                    i += 2
+                }
+            } else {
+                for i in r.lowerBound ..< min(r.upperBound, maxLen) {
+                    if bin[i] > compare[i] { hi += 1 } else if bin[i] < compare[i] { lo += 1 }
+                }
+            }
+
+            let span = r.count
+            let isSig: Bool = {
+                guard span >= 64 && span <= 512 && r.upperBound <= bin.count else { return false }
+                let (ent, _) = classify(bin[r])
+                return ent > 0.93 // > 7.45 bits/byte entropy => RSA / hash signature
+            }()
+            let hint: String
+            if isSig {
+                hint = "Signatur / CRC?"
+            } else if span <= 4 {
+                hint = "Schalter / 1×1"
+            } else if span <= 40 {
+                hint = "Achse / 1D"
+            } else if span <= 160 {
+                hint = "Kennfeld (klein)"
+            } else if span <= 320 {
+                hint = "~16×8 / 2D"
+            } else if span <= 640 {
+                hint = "~16×16 Map"
+            } else {
+                hint = "Großer Block"
+            }
+            return DiffCluster(range: r, changedBytes: item.changed, higherCount: hi, lowerCount: lo,
+                               shapeHint: hint, isLikelySignature: isSig)
+        }
+    }
+}

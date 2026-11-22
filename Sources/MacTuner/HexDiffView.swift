@@ -182,7 +182,14 @@ struct HexDiffView: View {
     @State private var compareSyncOffset = 0
     @State private var entropyMode = false
 
-    // Search, Bookmarks, Twin-Map Detector, Direct Editing & Diff-Only Filter
+    // Search, Bookmarks, Twin-Map Detector, Direct Editing, Split Diff & Diff-Only Filter
+    enum SplitRightDisplay: String, CaseIterable {
+        case values = "Werte"
+        case delta = "Δ"
+        case percent = "Δ%"
+    }
+    @State private var splitDiffMode = false
+    @State private var splitRightDisplay: SplitRightDisplay = .values
     @State private var searchQuery = ""
     @State private var searchHits: [Int] = []
     @State private var searchHitIndex = 0
@@ -270,8 +277,14 @@ struct HexDiffView: View {
                 switch viewMode {
                 case .text:
                     VSplitView {
-                        hexdumpCanvasPane
-                            .frame(minHeight: 240, maxHeight: .infinity)
+                        Group {
+                            if splitDiffMode && model.compare != nil {
+                                hexdumpSplitCanvasPane
+                            } else {
+                                hexdumpCanvasPane
+                            }
+                        }
+                        .frame(minHeight: 240, maxHeight: .infinity)
                         waveform2DPane(compact: true)
                             .frame(minHeight: 135, idealHeight: 170, maxHeight: 320)
                     }
@@ -294,12 +307,18 @@ struct HexDiffView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             rebuildCaches()
+            if model.compareURL != nil || model.compareLabelOverride != nil {
+                splitDiffMode = true
+            }
             consumeJumpTarget()
         }
         .onChange(of: model.hexJumpTarget) { _, _ in consumeJumpTarget() }
         .onChange(of: model.bin.count) { _, _ in rebuildCaches() }
         .onChange(of: model.xdfURL) { _, _ in rebuildCaches() }
-        .onChange(of: model.compareURL) { _, _ in rebuildCaches() }
+        .onChange(of: model.compareURL) { _, newURL in
+            rebuildCaches()
+            if newURL != nil { splitDiffMode = true }
+        }
     }
 
     // MARK: - WinOLS Number Format & View Toolbar
@@ -395,7 +414,30 @@ struct HexDiffView: View {
             }
 
             if viewMode == .text {
-                Toggle("Balken", isOn: $showBars).toggleStyle(.checkbox)
+                if model.compare != nil {
+                    Picker("Ansichtsmodus", selection: $splitDiffMode) {
+                        Text("Einzel").tag(false)
+                        Text("Split").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("Nebeneinander-Vergleich (WinOLS Side-by-Side Hex-Diff)")
+
+                    if splitDiffMode {
+                        Picker("Rechte Seite", selection: $splitRightDisplay) {
+                            ForEach(SplitRightDisplay.allCases, id: \.self) { m in Text(m.rawValue).tag(m) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                        .help("Rechte Spalte: Vergleichswerte, Delta (Δ) oder Prozent (Δ%)")
+                    } else {
+                        Toggle("Balken", isOn: $showBars).toggleStyle(.checkbox)
+                    }
+                } else {
+                    Toggle("Balken", isOn: $showBars).toggleStyle(.checkbox)
+                }
             }
 
             Spacer(minLength: 4)
@@ -464,6 +506,399 @@ struct HexDiffView: View {
             }
         }
         .controlSize(.small)
+    }
+
+    // MARK: - 60-FPS WinOLS Side-by-Side Dual-Pane Synchronized Hex-Diff Canvas
+
+    private var hexdumpSplitCanvasPane: some View {
+        let bin = model.bin
+        let cmp = model.compare ?? []
+        let rowHeight: CGFloat = 19
+        let addrWidth: CGFloat = 66
+        let gutterWidth: CGFloat = 28
+        let coralColor = Color(red: 0.92, green: 0.34, blue: 0.28)
+        let cyanColor = Color(red: 0.20, green: 0.62, blue: 0.96)
+
+        return GeometryReader { geo in
+            let xdfW: CGFloat = model.definition == nil ? 0 : min(max(130, xdfColWidth * 0.85), geo.size.width * 0.24)
+            let visibleRows = max(1, Int((geo.size.height - 28) / rowHeight))
+            let totalDataW = max(240, geo.size.width - addrWidth - gutterWidth - xdfW - 12)
+            let paneW = totalDataW * 0.5
+            let leftStartX = addrWidth
+            let gutterStartX = leftStartX + paneW
+            let rightStartX = gutterStartX + gutterWidth
+            let cellW = paneW / CGFloat(columns)
+            let startAddr = alignedStart(viewportOffset)
+            let visibleRowBases = computeVisibleRowBases(startAddr: startAddr, count: visibleRows, binCount: bin.count)
+            let binLabel = model.binURL?.lastPathComponent ?? "BIN"
+            let cmpLabel = model.compareName
+
+            ZStack(alignment: .topLeading) {
+                Canvas { ctx, size in
+                    let headerH: CGFloat = 24
+                    ctx.fill(Path(CGRect(x: 0, y: 0, width: size.width, height: headerH)), with: .color(.secondary.opacity(0.11)))
+                    ctx.draw(Text("Adresse").font(.caption2.bold().monospaced()).foregroundStyle(.secondary),
+                             at: CGPoint(x: 8, y: headerH / 2), anchor: .leading)
+
+                    // Left pane header (Active BIN)
+                    ctx.draw(Text("BIN · \(binLabel)").font(.caption2.bold()).foregroundStyle(.primary),
+                             at: CGPoint(x: leftStartX + 6, y: headerH / 2), anchor: .leading)
+
+                    // Center gutter header
+                    ctx.draw(Text("←").font(.caption2.bold()).foregroundStyle(.secondary),
+                             at: CGPoint(x: gutterStartX + gutterWidth * 0.5, y: headerH / 2), anchor: .center)
+
+                    // Right pane header (Comparison BIN)
+                    let rightTitle = splitRightDisplay == .values ? "Vergleich · \(cmpLabel)" : "\(splitRightDisplay.rawValue) vs. \(cmpLabel)"
+                    ctx.draw(Text(rightTitle).font(.caption2.bold()).foregroundStyle(Theme.changed),
+                             at: CGPoint(x: rightStartX + 6, y: headerH / 2), anchor: .leading)
+
+                    // Subtle pane divider hairlines
+                    var dividers = Path()
+                    dividers.move(to: CGPoint(x: gutterStartX, y: 0))
+                    dividers.addLine(to: CGPoint(x: gutterStartX, y: size.height))
+                    dividers.move(to: CGPoint(x: rightStartX, y: 0))
+                    dividers.addLine(to: CGPoint(x: rightStartX, y: size.height))
+                    if xdfW > 0 {
+                        let xdfStartX = size.width - xdfW
+                        ctx.draw(Text("XDF-Kennfeld").font(.caption2.bold()).foregroundStyle(.secondary),
+                                 at: CGPoint(x: xdfStartX + 8, y: headerH / 2), anchor: .leading)
+                        dividers.move(to: CGPoint(x: xdfStartX, y: 0))
+                        dividers.addLine(to: CGPoint(x: xdfStartX, y: size.height))
+                    }
+                    ctx.stroke(dividers, with: .color(.secondary.opacity(0.24)), lineWidth: 1)
+
+                    let selRange = selectedRange
+                    var stripePath = Path()
+                    var mapPaths = Array(repeating: Path(), count: XDFAddressIndex.palette.count)
+                    var axisPaths = Array(repeating: Path(), count: XDFAddressIndex.palette.count)
+                    var higherFillPath = Path()
+                    var lowerFillPath = Path()
+                    var higherBarPath = Path()
+                    var lowerBarPath = Path()
+                    var selPath = Path()
+
+                    struct SplitCellDraw {
+                        let text: String
+                        let style: UInt8 // 0 = muted equal, 1 = selected white, 2 = higher coral, 3 = lower cyan
+                        let fontSize: CGFloat
+                        let center: CGPoint
+                    }
+                    var cellDraws: [SplitCellDraw] = []
+                    cellDraws.reserveCapacity(visibleRowBases.count * columns * 2)
+
+                    let baseFontSize: CGFloat = min(10.5, max(7.0, (cellW - 3) / (CGFloat(max(2, elemBytes * 2)) * 0.62)))
+
+                    for (r, rowBase) in visibleRowBases.enumerated() {
+                        let y = headerH + CGFloat(r) * rowHeight
+                        if rowBase >= bin.count { break }
+                        let rowEnd = min(bin.count, rowBase + rowStride)
+                        if r % 2 == 1 {
+                            stripePath.addRect(CGRect(x: 0, y: y, width: size.width, height: rowHeight))
+                        }
+                        ctx.draw(Text(String(format: "0x%05X", rowBase))
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundStyle(.secondary),
+                                 at: CGPoint(x: 6, y: y + rowHeight * 0.5), anchor: .leading)
+
+                        let rowSpans = cachedIndex.spansOverlapping(rowBase, rowEnd)
+                        var rowHasDiff = false
+                        var rowHigher = 0, rowLower = 0
+
+                        for c in 0..<columns {
+                            let off = rowBase + c * elemBytes
+                            guard off + elemBytes <= bin.count else { break }
+                            let cmpOff = off + compareSyncOffset
+                            let lRect = CGRect(x: leftStartX + CGFloat(c) * cellW + 1, y: y + 1, width: max(10, cellW - 2), height: rowHeight - 2)
+                            let rRect = CGRect(x: rightStartX + CGFloat(c) * cellW + 1, y: y + 1, width: max(10, cellW - 2), height: rowHeight - 2)
+
+                            let binVal = readElement(bin, at: off)
+                            let cmpVal = readElement(cmp, at: cmpOff)
+                            let isDiff: Bool = {
+                                guard cmpOff >= 0, cmpOff + elemBytes <= cmp.count else { return false }
+                                if elemBytes == 1 { return bin[off] != cmp[cmpOff] }
+                                for k in 0..<elemBytes where bin[off + k] != cmp[cmpOff + k] { return true }
+                                return false
+                            }()
+                            let isHigher = isDiff && ((binVal ?? 0) >= (cmpVal ?? 0))
+                            if isDiff {
+                                rowHasDiff = true
+                                if isHigher { rowHigher += 1 } else { rowLower += 1 }
+                            }
+
+                            let isSel = selRange?.overlaps(off ..< (off + elemBytes)) ?? false
+                            let span = rowSpans.first { $0.range.contains(off) }
+
+                            if let span {
+                                let ci = span.colorIndex % XDFAddressIndex.palette.count
+                                if span.isAxis {
+                                    axisPaths[ci].addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                    axisPaths[ci].addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                } else {
+                                    mapPaths[ci].addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                    mapPaths[ci].addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                }
+                            } else if isDiff {
+                                if isHigher {
+                                    higherFillPath.addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                    higherFillPath.addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                } else {
+                                    lowerFillPath.addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                    lowerFillPath.addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                }
+                            }
+
+                            if isDiff {
+                                let lBar = CGRect(x: lRect.minX + 2, y: lRect.maxY - 2.2, width: max(3, lRect.width - 4), height: 1.8)
+                                let rBar = CGRect(x: rRect.minX + 2, y: rRect.maxY - 2.2, width: max(3, rRect.width - 4), height: 1.8)
+                                if isHigher {
+                                    higherBarPath.addRoundedRect(in: lBar, cornerSize: CGSize(width: 1, height: 1))
+                                    higherBarPath.addRoundedRect(in: rBar, cornerSize: CGSize(width: 1, height: 1))
+                                } else {
+                                    lowerBarPath.addRoundedRect(in: lBar, cornerSize: CGSize(width: 1, height: 1))
+                                    lowerBarPath.addRoundedRect(in: rBar, cornerSize: CGSize(width: 1, height: 1))
+                                }
+                            }
+
+                            if isSel {
+                                selPath.addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                selPath.addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                            }
+
+                            let leftText = formatElement(bin, at: off)
+                            let rightText: String = {
+                                guard cmpOff >= 0, cmpOff + elemBytes <= cmp.count else { return "—" }
+                                switch splitRightDisplay {
+                                case .values:
+                                    return formatElement(cmp, at: cmpOff)
+                                case .delta:
+                                    guard isDiff, let bv = binVal, let cv = cmpVal else { return "·" }
+                                    let d = bv - cv
+                                    return dataFormat.isFloat ? String(format: "%+.1f", d) : String(format: "%+.0f", d)
+                                case .percent:
+                                    guard isDiff, let bv = binVal, let cv = cmpVal else { return "·" }
+                                    guard cv != 0 else { return "∞" }
+                                    return String(format: "%+.0f%%", (bv - cv) / abs(cv) * 100.0)
+                                }
+                            }()
+
+                            let style: UInt8 = isDiff ? (isHigher ? 2 : 3) : (isSel ? 1 : 0)
+                            let lFS = numberBase == .bin ? min(9.5, max(5.5, (lRect.width - 3) / (CGFloat(max(2, leftText.count)) * 0.62))) : baseFontSize
+                            let rFS = splitRightDisplay != .values ? min(9.5, max(6.5, (rRect.width - 3) / (CGFloat(max(2, rightText.count)) * 0.62))) : lFS
+                            cellDraws.append(SplitCellDraw(text: leftText, style: style, fontSize: lFS, center: CGPoint(x: lRect.midX, y: lRect.midY)))
+                            cellDraws.append(SplitCellDraw(text: rightText, style: style, fontSize: rFS, center: CGPoint(x: rRect.midX, y: rRect.midY)))
+                        }
+
+                        // Center WinOLS Gutter: diff indicator + 1-click "←" transfer hint
+                        if rowHasDiff {
+                            let gx = gutterStartX + gutterWidth * 0.5
+                            let gy = y + rowHeight * 0.5
+                            let pillRect = CGRect(x: gutterStartX + 3, y: y + 2, width: gutterWidth - 6, height: rowHeight - 4)
+                            let gc = rowHigher >= rowLower ? coralColor : cyanColor
+                            ctx.fill(Path(roundedRect: pillRect, cornerRadius: 3), with: .color(gc.opacity(0.18)))
+                            ctx.draw(Text("←").font(.system(size: 10, weight: .bold)).foregroundStyle(gc),
+                                     at: CGPoint(x: gx, y: gy), anchor: .center)
+                        }
+
+                        // Shared XDF labels on far right
+                        let uniqueSpans = xdfW > 0 ? uniqueRowSpans(rowSpans) : []
+                        if !uniqueSpans.isEmpty {
+                            let xdfStartX = size.width - xdfW
+                            let span = uniqueSpans[0]
+                            let dotRect = CGRect(x: xdfStartX + 6, y: y + rowHeight * 0.5 - 3, width: 6, height: 6)
+                            ctx.fill(Path(ellipseIn: dotRect), with: .color(XDFAddressIndex.palette[span.colorIndex % XDFAddressIndex.palette.count]))
+                            let label = uniqueSpans.count > 1 ? "\(span.title) (+\(uniqueSpans.count - 1))" : span.title
+                            let maxChars = max(6, Int((xdfW - 22) / 6.2))
+                            let display = label.count > maxChars ? String(label.prefix(maxChars - 1)) + "…" : label
+                            ctx.draw(Text(display).font(.system(size: 10, weight: .medium)).foregroundStyle(.primary.opacity(0.88)),
+                                     at: CGPoint(x: xdfStartX + 16, y: y + rowHeight * 0.5), anchor: .leading)
+                        }
+                    }
+
+                    // Batched GPU fills
+                    if !stripePath.isEmpty { ctx.fill(stripePath, with: .color(.secondary.opacity(0.035))) }
+                    for ci in 0..<XDFAddressIndex.palette.count {
+                        let base = XDFAddressIndex.palette[ci]
+                        if !mapPaths[ci].isEmpty { ctx.fill(mapPaths[ci], with: .color(base.opacity(0.24))) }
+                        if !axisPaths[ci].isEmpty { ctx.fill(axisPaths[ci], with: .color(base.opacity(0.13))) }
+                    }
+                    if !higherFillPath.isEmpty { ctx.fill(higherFillPath, with: .color(coralColor.opacity(0.20))) }
+                    if !lowerFillPath.isEmpty { ctx.fill(lowerFillPath, with: .color(cyanColor.opacity(0.20))) }
+                    if !selPath.isEmpty { ctx.fill(selPath, with: .color(.white.opacity(0.08))) }
+                    if !higherBarPath.isEmpty { ctx.fill(higherBarPath, with: .color(coralColor.opacity(0.95))) }
+                    if !lowerBarPath.isEmpty { ctx.fill(lowerBarPath, with: .color(cyanColor.opacity(0.95))) }
+
+                    // Cached text glyph draws
+                    struct GlyphKey: Hashable { let text: String; let style: UInt8; let sizeBucket: Int }
+                    var glyphCache: [GlyphKey: GraphicsContext.ResolvedText] = [:]
+                    glyphCache.reserveCapacity(min(cellDraws.count, 320))
+                    for cd in cellDraws {
+                        let key = GlyphKey(text: cd.text, style: cd.style, sizeBucket: Int((cd.fontSize * 2).rounded()))
+                        let resolved: GraphicsContext.ResolvedText
+                        if let cached = glyphCache[key] {
+                            resolved = cached
+                        } else {
+                            let color: Color = {
+                                switch cd.style {
+                                case 1: return .white
+                                case 2: return coralColor
+                                case 3: return cyanColor
+                                default: return .primary.opacity(0.62)
+                                }
+                            }()
+                            let t = Text(cd.text)
+                                .font(.system(size: cd.fontSize, weight: cd.style >= 1 ? .bold : .regular, design: .monospaced))
+                                .foregroundStyle(color)
+                            let r = ctx.resolve(t)
+                            glyphCache[key] = r
+                            resolved = r
+                        }
+                        ctx.draw(resolved, at: cd.center, anchor: .center)
+                    }
+
+                    // Mirrored selection perimeter on BOTH Left & Right panes
+                    if let sel = selRange {
+                        func isCellSel(_ r: Int, _ c: Int) -> Bool {
+                            guard r >= 0, r < visibleRowBases.count, c >= 0, c < columns else { return false }
+                            let off = visibleRowBases[r] + c * elemBytes
+                            guard off + elemBytes <= bin.count else { return false }
+                            return sel.overlaps(off ..< (off + elemBytes))
+                        }
+                        var border = Path()
+                        for paneBaseX in [leftStartX, rightStartX] {
+                            for r in 0..<visibleRowBases.count {
+                                let y0 = headerH + CGFloat(r) * rowHeight + 0.75
+                                let y1 = headerH + CGFloat(r + 1) * rowHeight - 0.75
+                                for c in 0..<columns where isCellSel(r, c) {
+                                    let x0 = paneBaseX + CGFloat(c) * cellW + 0.75
+                                    let x1 = paneBaseX + CGFloat(c + 1) * cellW - 0.75
+                                    if !isCellSel(r - 1, c) { border.move(to: CGPoint(x: x0, y: y0)); border.addLine(to: CGPoint(x: x1, y: y0)) }
+                                    if !isCellSel(r + 1, c) { border.move(to: CGPoint(x: x0, y: y1)); border.addLine(to: CGPoint(x: x1, y: y1)) }
+                                    if !isCellSel(r, c - 1) { border.move(to: CGPoint(x: x0, y: y0)); border.addLine(to: CGPoint(x: x0, y: y1)) }
+                                    if !isCellSel(r, c + 1) { border.move(to: CGPoint(x: x1, y: y0)); border.addLine(to: CGPoint(x: x1, y: y1)) }
+                                }
+                            }
+                        }
+                        if !border.isEmpty {
+                            ctx.stroke(border, with: .color(.black.opacity(0.55)), style: StrokeStyle(lineWidth: 3.0, lineCap: .square))
+                            ctx.stroke(border, with: .color(.white.opacity(0.95)), style: StrokeStyle(lineWidth: 1.5, lineCap: .square))
+                        }
+                    }
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { val in
+                            let headerH: CGFloat = 24
+                            let xdfStartX = geo.size.width - xdfW
+                            // 1-click gutter "←" transfers that row's diffs from Compare -> BIN
+                            if val.startLocation.x >= gutterStartX, val.startLocation.x < rightStartX,
+                               abs(val.translation.width) < 4, abs(val.translation.height) < 4 {
+                                return
+                            }
+                            if xdfW > 0, val.startLocation.x >= xdfStartX, abs(val.translation.width) < 4, abs(val.translation.height) < 4 {
+                                let r = Int((val.startLocation.y - headerH) / rowHeight)
+                                if r >= 0, r < visibleRowBases.count {
+                                    let rowBase = visibleRowBases[r]
+                                    if let first = cachedIndex.spansOverlapping(rowBase, min(bin.count, rowBase + rowStride)).first {
+                                        model.selection = first.itemID
+                                    }
+                                }
+                                return
+                            }
+                            let hitOffset = { (pt: CGPoint) -> Int? in
+                                let r = Int((pt.y - headerH) / rowHeight)
+                                guard r >= 0, r < visibleRowBases.count else { return nil }
+                                let c: Int
+                                if pt.x >= leftStartX && pt.x < gutterStartX {
+                                    c = Int((pt.x - leftStartX) / cellW)
+                                } else if pt.x >= rightStartX && pt.x < rightStartX + paneW {
+                                    c = Int((pt.x - rightStartX) / cellW)
+                                } else {
+                                    return nil
+                                }
+                                guard c >= 0, c < columns else { return nil }
+                                let off = visibleRowBases[r] + c * elemBytes
+                                return off < bin.count ? off : nil
+                            }
+                            if let s = hitOffset(val.startLocation), let e = hitOffset(val.location) {
+                                selectedStart = s
+                                selectedEnd = e
+                            }
+                        }
+                        .onEnded { val in
+                            guard abs(val.translation.width) < 4, abs(val.translation.height) < 4 else { return }
+                            let headerH: CGFloat = 24
+                            let r = Int((val.startLocation.y - headerH) / rowHeight)
+                            guard r >= 0, r < visibleRowBases.count else { return }
+                            // Click on center gutter transfers that entire row from Compare -> BIN!
+                            if val.startLocation.x >= gutterStartX, val.startLocation.x < rightStartX {
+                                let rowBase = visibleRowBases[r]
+                                let rowEnd = min(bin.count, rowBase + rowStride)
+                                copySelectionFromCompare(rowBase ..< rowEnd)
+                                return
+                            }
+                            // Double-click on an XDF map cell opens that map
+                            let c: Int? = (val.startLocation.x >= leftStartX && val.startLocation.x < gutterStartX)
+                                ? Int((val.startLocation.x - leftStartX) / cellW)
+                                : ((val.startLocation.x >= rightStartX && val.startLocation.x < rightStartX + paneW)
+                                   ? Int((val.startLocation.x - rightStartX) / cellW) : nil)
+                            guard let col = c, col >= 0, col < columns else { return }
+                            let off = visibleRowBases[r] + col * elemBytes
+                            let now = Date()
+                            if lastClickOffset == off && now.timeIntervalSince(lastClickTime) < 0.35 {
+                                if let span = cachedIndex.span(at: off) { model.selection = span.itemID }
+                                lastClickOffset = nil
+                            } else {
+                                lastClickOffset = off
+                                lastClickTime = now
+                            }
+                        }
+                )
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let pt):
+                        let headerH: CGFloat = 24
+                        let r = Int((pt.y - headerH) / rowHeight)
+                        guard r >= 0, r < visibleRowBases.count else { hoverState.hex = nil; return }
+                        let c: Int? = (pt.x >= leftStartX && pt.x < gutterStartX)
+                            ? Int((pt.x - leftStartX) / cellW)
+                            : ((pt.x >= rightStartX && pt.x < rightStartX + paneW)
+                               ? Int((pt.x - rightStartX) / cellW) : nil)
+                        if let col = c, col >= 0, col < columns {
+                            let off = visibleRowBases[r] + col * elemBytes
+                            guard off + elemBytes <= bin.count else { hoverState.hex = nil; return }
+                            let spans = cachedIndex.spansOverlapping(off, off + elemBytes)
+                            hoverState.hex = HexHoverInfo(point: pt, address: off, spans: spans, activeItemID: spans.first?.itemID, isXDFColumn: false)
+                        } else {
+                            hoverState.hex = nil
+                        }
+                    case .ended:
+                        hoverState.hex = nil
+                    }
+                }
+                .contextMenu {
+                    hexContextMenu(targetAddr: selectedStart ?? viewportOffset, is2D: false)
+                }
+                .overlay(
+                    ScrollWheelOverlay { dy, mods in
+                        let mult: CGFloat = mods.contains(.shift) ? 8.0 : 1.0
+                        hoverState.hexScrollAccum += (dy / 14.0) * mult
+                        let rows = Int(hoverState.hexScrollAccum.rounded(.towardZero))
+                        if rows != 0 {
+                            hoverState.hexScrollAccum -= CGFloat(rows)
+                            let next = viewportOffset - rows * rowStride
+                            viewportOffset = min(max(0, next), max(0, bin.count - rowStride))
+                        }
+                    }
+                )
+
+                HexHoverHUDContainer(hoverState: hoverState, bounds: geo.size) { info in
+                    hexHoverHUD(info, in: geo.size)
+                }
+            }
+        }
+        .card(padding: 4)
     }
 
     // MARK: - 60-FPS Windowed Hexdump + Right Bar-Graph Canvas
@@ -1265,6 +1700,39 @@ struct HexDiffView: View {
                                      at: CGPoint(x: plot.minX - 4, y: gy), anchor: .trailing)
                         }
 
+                        // Shaded Coral (+)/Cyan (−) diff polygon between BIN and Compare curves
+                        if !cmpPts.isEmpty && cmpPts.count == binPts.count {
+                            var hiPoly = Path()
+                            var loPoly = Path()
+                            for k in 0..<(binPts.count - 1) {
+                                let b0 = binPts[k], b1 = binPts[k + 1]
+                                let c0 = cmpPts[k], c1 = cmpPts[k + 1]
+                                if b0.1 == c0.1 && b1.1 == c1.1 { continue }
+                                let x0 = plot.minX + CGFloat(b0.0) / CGFloat(max(1, elemCount - 1)) * plot.width
+                                let x1 = plot.minX + CGFloat(b1.0) / CGFloat(max(1, elemCount - 1)) * plot.width
+                                let yb0 = plot.maxY - CGFloat((b0.1 - minV) / span) * plot.height
+                                let yb1 = plot.maxY - CGFloat((b1.1 - minV) / span) * plot.height
+                                let yc0 = plot.maxY - CGFloat((c0.1 - minV) / span) * plot.height
+                                let yc1 = plot.maxY - CGFloat((c1.1 - minV) / span) * plot.height
+                                let avgHigher = (b0.1 + b1.1) >= (c0.1 + c1.1)
+                                if avgHigher {
+                                    hiPoly.move(to: CGPoint(x: x0, y: yb0))
+                                    hiPoly.addLine(to: CGPoint(x: x1, y: yb1))
+                                    hiPoly.addLine(to: CGPoint(x: x1, y: yc1))
+                                    hiPoly.addLine(to: CGPoint(x: x0, y: yc0))
+                                    hiPoly.closeSubpath()
+                                } else {
+                                    loPoly.move(to: CGPoint(x: x0, y: yb0))
+                                    loPoly.addLine(to: CGPoint(x: x1, y: yb1))
+                                    loPoly.addLine(to: CGPoint(x: x1, y: yc1))
+                                    loPoly.addLine(to: CGPoint(x: x0, y: yc0))
+                                    loPoly.closeSubpath()
+                                }
+                            }
+                            if !hiPoly.isEmpty { ctx.fill(hiPoly, with: .color(Color(red: 0.92, green: 0.34, blue: 0.28).opacity(0.28))) }
+                            if !loPoly.isEmpty { ctx.fill(loPoly, with: .color(Color(red: 0.20, green: 0.62, blue: 0.96).opacity(0.28))) }
+                        }
+
                         // Comparison waveform (dashed orange)
                         if !cmpPts.isEmpty {
                             var path = Path()
@@ -1974,6 +2442,17 @@ struct HexDiffView: View {
     }
 
     private func jumpDiff(step: Int) {
+        let clusters = model.diffClusters
+        if !clusters.isEmpty {
+            let cur = selectedStart ?? viewportOffset
+            let target = step > 0
+                ? (clusters.first { $0.range.lowerBound > cur } ?? clusters[0])
+                : (clusters.last { $0.range.lowerBound < cur } ?? clusters[clusters.count - 1])
+            viewportOffset = max(0, target.range.lowerBound - rowStride * 2)
+            selectedStart = target.range.lowerBound
+            selectedEnd = max(target.range.lowerBound, target.range.upperBound - elemBytes)
+            return
+        }
         guard let first = cachedDiffOffsets.first, let last = cachedDiffOffsets.last else { return }
         let cur = selectedStart ?? viewportOffset
         let target = step > 0

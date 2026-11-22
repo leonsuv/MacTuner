@@ -146,6 +146,11 @@ final class AppModel {
     var pinnedItemID: Int?
     /// Persistent Hex bookmarks per BIN path.
     private(set) var hexBookmarks: [HexBookmark] = []
+    /// Byte gap threshold for clustering adjacent diffs into map-sized regions (0 / 16 / 32 / 64 B).
+    var diffClusterGap: Int = 32 {
+        didSet { diffClusterCache = nil }
+    }
+    @ObservationIgnored private var diffClusterCache: (revision: Int, gap: Int, clusters: [DiffCluster])?
     /// Additional comparison files (Stage 1, Stage 2, Snapshots, …).
     private(set) var extraCompares: [CompareFile] = []
     /// Persistent per-map edit history across sessions.
@@ -972,9 +977,15 @@ final class AppModel {
     }
 
     func addExtraCompare(_ url: URL) {
+        // If no external Compare BIN is loaded yet (compare is still "Stand beim Öffnen"),
+        // promote this file to the active Compare BIN so Hex-Diff, Sidebar, and Overview all light up immediately!
+        if compareURL == nil && compareLabelOverride == nil && url != binURL {
+            loadCompare(url)
+            return
+        }
         do {
             let loaded = try BinaryFormatCodec.load(url: url)
-            if extraCompares.contains(where: { $0.url == url }) { return }
+            if extraCompares.contains(where: { $0.url == url }) || compareURL == url { return }
             extraCompares.append(CompareFile(name: url.lastPathComponent, url: url, bytes: loaded.bytes))
             recentBins = Self.remember(url, in: "recentBin")
             touch()
@@ -1360,6 +1371,20 @@ final class AppModel {
     }
 
     var outsideByteCount: Int { outsideChanges.reduce(0) { $0 + $1.count } }
+
+    /// Clustered map-sized diff regions (merges adjacent byte diffs within `diffClusterGap` bytes).
+    var diffClusters: [DiffCluster] {
+        guard hasBin, let compare else { return [] }
+        _ = bin.count
+        if let c = diffClusterCache, c.revision == revision, c.gap == diffClusterGap { return c.clusters }
+        let clusters = BinaryAnalysis.clusterDiffs(ranges: outsideChanges, bin: bin, compare: compare, gap: diffClusterGap)
+        diffClusterCache = (revision, diffClusterGap, clusters)
+        return clusters
+    }
+
+    func restoreRange(_ range: Range<Int>) {
+        restore(ranges: [range])
+    }
 
     /// Short description for lists: "12 von 48 Zellen · max. +8,3 %", or "old → new" for constants.
     func changeSummary(_ item: XDFItem) -> String {

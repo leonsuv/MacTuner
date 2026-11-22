@@ -329,22 +329,33 @@ struct MultiCompareView: View {
             }
         }
         let totalBytes = ranges.reduce(0) { $0 + $1.count }
+        let otherBytes = slots.enumerated().first { $0.offset != baseIdx }?.element.bytes ?? baseBytes
+        let clusters = BinaryAnalysis.clusterDiffs(ranges: ranges, bin: otherBytes, compare: baseBytes, gap: model.diffClusterGap)
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("Bin-vs-Bin Mehrdatei-Diff (ohne XDF)").font(.headline)
-                Chip(text: "\(ranges.count) Bereiche · \(totalBytes) B", icon: "square.split.1x2")
+                Text("Bin-vs-Bin Diff-Blöcke (ohne XDF)").font(.headline)
+                Chip(text: "\(clusters.count) Blöcke · \(totalBytes) B", icon: "square.split.1x2")
                 Spacer()
+                Button {
+                    if let first = clusters.first { model.hexJumpTarget = first.range }
+                    model.selection = AppModel.hexDiffSelection
+                } label: {
+                    Label("Side-by-Side Hex-Diff öffnen", systemImage: "rectangle.split.2x1")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
             }
-            if ranges.isEmpty {
+            if clusters.isEmpty {
                 ContentUnavailableView("Alle \(slots.count) Dateien sind byte-identisch", systemImage: "checkmark.circle")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView([.vertical, .horizontal]) {
                     Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                         GridRow {
-                            Text("Adresse").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            Text("Länge").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text("Block").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text("Typ").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text("Größe").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                             ForEach(Array(slots.enumerated()), id: \.element.id) { idx, s in
                                 Text(idx == baseIdx ? "\(s.name) (Basis)" : s.name)
                                     .font(.caption.weight(.semibold))
@@ -352,22 +363,31 @@ struct MultiCompareView: View {
                             }
                         }
                         Divider()
-                        ForEach(ranges.prefix(300), id: \.lowerBound) { r in
+                        ForEach(clusters.prefix(250)) { c in
+                            let r = c.range
                             GridRow {
                                 Button {
                                     model.hexJumpTarget = r
                                     model.selection = AppModel.hexDiffSelection
                                 } label: {
                                     Text(String(format: "0x%05X–0x%05X", r.lowerBound, r.upperBound - 1))
-                                        .font(.caption.monospaced())
+                                        .font(.caption.monospaced().weight(.semibold))
                                         .foregroundStyle(Color.accentColor)
                                 }
                                 .buttonStyle(.plain)
-                                Text("\(r.count) B").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                Text(c.shapeHint)
+                                    .font(.caption2.weight(.medium))
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background((c.isLikelySignature ? Color.secondary : Color.accentColor).opacity(0.14), in: Capsule())
+                                    .foregroundStyle(c.isLikelySignature ? .secondary : Color.accentColor)
+                                Text("\(c.spanBytes) B (\(c.changedBytes) Δ)")
+                                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                                 ForEach(Array(slots.enumerated()), id: \.element.id) { idx, s in
-                                    let slice = s.bytes[r]
-                                    let isDiff = idx != baseIdx && slice != baseBytes[r]
-                                    Text(Changes.hex(slice.prefix(12)) + (r.count > 12 ? " …" : ""))
+                                    let safeEnd = min(r.upperBound, s.bytes.count)
+                                    let slice = r.lowerBound < safeEnd ? s.bytes[r.lowerBound ..< safeEnd] : ArraySlice<UInt8>()
+                                    let baseSlice = r.lowerBound < min(r.upperBound, baseBytes.count) ? baseBytes[r.lowerBound ..< min(r.upperBound, baseBytes.count)] : ArraySlice<UInt8>()
+                                    let isDiff = idx != baseIdx && slice != baseSlice
+                                    Text(Changes.hex(slice.prefix(10)) + (slice.count > 10 ? " …" : ""))
                                         .font(.caption.monospaced())
                                         .foregroundStyle(isDiff ? Theme.changed : .secondary)
                                 }
