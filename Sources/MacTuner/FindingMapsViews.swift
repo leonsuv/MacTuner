@@ -10,14 +10,18 @@ struct MapFinderView: View {
     @State private var isFloat = false
     @State private var lsbFirst = true
     @State private var candidates: [MapFinder.Candidate] = []
-    @State private var selectedID: UUID?
+    @State private var selectedID: String?
     @State private var scanned = false
+
+    private var displayedCandidates: [MapFinder.Candidate] {
+        scanned ? candidates : model.activePotentialMaps
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Text("Kennfeld-Finder").font(.system(size: 22, weight: .bold))
-                Chip(text: "\(candidates.count) Kandidaten", icon: "sparkle.magnifyingglass")
+                Chip(text: "\(displayedCandidates.count) Kandidaten", icon: "sparkle.magnifyingglass")
                 Spacer()
                 Picker("Bits", selection: Binding(
                     get: { isFloat ? 32 : bits },
@@ -58,17 +62,14 @@ struct MapFinderView: View {
             if !model.hasBin {
                 ContentUnavailableView("Keine BIN geladen", systemImage: "memorychip")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if !scanned {
-                ContentUnavailableView("Unbekannte Kennfelder erkennen", systemImage: "sparkle.magnifyingglass",
+            } else if displayedCandidates.isEmpty {
+                ContentUnavailableView(scanned ? "Keine neuen Kandidaten gefunden" : "Unbekannte Kennfelder erkennen",
+                                       systemImage: "sparkle.magnifyingglass",
                                        description: Text("Durchsucht die BIN anhand von Achsen-Headern und glatten 2D-Strukturen nach potentiellen Kennfeldern."))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if candidates.isEmpty {
-                ContentUnavailableView("Keine neuen Kandidaten gefunden", systemImage: "checkmark.circle",
-                                       description: Text("Probiere andere Bitbreite oder Byte-Reihenfolge (LSB/MSB)."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HSplitView {
-                    List(candidates, selection: $selectedID) { c in
+                    List(displayedCandidates, selection: $selectedID) { c in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(String(format: "0x%05X  (%d × %d)", c.address, c.rows, c.cols))
@@ -80,13 +81,13 @@ struct MapFinderView: View {
                                 .font(.caption.bold().monospacedDigit())
                                 .foregroundStyle(c.confidence > 0.8 ? .green : .orange)
                         }
-                        .tag(c.id as UUID?)
+                        .tag(c.id as String?)
                     }
                     .listStyle(.inset)
                     .frame(minWidth: 280, idealWidth: 340, maxWidth: 420, maxHeight: .infinity)
                     .card(padding: 6)
 
-                    if let sel = candidates.first(where: { $0.id == selectedID }) {
+                    if let sel = displayedCandidates.first(where: { $0.id == selectedID }) ?? displayedCandidates.first {
                         candidatePreview(sel)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
@@ -121,7 +122,19 @@ struct MapFinderView: View {
                 if let ya = c.yAxisAddress { Chip(text: String(format: "Y: 0x%05X", ya)) }
                 Spacer()
                 Button {
-                    addCandidate(c)
+                    model.showCandidateInHex(c)
+                } label: {
+                    Label("Im Hex zeigen", systemImage: "memorychip")
+                }
+                .buttonStyle(.bordered)
+                Button {
+                    model.xdfEditorRequest = XDFEditorRequest(presetCandidate: c)
+                } label: {
+                    Label("Bearbeiten …", systemImage: "slider.horizontal.3")
+                }
+                .buttonStyle(.bordered)
+                Button {
+                    model.addCandidateToXDF(c, selectAfterAdd: true)
                 } label: {
                     Label("Zur XDF hinzufügen", systemImage: "plus.circle.fill")
                 }

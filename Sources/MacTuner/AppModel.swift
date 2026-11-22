@@ -107,6 +107,7 @@ struct XDFEditorRequest: Identifiable {
     let id = UUID()
     var existingItem: XDFItem?
     var presetRange: Range<Int>?
+    var presetCandidate: MapFinder.Candidate?
 }
 
 enum SidebarScope: String {
@@ -130,6 +131,10 @@ struct BinDocument: Identifiable {
     var snapshots: [BinSnapshotMeta] = []
     var hexBookmarks: [HexBookmark] = []
     var checksumPluginID: String?
+    var rawPotentialMaps: [MapFinder.Candidate] = []
+    var potentialMapsScanned: Bool = false
+    var isScanningPotentialMaps: Bool = false
+    var dismissedPotentialMapKeys: Set<String> = []
 
     init(id: UUID = UUID(), url: URL?, name: String, bytes: [UInt8],
          format: BinaryFormatCodec.Format = .raw, baseAddress: UInt64 = 0,
@@ -298,6 +303,129 @@ final class AppModel {
     var showCommandPalette = false
     var xdfEditorRequest: XDFEditorRequest?
     var hexJumpTarget: Range<Int>?
+    var hexSnapCandidate: MapFinder.Candidate?
+    var potentialMapRevision: Int = 0
+    @ObservationIgnored private var potentialScanTask: Task<Void, Never>?
+
+    var isScanningPotentialMaps: Bool {
+        activeBin?.isScanningPotentialMaps ?? false
+    }
+
+    var dismissedPotentialMapCount: Int {
+        activeBin?.dismissedPotentialMapKeys.count ?? 0
+    }
+
+    /// Potential maps for the active BIN, dynamically filtered in <0.05 ms against defined XDF coverage & dismissed keys.
+    var activePotentialMaps: [MapFinder.Candidate] {
+        _ = revision
+        _ = potentialMapRevision
+        guard let doc = activeBin else { return [] }
+        let cov = covered
+        let dismissed = doc.dismissedPotentialMapKeys
+        return doc.rawPotentialMaps.filter { c in
+            !dismissed.contains(c.signatureKey) && !cov.intersects(integersIn: c.dataRange)
+        }
+    }
+
+    func schedulePotentialMapScan(for binID: UUID? = nil, force: Bool = false) {
+        let targetID = binID ?? activeBinID
+        guard let id = targetID,
+              let idx = openBins.firstIndex(where: { $0.id == id }) else { return }
+        if !force && (openBins[idx].potentialMapsScanned || openBins[idx].isScanningPotentialMaps) { return }
+        let bytes = openBins[idx].bytes
+        let ecu = openBins[idx].ecuIdentity
+        guard bytes.count >= 64 else { return }
+
+        openBins[idx].isScanningPotentialMaps = true
+        potentialMapRevision &+= 1
+        potentialScanTask?.cancel()
+        potentialScanTask = Task.detached(priority: .utility) {
+            let results = MapFinder.scanWorkspaceBin(bytes: bytes, ecu: ecu)
+            if Task.isCancelled { return }
+            await MainActor.run {
+                guard let liveIdx = self.openBins.firstIndex(where: { $0.id == id }) else { return }
+                self.openBins[liveIdx].rawPotentialMaps = results
+                self.openBins[liveIdx].potentialMapsScanned = true
+                self.openBins[liveIdx].isScanningPotentialMaps = false
+                self.potentialMapRevision &+= 1
+            }
+        }
+    }
+
+    @discardableResult
+    func addCandidateToXDF(_ c: MapFinder.Candidate, selectAfterAdd: Bool = false) -> XDFItem? {
+        ensureDefinitionForEdit()
+        guard var def = definition else { return nil }
+        let xAxis: Axis = c.xAxisAddress.map { addr in
+            Axis(source: .data(DataLayout(address: addr, bits: c.axisBits, signed: false, lsbFirst: c.lsbFirst,
+                                          columnMajor: false, isFloat: c.isFloat, rows: 1, cols: c.cols)),
+                 count: c.cols, scaling: .identity)
+        } ?? Axis(source: .none, count: c.cols, scaling: .identity)
+        let yAxis: Axis = c.yAxisAddress.map { addr in
+            Axis(source: .data(DataLayout(address: addr, bits: c.axisBits, signed: false, lsbFirst: c.lsbFirst,
+                                          columnMajor: false, isFloat: c.isFloat, rows: 1, cols: c.rows)),
+                 count: c.rows, scaling: .identity)
+        } ?? Axis(source: .none, count: c.rows, scaling: .identity)
+
+        let title = c.rows == 1
+            ? String(format: "Kennlinie 0x%05X (%d)", c.address, c.cols)
+            : String(format: "Kennfeld 0x%05X (%d×%d)", c.address, c.rows, c.cols)
+        let item = XDFItem(
+            id: def.items.count,
+            title: title,
+            description: "Automatisch erkannt: \(c.reason)",
+            categories: [],
+            kind: .table(x: xAxis, y: yAxis),
+            data: c.layout,
+            scaling: .identity
+        )
+        def.items.append(item)
+        definition = def
+        covered = Changes.coverage(def)
+        xdfDirty = true
+        if selectAfterAdd {
+            selection = item.id
+        }
+        potentialMapRevision &+= 1
+        touch()
+        return item
+    }
+
+    func dismissPotentialMap(_ c: MapFinder.Candidate) {
+        guard let idx = activeBinIndex else { return }
+        openBins[idx].dismissedPotentialMapKeys.insert(c.signatureKey)
+        if let path = openBins[idx].url?.path {
+            Self.saveDismissedPotentialMaps(openBins[idx].dismissedPotentialMapKeys, for: path)
+        }
+        potentialMapRevision &+= 1
+    }
+
+    func resetDismissedPotentialMaps() {
+        guard let idx = activeBinIndex else { return }
+        openBins[idx].dismissedPotentialMapKeys.removeAll()
+        if let path = openBins[idx].url?.path {
+            Self.saveDismissedPotentialMaps([], for: path)
+        }
+        potentialMapRevision &+= 1
+    }
+
+    func showCandidateInHex(_ c: MapFinder.Candidate) {
+        hexSnapCandidate = c
+        hexJumpTarget = c.dataRange
+        selection = Self.hexDiffSelection
+    }
+
+    private static func loadDismissedPotentialMaps(for binPath: String) -> Set<String> {
+        let dict = UserDefaults.standard.dictionary(forKey: "dismissedPotentialMaps") as? [String: [String]] ?? [:]
+        return Set(dict[binPath] ?? [])
+    }
+
+    private static func saveDismissedPotentialMaps(_ keys: Set<String>, for binPath: String) {
+        var dict = UserDefaults.standard.dictionary(forKey: "dismissedPotentialMaps") as? [String: [String]] ?? [:]
+        if keys.isEmpty { dict.removeValue(forKey: binPath) }
+        else { dict[binPath] = Array(keys) }
+        UserDefaults.standard.set(dict, forKey: "dismissedPotentialMaps")
+    }
 
     // Auto-Align (Cross-Version OLS / Definition Alignment)
     var importedDefinitionURL: URL?
@@ -1062,6 +1190,7 @@ final class AppModel {
             doc.history = HistoryStore.load(for: url.path)
             doc.snapshots = SnapshotStore.loadIndex(for: url.path)
             doc.hexBookmarks = Self.loadHexBookmarks(for: url.path)
+            doc.dismissedPotentialMapKeys = Self.loadDismissedPotentialMaps(for: url.path)
             doc.checksumPluginID = ChecksumRegistry.shared.autoDetect(bin: loaded.bytes)?.id
             openBins.append(doc)
             recentBins = Self.remember(url, in: "recentBin")
@@ -1071,6 +1200,7 @@ final class AppModel {
                 if compareSource == .bin(doc.id) { compareSource = .openedState }
                 clearAlignmentState()
                 refreshEmbeddedSourceBin()
+                schedulePotentialMapScan(for: doc.id)
             } else if makeCompare || (compareBinID == nil && openBins.count == 2) {
                 compareSource = .bin(doc.id)
                 if definition == nil && selection == nil {
@@ -1121,6 +1251,7 @@ final class AppModel {
         refreshEmbeddedSourceBin()
         persistOpenBins()
         refreshSyncOffsetSuggestion()
+        schedulePotentialMapScan()
         touch()
     }
 
@@ -1133,6 +1264,7 @@ final class AppModel {
         }
         persistOpenBins()
         refreshSyncOffsetSuggestion()
+        schedulePotentialMapScan()
         touch()
     }
 
@@ -1146,6 +1278,7 @@ final class AppModel {
         refreshEmbeddedSourceBin()
         persistOpenBins()
         refreshSyncOffsetSuggestion()
+        schedulePotentialMapScan()
         touch()
     }
 
@@ -1883,6 +2016,7 @@ final class AppModel {
             if compareSource == .bin(doc.id) { compareSource = .openedState }
             clearAlignmentState()
             refreshEmbeddedSourceBin()
+            schedulePotentialMapScan(for: doc.id)
         }
         touch()
     }

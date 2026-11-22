@@ -60,7 +60,7 @@ struct XDFItemEditorSheet: View {
         case patch = "Patch"
     }
 
-    init(existingItem: XDFItem? = nil, presetRange: Range<Int>? = nil) {
+    init(existingItem: XDFItem? = nil, presetRange: Range<Int>? = nil, presetCandidate: MapFinder.Candidate? = nil) {
         self.existingID = existingItem?.id
         if let item = existingItem {
             _title = State(initialValue: item.title)
@@ -113,6 +113,31 @@ struct XDFItemEditorSheet: View {
                 if entries.count > 1 {
                     _preservedExtraPatchEntries = State(initialValue: Array(entries.dropFirst()))
                 }
+            }
+        } else if let cand = presetCandidate {
+            _itemType = State(initialValue: (cand.rows == 1 && cand.cols == 1) ? .constant : .table)
+            let defaultTitle = cand.rows == 1
+                ? String(format: "Kennlinie 0x%05X (%d)", cand.address, cand.cols)
+                : String(format: "Kennfeld 0x%05X (%d×%d)", cand.address, cand.rows, cand.cols)
+            _title = State(initialValue: defaultTitle)
+            _description = State(initialValue: "Automatisch erkannt: \(cand.reason)")
+            _addressText = State(initialValue: String(format: "0x%X", cand.address))
+            _bits = State(initialValue: cand.bits)
+            _signed = State(initialValue: cand.signed)
+            _lsbFirst = State(initialValue: cand.lsbFirst)
+            _columnMajor = State(initialValue: cand.columnMajor)
+            _isFloat = State(initialValue: cand.isFloat)
+            _rows = State(initialValue: cand.rows)
+            _cols = State(initialValue: cand.cols)
+            if let xa = cand.xAxisAddress {
+                _xAddrText = State(initialValue: String(format: "0x%X", xa))
+                _xBits = State(initialValue: cand.axisBits)
+                _xIsFloat = State(initialValue: cand.isFloat)
+            }
+            if let ya = cand.yAxisAddress {
+                _yAddrText = State(initialValue: String(format: "0x%X", ya))
+                _yBits = State(initialValue: cand.axisBits)
+                _yIsFloat = State(initialValue: cand.isFloat)
             }
         } else if let range = presetRange {
             let guessBits = (range.count >= 4 && range.count % 2 == 0) ? 16 : 8

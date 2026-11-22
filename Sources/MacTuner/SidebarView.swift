@@ -48,6 +48,28 @@ struct SidebarView: View {
             }
             .onAppear { expandSelection(def) }
             .onChange(of: model.selection) { expandSelection(def) }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if !model.activePotentialMaps.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.caption2)
+                            .foregroundStyle(PotentialMapIndex.amberData)
+                        Text("\(model.activePotentialMaps.count) unkartierte Kennfelder")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Im Hex zeigen") {
+                            model.selection = AppModel.hexDiffSelection
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.bar)
+                    .overlay(alignment: .top) { Divider() }
+                }
+            }
         } else if model.hasBin {
             standaloneBinSidebar
         } else {
@@ -58,11 +80,18 @@ struct SidebarView: View {
 
     @ViewBuilder private var standaloneBinSidebar: some View {
         let clusters = model.diffClusters
+        let potentialMaps = model.activePotentialMaps
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
         let filteredClusters = q.isEmpty ? clusters : clusters.filter { c in
             String(format: "0x%05x", c.range.lowerBound).contains(q) ||
             String(format: "%05x", c.range.lowerBound).contains(q) ||
             c.shapeHint.lowercased().contains(q)
+        }
+        let filteredPotential = q.isEmpty ? potentialMaps : potentialMaps.filter { c in
+            String(format: "0x%05x", c.address).contains(q) ||
+            String(format: "%05x", c.address).contains(q) ||
+            c.shortBadge.lowercased().contains(q) ||
+            c.reason.lowercased().contains(q)
         }
         VStack(spacing: 0) {
             HStack(spacing: 6) {
@@ -84,11 +113,20 @@ struct SidebarView: View {
 
             Picker("", selection: $binTab) {
                 Text("Blöcke (\(clusters.count))").tag(0)
-                Text("Marker (\(model.hexBookmarks.count))").tag(1)
+                Text("Erkannt (\(potentialMaps.count))").tag(1)
+                Text("Marker (\(model.hexBookmarks.count))").tag(2)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .padding(.horizontal, 10).padding(.bottom, 6)
+            .onAppear {
+                model.schedulePotentialMapScan()
+                if clusters.isEmpty && binTab == 0 { binTab = 1 }
+            }
+            .onChange(of: model.activeBinID) { _, _ in
+                model.schedulePotentialMapScan()
+                if model.diffClusters.isEmpty && binTab == 0 { binTab = 1 }
+            }
 
             if binTab == 0 && !clusters.isEmpty {
                 HStack(spacing: 6) {
@@ -111,6 +149,84 @@ struct SidebarView: View {
             Divider()
 
             if binTab == 1 {
+                if model.isScanningPotentialMaps && filteredPotential.isEmpty {
+                    VStack(spacing: 8) {
+                        ProgressView()
+                        Text("Erkenne Kennfelder …").font(.caption).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if filteredPotential.isEmpty {
+                    ContentUnavailableView("Keine erkannten Kennfelder", systemImage: "sparkles",
+                                           description: Text("Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen."))
+                } else {
+                    List {
+                        ForEach(filteredPotential) { cand in
+                            let hasDiff = clusters.contains { $0.range.overlaps(cand.dataRange) }
+                            HStack(spacing: 6) {
+                                Button {
+                                    model.showCandidateInHex(cand)
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack(spacing: 5) {
+                                            Text(String(format: "0x%05X", cand.address))
+                                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                            Text("\(cand.rows)×\(cand.cols)")
+                                                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                                .background(PotentialMapIndex.amberData.opacity(0.18), in: Capsule())
+                                                .foregroundStyle(PotentialMapIndex.amberData)
+                                            Spacer(minLength: 2)
+                                            Text("\(Int((cand.confidence * 100).rounded()))%")
+                                                .font(.system(size: 9.5, weight: .bold).monospacedDigit())
+                                                .foregroundStyle(cand.confidence >= 0.85 ? .green : PotentialMapIndex.amberData)
+                                        }
+                                        HStack(spacing: 5) {
+                                            Text(cand.shortBadge)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                            if hasDiff {
+                                                Text("● Diff")
+                                                    .font(.system(size: 9, weight: .bold))
+                                                    .foregroundStyle(Theme.changed)
+                                            }
+                                        }
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    model.addCandidateToXDF(cand, selectAfterAdd: false)
+                                } label: {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(PotentialMapIndex.amberData)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Zur XDF hinzufügen (1-Klick)")
+                            }
+                            .padding(.vertical, 2)
+                            .contextMenu {
+                                Button { model.addCandidateToXDF(cand, selectAfterAdd: false) } label: {
+                                    Label("Zur XDF hinzufügen (1-Klick)", systemImage: "plus.circle.fill")
+                                }
+                                Button { model.addCandidateToXDF(cand, selectAfterAdd: true) } label: {
+                                    Label("Zur XDF hinzufügen & im Tabellen-Editor öffnen", systemImage: "tablecells.fill")
+                                }
+                                Button { model.xdfEditorRequest = XDFEditorRequest(presetCandidate: cand) } label: {
+                                    Label("Als XDF-Element anpassen & speichern …", systemImage: "slider.horizontal.3")
+                                }
+                                Divider()
+                                Button(role: .destructive) { model.dismissPotentialMap(cand) } label: {
+                                    Label("Kandidat ausblenden (Ignorieren)", systemImage: "eye.slash")
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.sidebar)
+                }
+            } else if binTab == 2 {
                 if model.hexBookmarks.isEmpty {
                     ContentUnavailableView("Keine Lesezeichen", systemImage: "bookmark",
                                            description: Text("Setze im Hex-Diff Lesezeichen per Rechtsklick oder über das Lesezeichen-Menü."))

@@ -228,6 +228,8 @@ struct HexDiffView: View {
         let spans: [XDFAddressIndex.Span]
         let activeItemID: Int?
         let isXDFColumn: Bool
+        let potentialCandidate: MapFinder.Candidate?
+        let potentialRole: PotentialMapIndex.Span.Role?
     }
 
     struct WaveHoverInfo: Equatable {
@@ -236,7 +238,25 @@ struct HexDiffView: View {
         let valueText: String
         let cmpText: String?
         let span: XDFAddressIndex.Span?
+        let potentialCandidate: MapFinder.Candidate?
+        let potentialRole: PotentialMapIndex.Span.Role?
     }
+
+    enum PotentialFilter: String, CaseIterable {
+        case all = "Alle Typen"
+        case withAxes = "Nur mit Achsen (Bosch/Siemens)"
+        case maps2D = "Nur 2D-Kennfelder"
+        case curves1D = "Nur 1D-Kennlinien"
+        case modifiedOnly = "Nur Geänderte (Diff)"
+    }
+
+    // Potential map recognition overlay state
+    @State private var showPotentialMaps = true
+    @State private var potentialMinConfidence: Double = 0.70
+    @State private var potentialPatternFilter: PotentialFilter = .all
+    @State private var autoAlignOnPotentialJump = true
+    @State private var pinnedCandidateKey: String? = nil
+    @State private var cachedPotentialIndex = PotentialMapIndex.empty
 
     // Cached index & diff offsets (rebuilt only when BIN/XDF changes, NEVER on scroll/hover)
     @State private var cachedIndex = XDFAddressIndex(definition: nil)
@@ -255,6 +275,7 @@ struct HexDiffView: View {
         let regionKind: BinaryAnalysis.RegionKind
         let hasXDF: Bool
         let hasDiff: Bool
+        let hasPotential: Bool
     }
 
     private var elemBytes: Int { dataFormat.bytes }
@@ -319,14 +340,25 @@ struct HexDiffView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             splitDiffMode = hasExternalCompare
+            model.schedulePotentialMapScan()
             rebuildCaches()
             consumeJumpTarget()
         }
         .onChange(of: model.hexJumpTarget) { _, _ in consumeJumpTarget() }
+        .onChange(of: model.hexSnapCandidate) { _, _ in consumeJumpTarget() }
         .onChange(of: model.bin.count) { _, _ in rebuildCaches() }
         .onChange(of: model.xdfURL) { _, _ in rebuildCaches() }
+        .onChange(of: model.potentialMapRevision) { _, _ in rebuildCaches() }
+        .onChange(of: showPotentialMaps) { _, _ in
+            if !showPotentialMaps { pinnedCandidateKey = nil }
+            rebuildCaches()
+        }
+        .onChange(of: potentialMinConfidence) { _, _ in rebuildCaches() }
+        .onChange(of: potentialPatternFilter) { _, _ in rebuildCaches() }
         .onChange(of: model.activeBinID) { _, _ in
             splitDiffMode = hasExternalCompare
+            pinnedCandidateKey = nil
+            model.schedulePotentialMapScan()
             rebuildCaches()
         }
         .onChange(of: model.compareSource) { _, _ in
@@ -465,6 +497,9 @@ struct HexDiffView: View {
             }
 
             Spacer(minLength: 4)
+
+            // Potential Map Recognition Cluster
+            potentialMapsToolbarCluster
 
             // Diff navigation
             if !cachedDiffOffsets.isEmpty {
@@ -714,17 +749,21 @@ struct HexDiffView: View {
                     .padding(.vertical, 3)
                     .padding(.horizontal, 1)
 
-                // Diff & XDF overview tick marks along the scrollbar track
+                // Diff, XDF & Potential Map overview tick marks along the scrollbar track
                 Canvas { ctx, size in
                     let n = cachedMinimap.count
                     guard n > 0 else { return }
                     let stepH = max(1.5, (size.height - 8) / CGFloat(n))
                     for i in 0..<n {
                         let b = cachedMinimap[i]
-                        guard b.hasDiff || b.hasXDF else { continue }
                         let y = 4 + (CGFloat(i) / CGFloat(n)) * (size.height - 8)
-                        let c = b.hasDiff ? Theme.changed.opacity(0.85) : Color.accentColor.opacity(0.45)
-                        ctx.fill(Path(CGRect(x: 2, y: y, width: size.width - 4, height: stepH)), with: .color(c))
+                        if b.hasDiff || b.hasXDF {
+                            let c = b.hasDiff ? Theme.changed.opacity(0.85) : Color.accentColor.opacity(0.45)
+                            ctx.fill(Path(CGRect(x: 2, y: y, width: size.width - 4, height: stepH)), with: .color(c))
+                        } else if showPotentialMaps && b.hasPotential {
+                            ctx.fill(Path(CGRect(x: 2, y: y, width: (size.width - 4) * 0.55, height: stepH)),
+                                     with: .color(PotentialMapIndex.amberData.opacity(0.75)))
+                        }
                     }
                 }
                 .allowsHitTesting(false)
@@ -751,6 +790,87 @@ struct HexDiffView: View {
         .padding(.leading, 2)
     }
 
+    private var potentialMapsToolbarCluster: some View {
+        let count = cachedPotentialIndex.candidates.count
+        let amber = PotentialMapIndex.amberData
+        return HStack(spacing: 4) {
+            Button {
+                showPotentialMaps.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    if model.isScanningPotentialMaps {
+                        ProgressView().controlSize(.mini).scaleEffect(0.75)
+                    } else {
+                        Image(systemName: "sparkles")
+                    }
+                    Text(showPotentialMaps ? "\(count)" : "Aus")
+                        .monospacedDigit()
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(showPotentialMaps ? amber : .secondary)
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(showPotentialMaps ? amber.opacity(0.16) : Color.secondary.opacity(0.10), in: Capsule())
+                .overlay(Capsule().strokeBorder(showPotentialMaps ? amber.opacity(0.45) : .clear, lineWidth: 0.75))
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("p", modifiers: [.option])
+            .help("Potenzielle Kennfelder im Hex-Viewer ein-/ausblenden (⌥P)")
+
+            if showPotentialMaps && count > 0 {
+                ControlGroup {
+                    Button { jumpPotentialMap(step: -1) } label: { Image(systemName: "chevron.left") }
+                        .help("Vorheriges erkanntes Kennfeld")
+                    Button { jumpPotentialMap(step: 1) } label: { Image(systemName: "chevron.right") }
+                        .help("Nächstes erkanntes Kennfeld")
+                }
+                .fixedSize()
+            }
+
+            Menu {
+                Section("Konfidenz-Schwelle") {
+                    Button { potentialMinConfidence = 0.85 } label: {
+                        Label("Hoch (≥ 85 % — wenig Rauschen)", systemImage: potentialMinConfidence >= 0.84 ? "checkmark" : "")
+                    }
+                    Button { potentialMinConfidence = 0.70 } label: {
+                        Label("Ausgewogen (≥ 70 % — Empfohlen)", systemImage: (potentialMinConfidence >= 0.68 && potentialMinConfidence < 0.84) ? "checkmark" : "")
+                    }
+                    Button { potentialMinConfidence = 0.55 } label: {
+                        Label("Sensitiv (≥ 55 % — inkl. Kurven)", systemImage: potentialMinConfidence < 0.68 ? "checkmark" : "")
+                    }
+                }
+                Section("Filter") {
+                    ForEach(PotentialFilter.allCases, id: \.self) { f in
+                        Button { potentialPatternFilter = f } label: {
+                            Label(f.rawValue, systemImage: potentialPatternFilter == f ? "checkmark" : "")
+                        }
+                    }
+                }
+                Divider()
+                Toggle("Spalten beim Springen automatisch anpassen", isOn: $autoAlignOnPotentialJump)
+                Divider()
+                Button {
+                    model.schedulePotentialMapScan(force: true)
+                } label: {
+                    Label("BIN neu scannen", systemImage: "arrow.clockwise")
+                }
+                if model.dismissedPotentialMapCount > 0 {
+                    Button {
+                        model.resetDismissedPotentialMaps()
+                    } label: {
+                        Label("Ausgeblendete wiederherstellen (\(model.dismissedPotentialMapCount))", systemImage: "eye")
+                    }
+                }
+            } label: {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .font(.caption)
+                    .foregroundStyle(showPotentialMaps ? amber : .secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Erkennungs-Filter & Konfidenz")
+        }
+    }
+
     // MARK: - 60-FPS WinOLS Side-by-Side Dual-Pane Synchronized Hex-Diff Canvas
 
     private var hexdumpSplitCanvasPane: some View {
@@ -761,9 +881,10 @@ struct HexDiffView: View {
         let gutterWidth: CGFloat = 28
         let coralColor = Color(red: 0.92, green: 0.34, blue: 0.28)
         let cyanColor = Color(red: 0.20, green: 0.62, blue: 0.96)
+        let hasRightLabels = model.definition != nil || (showPotentialMaps && !cachedPotentialIndex.candidates.isEmpty)
 
         return GeometryReader { geo in
-            let xdfW: CGFloat = model.definition == nil ? 0 : min(max(130, xdfColWidth * 0.85), geo.size.width * 0.24)
+            let xdfW: CGFloat = !hasRightLabels ? 0 : min(max(145, xdfColWidth * 0.90), geo.size.width * 0.24)
             let visibleRows = max(1, Int((geo.size.height - 28) / rowHeight))
             let totalDataW = max(240, geo.size.width - addrWidth - gutterWidth - xdfW - 12)
             let paneW = totalDataW * 0.5
@@ -820,6 +941,11 @@ struct HexDiffView: View {
                     var higherBarPath = Path()
                     var lowerBarPath = Path()
                     var selPath = Path()
+                    var potDataFillPath = Path()
+                    var potAxisFillPath = Path()
+                    var potCornerPath = Path()
+                    let amberColor = PotentialMapIndex.amberData
+                    let mintColor = PotentialMapIndex.mintAxis
 
                     struct SplitCellDraw {
                         let text: String
@@ -845,6 +971,7 @@ struct HexDiffView: View {
                                  at: CGPoint(x: 6, y: y + rowHeight * 0.5), anchor: .leading)
 
                         let rowSpans = cachedIndex.spansOverlapping(rowBase, rowEnd)
+                        let rowPotSpans = showPotentialMaps ? cachedPotentialIndex.spansOverlapping(rowBase, rowEnd) : []
                         var rowHasDiff = false
                         var rowHigher = 0, rowLower = 0
 
@@ -871,6 +998,9 @@ struct HexDiffView: View {
 
                             let isSel = selRange?.overlaps(off ..< (off + elemBytes)) ?? false
                             let span = rowSpans.first { $0.range.contains(off) }
+                            let potSpan = (span == nil && !rowPotSpans.isEmpty)
+                                ? (rowPotSpans.first { $0.role == .data && $0.range.contains(off) } ?? rowPotSpans.first { $0.range.contains(off) })
+                                : nil
 
                             if let span {
                                 let ci = span.colorIndex % XDFAddressIndex.palette.count
@@ -881,13 +1011,31 @@ struct HexDiffView: View {
                                     mapPaths[ci].addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
                                     mapPaths[ci].addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
                                 }
-                            } else if isDiff {
-                                if isHigher {
-                                    higherFillPath.addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
-                                    higherFillPath.addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
-                                } else {
-                                    lowerFillPath.addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
-                                    lowerFillPath.addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                            } else {
+                                if let ps = potSpan {
+                                    if ps.role == .data {
+                                        potDataFillPath.addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                        potDataFillPath.addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                        if off == ps.range.lowerBound {
+                                            for rx in [lRect.minX, rRect.minX] {
+                                                potCornerPath.move(to: CGPoint(x: rx, y: lRect.minY + 5))
+                                                potCornerPath.addLine(to: CGPoint(x: rx, y: lRect.minY))
+                                                potCornerPath.addLine(to: CGPoint(x: rx + 5, y: lRect.minY))
+                                            }
+                                        }
+                                    } else {
+                                        potAxisFillPath.addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                        potAxisFillPath.addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                    }
+                                }
+                                if isDiff {
+                                    if isHigher {
+                                        higherFillPath.addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                        higherFillPath.addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                    } else {
+                                        lowerFillPath.addRoundedRect(in: lRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                        lowerFillPath.addRoundedRect(in: rRect, cornerSize: CGSize(width: 2.5, height: 2.5))
+                                    }
                                 }
                             }
 
@@ -943,7 +1091,7 @@ struct HexDiffView: View {
                                      at: CGPoint(x: gx, y: gy), anchor: .center)
                         }
 
-                        // Shared XDF labels on far right
+                        // Shared XDF / Potential Map labels on far right
                         let uniqueSpans = xdfW > 0 ? uniqueRowSpans(rowSpans) : []
                         if !uniqueSpans.isEmpty {
                             let xdfStartX = size.width - xdfW
@@ -955,11 +1103,65 @@ struct HexDiffView: View {
                             let display = label.count > maxChars ? String(label.prefix(maxChars - 1)) + "…" : label
                             ctx.draw(Text(display).font(.system(size: 10, weight: .medium)).foregroundStyle(.primary.opacity(0.88)),
                                      at: CGPoint(x: xdfStartX + 16, y: y + rowHeight * 0.5), anchor: .leading)
+                        } else if xdfW > 0, showPotentialMaps, let firstPot = rowPotSpans.first(where: { $0.role == .data }) ?? rowPotSpans.first,
+                                  firstPot.candidateIndex < cachedPotentialIndex.candidates.count {
+                            let cand = cachedPotentialIndex.candidates[firstPot.candidateIndex]
+                            let isStartRow = (cand.address >= rowBase && cand.address < rowEnd)
+                            if isStartRow || r == 0 {
+                                let xdfStartX = size.width - xdfW
+                                let badge = "◇ \(cand.rows)×\(cand.cols) · \(Int((cand.confidence * 100).rounded()))%"
+                                let maxChars = max(8, Int((xdfW - 30) / 5.8))
+                                let display = badge.count > maxChars ? String(badge.prefix(maxChars - 1)) + "…" : badge
+                                ctx.draw(Text(display).font(.system(size: 9.5, weight: .semibold, design: .monospaced)).foregroundStyle(amberColor.opacity(0.92)),
+                                         at: CGPoint(x: xdfStartX + 6, y: y + rowHeight * 0.5), anchor: .leading)
+                                let plusRect = CGRect(x: size.width - 20, y: y + 3, width: 15, height: rowHeight - 6)
+                                ctx.fill(Path(roundedRect: plusRect, cornerRadius: 3), with: .color(amberColor.opacity(0.22)))
+                                ctx.draw(Text("+").font(.system(size: 10, weight: .bold)).foregroundStyle(amberColor),
+                                         at: CGPoint(x: plusRect.midX, y: plusRect.midY), anchor: .center)
+                            }
                         }
                     }
 
                     // Batched GPU fills
                     if !stripePath.isEmpty { ctx.fill(stripePath, with: .color(.secondary.opacity(0.035))) }
+                    if !potDataFillPath.isEmpty { ctx.fill(potDataFillPath, with: .color(amberColor.opacity(0.068))) }
+                    if !potAxisFillPath.isEmpty { ctx.fill(potAxisFillPath, with: .color(mintColor.opacity(0.055))) }
+                    if !potCornerPath.isEmpty {
+                        ctx.stroke(potCornerPath, with: .color(amberColor.opacity(0.92)), style: StrokeStyle(lineWidth: 1.8, lineCap: .square))
+                    }
+                    // Batched outer-perimeter dashed contour for potential maps (1 GPU stroke per frame!)
+                    if showPotentialMaps && !cachedPotentialIndex.candidates.isEmpty {
+                        var potBorder = Path()
+                        var rowPotCache: [[PotentialMapIndex.Span]] = []
+                        rowPotCache.reserveCapacity(visibleRowBases.count)
+                        for rb in visibleRowBases {
+                            rowPotCache.append(cachedPotentialIndex.spansOverlapping(rb, min(bin.count, rb + rowStride)))
+                        }
+                        func potKeyAt(_ r: Int, _ c: Int) -> String? {
+                            guard r >= 0, r < visibleRowBases.count, c >= 0, c < columns else { return nil }
+                            let off = visibleRowBases[r] + c * elemBytes
+                            guard off + elemBytes <= bin.count else { return nil }
+                            return rowPotCache[r].first(where: { $0.role == .data && $0.range.contains(off) })?.candidateKey
+                        }
+                        for paneBaseX in [leftStartX, rightStartX] {
+                            for r in 0..<visibleRowBases.count {
+                                let y0 = headerH + CGFloat(r) * rowHeight + 0.75
+                                let y1 = headerH + CGFloat(r + 1) * rowHeight - 0.75
+                                for c in 0..<columns {
+                                    guard let key = potKeyAt(r, c) else { continue }
+                                    let x0 = paneBaseX + CGFloat(c) * cellW + 0.75
+                                    let x1 = paneBaseX + CGFloat(c + 1) * cellW - 0.75
+                                    if potKeyAt(r - 1, c) != key { potBorder.move(to: CGPoint(x: x0, y: y0)); potBorder.addLine(to: CGPoint(x: x1, y: y0)) }
+                                    if potKeyAt(r + 1, c) != key { potBorder.move(to: CGPoint(x: x0, y: y1)); potBorder.addLine(to: CGPoint(x: x1, y: y1)) }
+                                    if potKeyAt(r, c - 1) != key { potBorder.move(to: CGPoint(x: x0, y: y0)); potBorder.addLine(to: CGPoint(x: x0, y: y1)) }
+                                    if potKeyAt(r, c + 1) != key { potBorder.move(to: CGPoint(x: x1, y: y0)); potBorder.addLine(to: CGPoint(x: x1, y: y1)) }
+                                }
+                            }
+                        }
+                        if !potBorder.isEmpty {
+                            ctx.stroke(potBorder, with: .color(amberColor.opacity(0.55)), style: StrokeStyle(lineWidth: 1.0, dash: [4, 3]))
+                        }
+                    }
                     for ci in 0..<XDFAddressIndex.palette.count {
                         let base = XDFAddressIndex.palette[ci]
                         if !mapPaths[ci].isEmpty { ctx.fill(mapPaths[ci], with: .color(base.opacity(0.24))) }
@@ -1043,8 +1245,21 @@ struct HexDiffView: View {
                                 let r = Int((val.startLocation.y - headerH) / rowHeight)
                                 if r >= 0, r < visibleRowBases.count {
                                     let rowBase = visibleRowBases[r]
-                                    if let first = cachedIndex.spansOverlapping(rowBase, min(bin.count, rowBase + rowStride)).first {
+                                    let rowEnd = min(bin.count, rowBase + rowStride)
+                                    if let first = cachedIndex.spansOverlapping(rowBase, rowEnd).first {
                                         model.selection = first.itemID
+                                    } else if showPotentialMaps,
+                                              let ps = cachedPotentialIndex.spansOverlapping(rowBase, rowEnd).first(where: { $0.role == .data })
+                                                ?? cachedPotentialIndex.spansOverlapping(rowBase, rowEnd).first,
+                                              ps.candidateIndex < cachedPotentialIndex.candidates.count {
+                                        let cand = cachedPotentialIndex.candidates[ps.candidateIndex]
+                                        if val.startLocation.x >= geo.size.width - 24 {
+                                            model.addCandidateToXDF(cand, selectAfterAdd: false)
+                                        } else {
+                                            pinnedCandidateKey = (pinnedCandidateKey == cand.signatureKey) ? nil : cand.signatureKey
+                                            selectedStart = cand.address
+                                            selectedEnd = max(cand.address, cand.dataRange.upperBound - elemBytes)
+                                        }
                                     }
                                 }
                                 return
@@ -1112,7 +1327,9 @@ struct HexDiffView: View {
                             let off = visibleRowBases[r] + col * elemBytes
                             guard off + elemBytes <= bin.count else { hoverState.hex = nil; return }
                             let spans = cachedIndex.spansOverlapping(off, off + elemBytes)
-                            hoverState.hex = HexHoverInfo(point: pt, address: off, spans: spans, activeItemID: spans.first?.itemID, isXDFColumn: false)
+                            let potHit = (spans.isEmpty && showPotentialMaps) ? cachedPotentialIndex.candidate(at: off) : nil
+                            hoverState.hex = HexHoverInfo(point: pt, address: off, spans: spans, activeItemID: spans.first?.itemID,
+                                                          isXDFColumn: false, potentialCandidate: potHit?.candidate, potentialRole: potHit?.role)
                         } else {
                             hoverState.hex = nil
                         }
@@ -1121,7 +1338,7 @@ struct HexDiffView: View {
                     }
                 }
                 .contextMenu {
-                    hexContextMenu(targetAddr: selectedStart ?? viewportOffset, is2D: false)
+                    hexContextMenu(targetAddr: contextMenuTargetAddress(is2D: false), is2D: false)
                 }
                 .overlay(
                     ScrollWheelOverlay { dy, mods in
@@ -1139,6 +1356,9 @@ struct HexDiffView: View {
                 HexHoverHUDContainer(hoverState: hoverState, bounds: geo.size) { info in
                     hexHoverHUD(info, in: geo.size)
                 }
+                .allowsHitTesting(false)
+
+                pinnedCandidateOverlay(in: geo.size)
             }
         }
         .card(padding: 4)
@@ -1151,9 +1371,10 @@ struct HexDiffView: View {
         let cmp = model.compare ?? []
         let rowHeight: CGFloat = 19
         let addrWidth: CGFloat = 72
+        let hasRightLabels = model.definition != nil || (showPotentialMaps && !cachedPotentialIndex.candidates.isEmpty)
 
         return GeometryReader { geo in
-            let xdfW: CGFloat = model.definition == nil ? 0 : min(max(140, xdfColWidth), geo.size.width * 0.35)
+            let xdfW: CGFloat = !hasRightLabels ? 0 : min(max(150, xdfColWidth), geo.size.width * 0.35)
             let visibleRows = max(1, Int((geo.size.height - 26) / rowHeight))
             let barAreaWidth: CGFloat = showBars ? max(100, (geo.size.width - addrWidth - xdfW - 24) * barWidthRatio) : 0
             let dataAreaWidth = max(200, geo.size.width - addrWidth - barAreaWidth - xdfW - 24)
@@ -1214,6 +1435,11 @@ struct HexDiffView: View {
                     var unmappedDiffPath = Path()
                     var selPath = Path()
                     var diffBarPath = Path()
+                    var potDataFillPath = Path()
+                    var potAxisFillPath = Path()
+                    var potCornerPath = Path()
+                    let amberColor = PotentialMapIndex.amberData
+                    let mintColor = PotentialMapIndex.mintAxis
 
                     struct CellDraw {
                         let text: String
@@ -1240,6 +1466,7 @@ struct HexDiffView: View {
                                  at: CGPoint(x: 8, y: y + rowHeight * 0.5), anchor: .leading)
 
                         let rowSpans = cachedIndex.spansOverlapping(rowBase, rowEnd)
+                        let rowPotSpans = showPotentialMaps ? cachedPotentialIndex.spansOverlapping(rowBase, rowEnd) : []
 
                         // Data cells
                         for c in 0..<columns {
@@ -1254,6 +1481,9 @@ struct HexDiffView: View {
                             }()
                             let isSel = selRange?.overlaps(off ..< (off + elemBytes)) ?? false
                             let span = rowSpans.first { $0.range.contains(off) }
+                            let potSpan = (span == nil && !rowPotSpans.isEmpty)
+                                ? (rowPotSpans.first { $0.role == .data && $0.range.contains(off) } ?? rowPotSpans.first { $0.range.contains(off) })
+                                : nil
 
                             if let span {
                                 let ci = span.colorIndex % XDFAddressIndex.palette.count
@@ -1262,8 +1492,22 @@ struct HexDiffView: View {
                                 } else {
                                     mapPaths[ci].addRoundedRect(in: rect, cornerSize: CGSize(width: 3, height: 3))
                                 }
-                            } else if isDiff {
-                                unmappedDiffPath.addRoundedRect(in: rect, cornerSize: CGSize(width: 3, height: 3))
+                            } else {
+                                if let ps = potSpan {
+                                    if ps.role == .data {
+                                        potDataFillPath.addRoundedRect(in: rect, cornerSize: CGSize(width: 3, height: 3))
+                                        if off == ps.range.lowerBound {
+                                            potCornerPath.move(to: CGPoint(x: rect.minX, y: rect.minY + 5))
+                                            potCornerPath.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+                                            potCornerPath.addLine(to: CGPoint(x: rect.minX + 5, y: rect.minY))
+                                        }
+                                    } else {
+                                        potAxisFillPath.addRoundedRect(in: rect, cornerSize: CGSize(width: 3, height: 3))
+                                    }
+                                }
+                                if isDiff {
+                                    unmappedDiffPath.addRoundedRect(in: rect, cornerSize: CGSize(width: 3, height: 3))
+                                }
                             }
 
                             if isSel {
@@ -1332,11 +1576,64 @@ struct HexDiffView: View {
                                     .foregroundStyle(.secondary),
                                          at: CGPoint(x: pill.midX, y: pill.midY), anchor: .center)
                             }
+                        } else if xdfW > 0, showPotentialMaps, let firstPot = rowPotSpans.first(where: { $0.role == .data }) ?? rowPotSpans.first,
+                                  firstPot.candidateIndex < cachedPotentialIndex.candidates.count {
+                            let cand = cachedPotentialIndex.candidates[firstPot.candidateIndex]
+                            let isStartRow = (cand.address >= rowBase && cand.address < rowEnd)
+                            if isStartRow || r == 0 {
+                                let xdfStartX = size.width - xdfW
+                                let badge = "◇ \(cand.shortBadge) · \(Int((cand.confidence * 100).rounded()))%"
+                                let maxChars = max(8, Int((xdfW - 32) / 5.8))
+                                let display = badge.count > maxChars ? String(badge.prefix(maxChars - 1)) + "…" : badge
+                                ctx.draw(Text(display)
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(amberColor.opacity(0.92)),
+                                         at: CGPoint(x: xdfStartX + 8, y: y + rowHeight * 0.5), anchor: .leading)
+                                let plusRect = CGRect(x: size.width - 22, y: y + 3, width: 16, height: rowHeight - 6)
+                                ctx.fill(Path(roundedRect: plusRect, cornerRadius: 3), with: .color(amberColor.opacity(0.22)))
+                                ctx.draw(Text("+").font(.system(size: 10.5, weight: .bold)).foregroundStyle(amberColor),
+                                         at: CGPoint(x: plusRect.midX, y: plusRect.midY), anchor: .center)
+                            }
                         }
                     }
 
                     // Flush batched fills in ~10 calls instead of ~1000
                     if !stripePath.isEmpty { ctx.fill(stripePath, with: .color(.primary.opacity(0.025))) }
+                    if !potDataFillPath.isEmpty { ctx.fill(potDataFillPath, with: .color(amberColor.opacity(0.07))) }
+                    if !potAxisFillPath.isEmpty { ctx.fill(potAxisFillPath, with: .color(mintColor.opacity(0.055))) }
+                    if !potCornerPath.isEmpty {
+                        ctx.stroke(potCornerPath, with: .color(amberColor.opacity(0.92)), style: StrokeStyle(lineWidth: 1.8, lineCap: .square))
+                    }
+                    if showPotentialMaps && !cachedPotentialIndex.candidates.isEmpty {
+                        var potBorder = Path()
+                        var rowPotCache: [[PotentialMapIndex.Span]] = []
+                        rowPotCache.reserveCapacity(visibleRowBases.count)
+                        for rb in visibleRowBases {
+                            rowPotCache.append(cachedPotentialIndex.spansOverlapping(rb, min(bin.count, rb + rowStride)))
+                        }
+                        func potKeyAt(_ r: Int, _ c: Int) -> String? {
+                            guard r >= 0, r < visibleRowBases.count, c >= 0, c < columns else { return nil }
+                            let off = visibleRowBases[r] + c * elemBytes
+                            guard off + elemBytes <= bin.count else { return nil }
+                            return rowPotCache[r].first(where: { $0.role == .data && $0.range.contains(off) })?.candidateKey
+                        }
+                        for r in 0..<visibleRowBases.count {
+                            let y0 = headerH + CGFloat(r) * rowHeight + 0.75
+                            let y1 = headerH + CGFloat(r + 1) * rowHeight - 0.75
+                            for c in 0..<columns {
+                                guard let key = potKeyAt(r, c) else { continue }
+                                let x0 = addrWidth + CGFloat(c) * cellW + 0.75
+                                let x1 = addrWidth + CGFloat(c + 1) * cellW - 0.75
+                                if potKeyAt(r - 1, c) != key { potBorder.move(to: CGPoint(x: x0, y: y0)); potBorder.addLine(to: CGPoint(x: x1, y: y0)) }
+                                if potKeyAt(r + 1, c) != key { potBorder.move(to: CGPoint(x: x0, y: y1)); potBorder.addLine(to: CGPoint(x: x1, y: y1)) }
+                                if potKeyAt(r, c - 1) != key { potBorder.move(to: CGPoint(x: x0, y: y0)); potBorder.addLine(to: CGPoint(x: x0, y: y1)) }
+                                if potKeyAt(r, c + 1) != key { potBorder.move(to: CGPoint(x: x1, y: y0)); potBorder.addLine(to: CGPoint(x: x1, y: y1)) }
+                            }
+                        }
+                        if !potBorder.isEmpty {
+                            ctx.stroke(potBorder, with: .color(amberColor.opacity(0.55)), style: StrokeStyle(lineWidth: 1.0, dash: [4, 3]))
+                        }
+                    }
                     for ci in 0..<XDFAddressIndex.palette.count {
                         if !mapPaths[ci].isEmpty { ctx.fill(mapPaths[ci], with: .color(XDFAddressIndex.palette[ci].opacity(0.30))) }
                         if !axisPaths[ci].isEmpty { ctx.fill(axisPaths[ci], with: .color(XDFAddressIndex.palette[ci].opacity(0.20))) }
@@ -1369,13 +1666,13 @@ struct HexDiffView: View {
                     // Crisp continuous perimeter border around the selected byte range
                     if let selRange {
                         let isCellSel: (Int, Int) -> Bool = { rr, cc in
-                            guard cc >= 0, cc < columns else { return false }
-                            let off = startAddr + rr * rowStride + cc * elemBytes
+                            guard rr >= 0, rr < visibleRowBases.count, cc >= 0, cc < columns else { return false }
+                            let off = visibleRowBases[rr] + cc * elemBytes
                             guard off >= 0, off + elemBytes <= bin.count else { return false }
                             return selRange.overlaps(off ..< (off + elemBytes))
                         }
                         var border = Path()
-                        for r in 0..<visibleRows {
+                        for r in 0..<visibleRowBases.count {
                             let y = headerH + CGFloat(r) * rowHeight
                             for c in 0..<columns {
                                 guard isCellSel(r, c) else { continue }
@@ -1415,12 +1712,13 @@ struct HexDiffView: View {
                         .onChanged { val in
                             let headerH: CGFloat = 22
                             let xdfStartX = geo.size.width - xdfW
-                            // Click on XDF label column jumps straight to the clicked map!
+                            // Click on XDF / Potential Map label column jumps to XDF map or pins/adds Potential Map!
                             if xdfW > 0, val.startLocation.x >= xdfStartX, abs(val.translation.width) < 4, abs(val.translation.height) < 4 {
                                 let r = Int((val.startLocation.y - headerH) / rowHeight)
                                 if r >= 0, r < visibleRowBases.count {
                                     let rowBase = visibleRowBases[r]
-                                    let unique = uniqueRowSpans(cachedIndex.spansOverlapping(rowBase, min(bin.count, rowBase + rowStride)))
+                                    let rowEnd = min(bin.count, rowBase + rowStride)
+                                    let unique = uniqueRowSpans(cachedIndex.spansOverlapping(rowBase, rowEnd))
                                     if !unique.isEmpty {
                                         let visibleCount = min(unique.count, 2)
                                         let badgeW: CGFloat = unique.count > 2 ? 30 : 0
@@ -1428,6 +1726,18 @@ struct HexDiffView: View {
                                         let slotW = availW / CGFloat(visibleCount)
                                         let idx = min(visibleCount - 1, max(0, Int((val.startLocation.x - xdfStartX - 6) / slotW)))
                                         model.selection = unique[idx].itemID
+                                    } else if showPotentialMaps,
+                                              let ps = cachedPotentialIndex.spansOverlapping(rowBase, rowEnd).first(where: { $0.role == .data })
+                                                ?? cachedPotentialIndex.spansOverlapping(rowBase, rowEnd).first,
+                                              ps.candidateIndex < cachedPotentialIndex.candidates.count {
+                                        let cand = cachedPotentialIndex.candidates[ps.candidateIndex]
+                                        if val.startLocation.x >= geo.size.width - 26 {
+                                            model.addCandidateToXDF(cand, selectAfterAdd: false)
+                                        } else {
+                                            pinnedCandidateKey = (pinnedCandidateKey == cand.signatureKey) ? nil : cand.signatureKey
+                                            selectedStart = cand.address
+                                            selectedEnd = max(cand.address, cand.dataRange.upperBound - elemBytes)
+                                        }
                                     }
                                 }
                                 return
@@ -1470,19 +1780,20 @@ struct HexDiffView: View {
                     case .active(let pt):
                         let headerH: CGFloat = 22
                         let r = Int((pt.y - headerH) / rowHeight)
-                        guard pt.y >= headerH, r >= 0, r < visibleRows else {
+                        guard pt.y >= headerH, r >= 0, r < visibleRowBases.count else {
                             if hoverState.hex != nil { hoverState.hex = nil }
                             return
                         }
-                        let rowBase = startAddr + r * rowStride
+                        let rowBase = visibleRowBases[r]
                         guard rowBase < bin.count else {
                             if hoverState.hex != nil { hoverState.hex = nil }
                             return
                         }
+                        let rowEnd = min(bin.count, rowBase + rowStride)
                         let xdfStartX = geo.size.width - xdfW
                         var next: HexHoverInfo?
-                        if pt.x >= xdfStartX {
-                            let unique = uniqueRowSpans(cachedIndex.spansOverlapping(rowBase, min(bin.count, rowBase + rowStride)))
+                        if xdfW > 0, pt.x >= xdfStartX {
+                            let unique = uniqueRowSpans(cachedIndex.spansOverlapping(rowBase, rowEnd))
                             if !unique.isEmpty {
                                 let visibleCount = min(unique.count, 2)
                                 let badgeW: CGFloat = unique.count > 2 ? 30 : 0
@@ -1494,17 +1805,38 @@ struct HexDiffView: View {
                                     : nil
                                 let anchor = CGPoint(x: xdfStartX, y: headerH + CGFloat(r) * rowHeight)
                                 next = HexHoverInfo(point: anchor, address: nil, spans: unique,
-                                                    activeItemID: activeID, isXDFColumn: true)
+                                                    activeItemID: activeID, isXDFColumn: true,
+                                                    potentialCandidate: nil, potentialRole: nil)
+                            } else if showPotentialMaps,
+                                      let ps = cachedPotentialIndex.spansOverlapping(rowBase, rowEnd).first(where: { $0.role == .data })
+                                        ?? cachedPotentialIndex.spansOverlapping(rowBase, rowEnd).first,
+                                      ps.candidateIndex < cachedPotentialIndex.candidates.count {
+                                let cand = cachedPotentialIndex.candidates[ps.candidateIndex]
+                                let anchor = CGPoint(x: xdfStartX, y: headerH + CGFloat(r) * rowHeight)
+                                next = HexHoverInfo(point: anchor, address: cand.address, spans: [],
+                                                    activeItemID: nil, isXDFColumn: false,
+                                                    potentialCandidate: cand, potentialRole: ps.role)
                             }
                         } else if pt.x >= addrWidth && pt.x < addrWidth + dataAreaWidth {
                             let c = Int((pt.x - addrWidth) / cellW)
                             if c >= 0, c < columns {
                                 let off = rowBase + c * elemBytes
-                                if off + elemBytes <= bin.count, let span = cachedIndex.span(at: off) {
-                                    let anchor = CGPoint(x: addrWidth + CGFloat(c + 1) * cellW,
-                                                         y: headerH + CGFloat(r + 1) * rowHeight)
-                                    next = HexHoverInfo(point: anchor, address: off, spans: [span],
-                                                        activeItemID: span.itemID, isXDFColumn: false)
+                                if off + elemBytes <= bin.count {
+                                    let span = cachedIndex.span(at: off)
+                                    let potHit = (span == nil && showPotentialMaps) ? cachedPotentialIndex.candidate(at: off) : nil
+                                    if let span {
+                                        let anchor = CGPoint(x: addrWidth + CGFloat(c + 1) * cellW,
+                                                             y: headerH + CGFloat(r + 1) * rowHeight)
+                                        next = HexHoverInfo(point: anchor, address: off, spans: [span],
+                                                            activeItemID: span.itemID, isXDFColumn: false,
+                                                            potentialCandidate: nil, potentialRole: nil)
+                                    } else if let potHit {
+                                        let anchor = CGPoint(x: addrWidth + CGFloat(c + 1) * cellW,
+                                                             y: headerH + CGFloat(r + 1) * rowHeight)
+                                        next = HexHoverInfo(point: anchor, address: off, spans: [],
+                                                            activeItemID: nil, isXDFColumn: false,
+                                                            potentialCandidate: potHit.candidate, potentialRole: potHit.role)
+                                    }
                                 }
                             }
                         }
@@ -1519,6 +1851,8 @@ struct HexDiffView: View {
                     hexHoverHUD(info, in: geo.size)
                 }
                 .allowsHitTesting(false)
+
+                pinnedCandidateOverlay(in: geo.size)
 
                 // Draggable resize handle for XDF column width (strictly 8pt wide, never blocks hex cells)
                 Rectangle()
@@ -1558,7 +1892,7 @@ struct HexDiffView: View {
                 .allowsHitTesting(false)
             )
             .contextMenu {
-                hexContextMenu(targetAddr: selectedStart ?? alignedStart(viewportOffset), is2D: false)
+                hexContextMenu(targetAddr: contextMenuTargetAddress(is2D: false), is2D: false)
             }
         }
         .card(padding: 0)
@@ -1574,7 +1908,70 @@ struct HexDiffView: View {
     }
 
     @ViewBuilder
+    private func pinnedCandidateOverlay(in bounds: CGSize) -> some View {
+        if showPotentialMaps,
+           let key = pinnedCandidateKey,
+           let cand = cachedPotentialIndex.candidate(forKey: key) {
+            PotentialMapPreviewCard(
+                candidate: cand,
+                role: .data,
+                bin: model.bin,
+                compare: model.compare,
+                compareSyncOffset: compareSyncOffset,
+                palette: model.heatmapPalette,
+                isPinned: true,
+                onAddXDF: {
+                    model.addCandidateToXDF(cand, selectAfterAdd: false)
+                    pinnedCandidateKey = nil
+                },
+                onAddAndOpen: {
+                    model.addCandidateToXDF(cand, selectAfterAdd: true)
+                    pinnedCandidateKey = nil
+                },
+                onEditXDF: {
+                    model.xdfEditorRequest = XDFEditorRequest(presetCandidate: cand)
+                    pinnedCandidateKey = nil
+                },
+                onSnapColumns: {
+                    snapHexLayout(to: cand)
+                },
+                onDismiss: {
+                    model.dismissPotentialMap(cand)
+                    pinnedCandidateKey = nil
+                },
+                onClosePin: {
+                    pinnedCandidateKey = nil
+                }
+            )
+            .offset(x: max(12, bounds.width - 330), y: 28)
+        }
+    }
+
+    @ViewBuilder
     private func hexHoverHUD(_ info: HexHoverInfo, in bounds: CGSize) -> some View {
+        if let cand = info.potentialCandidate, info.spans.isEmpty, pinnedCandidateKey != cand.signatureKey {
+            let estW: CGFloat = 312
+            let estH: CGFloat = 152
+            let placeLeft = info.point.x + estW + 20 > bounds.width
+            let x = placeLeft ? max(8, info.point.x - estW - 14) : min(bounds.width - estW - 8, info.point.x + 14)
+            let y = (info.point.y + estH + 14 > bounds.height) ? max(8, info.point.y - estH - 10) : max(8, info.point.y + 12)
+            PotentialMapPreviewCard(
+                candidate: cand,
+                role: info.potentialRole ?? .data,
+                bin: model.bin,
+                compare: model.compare,
+                compareSyncOffset: compareSyncOffset,
+                palette: model.heatmapPalette,
+                isPinned: false
+            )
+            .offset(x: x, y: y)
+        } else {
+            hexStandardHoverHUD(info, in: bounds)
+        }
+    }
+
+    @ViewBuilder
+    private func hexStandardHoverHUD(_ info: HexHoverInfo, in bounds: CGSize) -> some View {
         let bin = model.bin
         let cmp = model.compare ?? []
         let coralColor = Color(red: 0.92, green: 0.34, blue: 0.28)
@@ -1712,7 +2109,7 @@ struct HexDiffView: View {
 
     @ViewBuilder
     private func waveHoverHUD(_ info: WaveHoverInfo, in bounds: CGSize) -> some View {
-        let estW: CGFloat = info.span != nil ? 245 : 165
+        let estW: CGFloat = info.potentialCandidate != nil ? 312 : (info.span != nil ? 245 : 165)
         let x = (info.crosshairX + estW + 18 > bounds.width)
             ? max(8, info.crosshairX - estW - 10)
             : min(bounds.width - estW - 8, info.crosshairX + 10)
@@ -1724,37 +2121,50 @@ struct HexDiffView: View {
                 .frame(width: 1, height: max(0, bounds.height - 20))
                 .offset(x: info.crosshairX, y: 6)
 
-            VStack(alignment: .leading, spacing: 3) {
-                if let span = info.span {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(XDFAddressIndex.palette[span.colorIndex % XDFAddressIndex.palette.count])
-                            .frame(width: 7, height: 7)
-                        Text(span.isAxis ? "\(span.title) (Achse)" : span.title)
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(1)
+            if let cand = info.potentialCandidate, info.span == nil {
+                PotentialMapPreviewCard(
+                    candidate: cand,
+                    role: info.potentialRole ?? .data,
+                    bin: model.bin,
+                    compare: model.compare,
+                    compareSyncOffset: compareSyncOffset,
+                    palette: model.heatmapPalette,
+                    isPinned: false
+                )
+                .offset(x: x, y: 8)
+            } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    if let span = info.span {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(XDFAddressIndex.palette[span.colorIndex % XDFAddressIndex.palette.count])
+                                .frame(width: 7, height: 7)
+                            Text(span.isAxis ? "\(span.title) (Achse)" : span.title)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                        }
+                    }
+                    HStack(spacing: 8) {
+                        Text(String(format: "0x%05X", info.address))
+                            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                        Text(info.valueText)
+                            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.cyan)
+                        if let cmpText = info.cmpText {
+                            Text("← \(cmpText)")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(Theme.changed)
+                        }
                     }
                 }
-                HStack(spacing: 8) {
-                    Text(String(format: "0x%05X", info.address))
-                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                    Text(info.valueText)
-                        .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.cyan)
-                    if let cmpText = info.cmpText {
-                        Text("← \(cmpText)")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(Theme.changed)
-                    }
-                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .frame(maxWidth: estW, alignment: .leading)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.primary.opacity(0.16), lineWidth: 0.75))
+                .shadow(color: .black.opacity(0.32), radius: 8, y: 3)
+                .offset(x: x, y: 8)
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .frame(maxWidth: estW, alignment: .leading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 7))
-            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.primary.opacity(0.16), lineWidth: 0.75))
-            .shadow(color: .black.opacity(0.32), radius: 8, y: 3)
-            .offset(x: x, y: 8)
         }
     }
 
@@ -1787,14 +2197,85 @@ struct HexDiffView: View {
                 }
             }
             Divider()
+        } else if showPotentialMaps, let (cand, _) = cachedPotentialIndex.candidate(at: targetAddr) {
+            Section("◇ \(cand.shortBadge) · \(Int((cand.confidence * 100).rounded()))% (\(cand.encodingSummary))") {
+                Button {
+                    model.addCandidateToXDF(cand, selectAfterAdd: false)
+                    pinnedCandidateKey = nil
+                } label: {
+                    Label("Zur XDF hinzufügen (1-Klick)", systemImage: "plus.circle.fill")
+                }
+                Button {
+                    model.addCandidateToXDF(cand, selectAfterAdd: true)
+                    pinnedCandidateKey = nil
+                } label: {
+                    Label("Zur XDF hinzufügen & im Tabellen-Editor öffnen", systemImage: "tablecells.fill")
+                }
+                Button {
+                    model.xdfEditorRequest = XDFEditorRequest(presetCandidate: cand)
+                } label: {
+                    Label("Als XDF-Element anpassen & speichern …", systemImage: "slider.horizontal.3")
+                }
+            }
+            Divider()
+            Button {
+                snapHexLayout(to: cand)
+                if is2D && viewMode == .wave2D { viewMode = .text }
+            } label: {
+                Label("Hex-Spalten auf Kennfeldbreite ausrichten (Spalten = \(cand.cols))", systemImage: "arrow.left.and.right")
+            }
+            Button {
+                selectedStart = cand.address
+                selectedEnd = max(cand.address, cand.dataRange.upperBound - elemBytes)
+            } label: {
+                Label("Gesamtes Kennfeld auswählen (\(cand.byteCount) B)", systemImage: "selection.pin.in.out")
+            }
+            if cand.hasAxes {
+                Button {
+                    selectedStart = cand.fullEnvelopeRange.lowerBound
+                    selectedEnd = max(cand.fullEnvelopeRange.lowerBound, cand.fullEnvelopeRange.upperBound - elemBytes)
+                } label: {
+                    Label("Kennfeld inkl. Achsen auswählen (\(cand.fullEnvelopeRange.count) B)", systemImage: "rectangle.dashed")
+                }
+            }
+            Button {
+                snapHexLayout(to: cand)
+                viewMode = .surface3D
+            } label: {
+                Label("In 3D-Oberflächenvorschau öffnen", systemImage: "cube")
+            }
+            Button {
+                twinMatches = BinaryAnalysis.findTwins(for: cand.dataRange, in: bin, elemBytes: cand.elemBytes,
+                                                       lsbFirst: cand.lsbFirst, isSigned: cand.signed)
+                showTwinsPopover = true
+            } label: {
+                Label("Zwillinge / Parallel-Kennfelder suchen", systemImage: "doc.on.doc")
+            }
+            Divider()
+            Button(role: .destructive) {
+                model.dismissPotentialMap(cand)
+                if pinnedCandidateKey == cand.signatureKey { pinnedCandidateKey = nil }
+            } label: {
+                Label("Kandidat ausblenden (Ignorieren)", systemImage: "eye.slash")
+            }
+            Divider()
         }
 
         if let range = selectedRange {
-            if let onCreateMapFromRange {
+            Button {
+                let inferred = MapFinder.inferCandidate(fromSelection: range, in: bin, hintBits: elemBytes * 8,
+                                                        lsbFirst: lsbFirst, signed: isSigned, isFloat: dataFormat.isFloat)
+                model.xdfEditorRequest = XDFEditorRequest(presetCandidate: inferred)
+            } label: {
+                Label("Auswahl analysieren & als XDF-Kennfeld anlegen (\(range.count) B) …", systemImage: "wand.and.rays")
+            }
+            let selElems = range.count / elemBytes
+            if selElems >= 4 && selElems <= 32 {
                 Button {
-                    onCreateMapFromRange(range)
+                    columns = selElems
+                    byteShift = range.lowerBound % (columns * elemBytes)
                 } label: {
-                    Label("Kennfeld aus Auswahl erstellen (\(range.count) B) …", systemImage: "plus.rectangle.on.rectangle")
+                    Label("Spaltenbreite auf Auswahl setzen (\(selElems) Spalten, +0)", systemImage: "arrow.left.to.line")
                 }
             }
             Button {
@@ -1963,8 +2444,41 @@ struct HexDiffView: View {
                         if maxV == minV { maxV += 1 }
                         let span = maxV - minV
 
-                        // XDF shaded regions
+                        // Potential Map dashed amber brackets & axis ticks (behind XDF spans)
                         let endAddr = startAddr + elemCount * elemBytes
+                        if showPotentialMaps && !cachedPotentialIndex.candidates.isEmpty {
+                            let amber = PotentialMapIndex.amberData
+                            let mint = PotentialMapIndex.mintAxis
+                            for ps in cachedPotentialIndex.spansOverlapping(startAddr, endAddr) {
+                                let a = max(ps.range.lowerBound, startAddr)
+                                let b = min(ps.range.upperBound, endAddr)
+                                let x0 = plot.minX + CGFloat(a - startAddr) / CGFloat(max(1, endAddr - startAddr)) * plot.width
+                                let x1 = plot.minX + CGFloat(b - startAddr) / CGFloat(max(1, endAddr - startAddr)) * plot.width
+                                let w = max(2, x1 - x0)
+                                if ps.role == .data {
+                                    ctx.fill(Path(CGRect(x: x0, y: plot.minY, width: w, height: plot.height)),
+                                             with: .color(amber.opacity(0.08)))
+                                    var bracket = Path()
+                                    bracket.move(to: CGPoint(x: x0, y: plot.minY + 6))
+                                    bracket.addLine(to: CGPoint(x: x0, y: plot.minY + 2))
+                                    bracket.addLine(to: CGPoint(x: x0 + w, y: plot.minY + 2))
+                                    bracket.addLine(to: CGPoint(x: x0 + w, y: plot.minY + 6))
+                                    ctx.stroke(bracket, with: .color(amber.opacity(0.78)), style: StrokeStyle(lineWidth: 1.2, dash: [4, 2.5]))
+                                    if w >= 52 && ps.candidateIndex < cachedPotentialIndex.candidates.count {
+                                        let cand = cachedPotentialIndex.candidates[ps.candidateIndex]
+                                        ctx.draw(Text("◇ \(cand.rows)×\(cand.cols)")
+                                            .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                                            .foregroundStyle(amber.opacity(0.92)),
+                                                 at: CGPoint(x: x0 + 4, y: plot.minY + 10), anchor: .leading)
+                                    }
+                                } else {
+                                    ctx.fill(Path(CGRect(x: x0, y: plot.maxY - 3, width: w, height: 2.5)),
+                                             with: .color(mint.opacity(0.75)))
+                                }
+                            }
+                        }
+
+                        // XDF shaded regions
                         for spanItem in cachedIndex.spansOverlapping(startAddr, endAddr) {
                             let a = max(spanItem.range.lowerBound, startAddr)
                             let b = min(spanItem.range.upperBound, endAddr)
@@ -2129,8 +2643,11 @@ struct HexDiffView: View {
                                bin[addr ..< (addr + elemBytes)] != cmp[cmpAddr ..< (cmpAddr + elemBytes)] {
                                 cmpStr = formatElement(cmp, at: cmpAddr)
                             }
+                            let xdfSpan = cachedIndex.span(at: addr)
+                            let potHit = (xdfSpan == nil && showPotentialMaps) ? cachedPotentialIndex.candidate(at: addr) : nil
                             hoverState.wave = WaveHoverInfo(crosshairX: snappedX, address: addr, valueText: valStr,
-                                                            cmpText: cmpStr, span: cachedIndex.span(at: addr))
+                                                            cmpText: cmpStr, span: xdfSpan,
+                                                            potentialCandidate: potHit?.candidate, potentialRole: potHit?.role)
                         }
                     }
                     .overlay(alignment: .topLeading) {
@@ -2163,7 +2680,7 @@ struct HexDiffView: View {
                     .allowsHitTesting(false)
                 )
                 .contextMenu {
-                    hexContextMenu(targetAddr: selectedStart ?? startAddr, is2D: true)
+                    hexContextMenu(targetAddr: contextMenuTargetAddress(is2D: true), is2D: true)
                 }
             }
         }
@@ -2287,7 +2804,7 @@ struct HexDiffView: View {
                             case .code: color = .purple
                             }
                         } else {
-                            color = b.hasDiff ? Theme.changed : (b.hasXDF ? Color.accentColor : Color.secondary.opacity(0.45))
+                            color = b.hasDiff ? Theme.changed : (b.hasXDF ? Color.accentColor : ((showPotentialMaps && b.hasPotential) ? PotentialMapIndex.amberData.opacity(0.75) : Color.secondary.opacity(0.45)))
                         }
                         ctx.fill(Path(CGRect(x: x, y: size.height - h, width: max(1, bw), height: h)), with: .color(color))
                     }
@@ -2668,6 +3185,21 @@ struct HexDiffView: View {
         }
         cachedDiffOffsets = diffs
 
+        // Filter & index potential maps (fast O(N) over <450 cached candidates)
+        let diffClusters = model.diffClusters
+        let filteredPot = model.activePotentialMaps.filter { c in
+            guard c.confidence >= potentialMinConfidence else { return false }
+            switch potentialPatternFilter {
+            case .all: return true
+            case .withAxes: return c.hasAxes
+            case .maps2D: return c.is2D
+            case .curves1D: return !c.is2D
+            case .modifiedOnly: return diffClusters.contains { $0.range.overlaps(c.dataRange) }
+            }
+        }
+        let potIdx = PotentialMapIndex(candidates: filteredPot)
+        cachedPotentialIndex = potIdx
+
         // Build 400-bucket whole-file minimap
         let buckets = 400
         guard !bin.isEmpty else { cachedMinimap = []; return }
@@ -2690,13 +3222,49 @@ struct HexDiffView: View {
                 p += step
             }
             let hasXDF = !idx.spansOverlapping(s, e).isEmpty
+            let hasPotential = !potIdx.spansOverlapping(s, e).isEmpty
             let sampleEnd = min(e, s + 256)
             let ent = BinaryAnalysis.classify(bin[s..<sampleEnd])
             out.append(MinimapBucket(density: total > 0 ? Double(active) / Double(total) : 0,
                                      entropy: ent.entropy, regionKind: ent.kind,
-                                     hasXDF: hasXDF, hasDiff: hasDiff))
+                                     hasXDF: hasXDF, hasDiff: hasDiff, hasPotential: hasPotential))
         }
         cachedMinimap = out
+    }
+
+    private func contextMenuTargetAddress(is2D: Bool) -> Int {
+        if let hoverAddr = is2D ? hoverState.wave?.address : hoverState.hex?.address {
+            return hoverAddr
+        }
+        return selectedStart ?? alignedStart(viewportOffset)
+    }
+
+    private func snapHexLayout(to c: MapFinder.Candidate) {
+        dataFormat = c.isFloat ? .f32 : (c.bits == 32 ? .u32 : (c.bits == 16 ? .u16 : .u8))
+        lsbFirst = c.lsbFirst
+        isSigned = c.signed
+        columns = min(32, max(4, c.cols))
+        let newStride = max(1, columns * dataFormat.bytes)
+        byteShift = c.address % newStride
+        selectedStart = c.address
+        selectedEnd = max(c.address, c.dataRange.upperBound - dataFormat.bytes)
+        viewportOffset = max(0, c.address - newStride * 2)
+    }
+
+    private func jumpPotentialMap(step: Int) {
+        let cands = cachedPotentialIndex.candidates
+        guard !cands.isEmpty else { return }
+        let cur = selectedStart ?? viewportOffset
+        let target = step > 0
+            ? (cands.first { $0.address > cur } ?? cands[0])
+            : (cands.last { $0.address < cur } ?? cands[cands.count - 1])
+        if autoAlignOnPotentialJump {
+            snapHexLayout(to: target)
+        } else {
+            viewportOffset = max(0, target.address - rowStride * 2)
+            selectedStart = target.address
+            selectedEnd = max(target.address, target.dataRange.upperBound - elemBytes)
+        }
     }
 
     private func runSearch() {
@@ -2719,6 +3287,13 @@ struct HexDiffView: View {
     }
 
     private func consumeJumpTarget() {
+        if let snap = model.hexSnapCandidate {
+            model.hexSnapCandidate = nil
+            model.hexJumpTarget = nil
+            showPotentialMaps = true
+            snapHexLayout(to: snap)
+            return
+        }
         if let target = model.hexJumpTarget {
             model.hexJumpTarget = nil
             byteShift = target.lowerBound % rowStride

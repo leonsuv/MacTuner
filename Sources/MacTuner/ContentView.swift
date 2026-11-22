@@ -78,7 +78,7 @@ struct ContentView: View {
             }
         }
         .sheet(item: Binding(get: { model.xdfEditorRequest }, set: { model.xdfEditorRequest = $0 })) { req in
-            XDFItemEditorSheet(existingItem: req.existingItem, presetRange: req.presetRange)
+            XDFItemEditorSheet(existingItem: req.existingItem, presetRange: req.presetRange, presetCandidate: req.presetCandidate)
                 .environment(model)
         }
     }
