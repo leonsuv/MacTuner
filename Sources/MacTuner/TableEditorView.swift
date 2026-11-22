@@ -688,7 +688,7 @@ struct TableEditorView: View {
                             .onTapGesture {
                                 select((0..<displayRows).compactMap { cell($0, j) })
                             }
-                            .contextMenu {
+                            .clickThroughContextMenu {
                                 if editable {
                                     Button("Achsen inline bearbeiten") { axisEditMode = true }
                                     Button("Einzelwert bearbeiten …") {
@@ -720,7 +720,7 @@ struct TableEditorView: View {
                             .onTapGesture {
                                 select((0..<displayCols).compactMap { cell(i, $0) })
                             }
-                            .contextMenu {
+                            .clickThroughContextMenu {
                                 if editable {
                                     Button("Achsen inline bearbeiten") { axisEditMode = true }
                                     Button("Einzelwert bearbeiten …") {

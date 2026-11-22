@@ -207,7 +207,7 @@ struct SidebarView: View {
                                 .help("Zur XDF hinzufügen (1-Klick)")
                             }
                             .padding(.vertical, 2)
-                            .contextMenu {
+                            .clickThroughContextMenu {
                                 Button { model.addCandidateToXDF(cand, selectAfterAdd: false) } label: {
                                     Label("Zur XDF hinzufügen (1-Klick)", systemImage: "plus.circle.fill")
                                 }
@@ -247,7 +247,7 @@ struct SidebarView: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .contextMenu {
+                            .clickThroughContextMenu {
                                 Button("Löschen", role: .destructive) { model.removeHexBookmark(id: bm.id) }
                             }
                         }
@@ -332,7 +332,7 @@ struct SidebarView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .contextMenu {
+                        .clickThroughContextMenu {
                             Button {
                                 model.restoreRange(c.range)
                             } label: {
@@ -536,7 +536,7 @@ struct SidebarView: View {
                 Circle().fill(Theme.changed).frame(width: 7, height: 7).help("Geändert gegenüber Vergleich")
             }
         }
-        .contextMenu { ItemContextMenu(item: item) }
+        .clickThroughContextMenu { ItemContextMenu(item: item) }
     }
 
     private func changedRow(_ item: XDFItem, _ def: XDFDefinition) -> some View {
@@ -555,7 +555,7 @@ struct SidebarView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
-        .contextMenu { ItemContextMenu(item: item) }
+        .clickThroughContextMenu { ItemContextMenu(item: item) }
     }
 
     private var outsideRow: some View {

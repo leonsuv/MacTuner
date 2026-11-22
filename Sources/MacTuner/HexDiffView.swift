@@ -1400,7 +1400,7 @@ struct HexDiffView: View {
                         hoverState.hex = nil
                     }
                 }
-                .contextMenu {
+                .clickThroughContextMenu {
                     hexContextMenu(targetAddr: contextMenuTargetAddress(is2D: false), is2D: false)
                 }
                 .overlay(
@@ -1957,7 +1957,7 @@ struct HexDiffView: View {
                 }
                 .allowsHitTesting(false)
             )
-            .contextMenu {
+            .clickThroughContextMenu {
                 hexContextMenu(targetAddr: contextMenuTargetAddress(is2D: false), is2D: false)
             }
         }
@@ -2767,7 +2767,7 @@ struct HexDiffView: View {
                     }
                     .allowsHitTesting(false)
                 )
-                .contextMenu {
+                .clickThroughContextMenu {
                     hexContextMenu(targetAddr: contextMenuTargetAddress(is2D: true), is2D: true)
                 }
             }

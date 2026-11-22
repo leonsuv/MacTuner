@@ -420,7 +420,7 @@ struct OverviewView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .contextMenu { ItemContextMenu(item: item) }
+        .clickThroughContextMenu { ItemContextMenu(item: item) }
     }
 }
 

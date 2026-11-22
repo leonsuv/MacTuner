@@ -212,13 +212,11 @@ struct MacTunerApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let clickThrough = ContextMenuClickThrough()
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         NSWindow.allowsAutomaticWindowTabbing = true
-        clickThrough.install()
+        ClickThroughMenuManager.shared.installIfNeeded()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -232,91 +230,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated { urls.forEach(AppModel.shared.open) }
-    }
-}
-
-/// Forwards outside-click dismissal of context menus to the underlying MacTuner window so
-/// clicking a button, cell, or map while a right-click menu is open both closes the menu AND clicks the target.
-final class ContextMenuClickThrough {
-    private var actionSent = false
-    private var isForwarding = false
-
-    func install() {
-        let nc = NotificationCenter.default
-        nc.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] note in
-            guard let self, !self.isForwarding,
-                  let menu = note.object as? NSMenu,
-                  menu != NSApp.mainMenu, menu.supermenu == nil else { return }
-            self.actionSent = false
-        }
-        nc.addObserver(forName: NSMenu.willSendActionNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.actionSent = true
-        }
-        nc.addObserver(forName: NSMenu.didSendActionNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.actionSent = true
-        }
-        nc.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] note in
-            guard let self, !self.isForwarding,
-                  let menu = note.object as? NSMenu,
-                  menu != NSApp.mainMenu, menu.supermenu == nil else { return }
-
-            // Outside clicks dismiss NSMenu on .leftMouseDown / .rightMouseDown (while menu item clicks end on .leftMouseUp and Esc on .keyDown)
-            guard let ev = NSApp.currentEvent,
-                  (ev.type == .leftMouseDown || ev.type == .rightMouseDown) else { return }
-
-            let screenPt = NSEvent.mouseLocation
-            // Snapshot menu window frames right before they vanish so clicks on disabled menu items aren't forwarded
-            let hitMenuWindow = NSApp.windows.contains { w in
-                w.isVisible && w.level.rawValue >= NSWindow.Level.popUpMenu.rawValue && w.frame.contains(screenPt)
-            }
-            if hitMenuWindow { return }
-
-            guard let targetWin = NSApp.orderedWindows.first(where: { w in
-                guard w.isVisible, w.level == .normal, w.frame.contains(screenPt) else { return false }
-                let local = w.convertPoint(fromScreen: screenPt)
-                return w.contentLayoutRect.contains(local)
-            }) else { return }
-
-            let isRight = (ev.type == .rightMouseDown)
-            let mods = ev.modifierFlags
-
-            // Delay slightly so AppKit finishes tearing down menu tracking AND any willSendActionNotification has fired
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.025) { [weak self] in
-                guard let self, !self.actionSent, targetWin.isVisible else { return }
-                self.replay(window: targetWin, screenPoint: screenPt, isRight: isRight, modifiers: mods)
-            }
-        }
-    }
-
-    private func replay(window: NSWindow, screenPoint: NSPoint, isRight: Bool, modifiers: NSEvent.ModifierFlags) {
-        let localPt = window.convertPoint(fromScreen: screenPoint)
-        let ts = ProcessInfo.processInfo.systemUptime
-        let downType: NSEvent.EventType = isRight ? .rightMouseDown : .leftMouseDown
-        let upType: NSEvent.EventType = isRight ? .rightMouseUp : .leftMouseUp
-        let buttonMask: Int = isRight ? 0x2 : 0x1
-        let stillHeld = (NSEvent.pressedMouseButtons & buttonMask) != 0
-
-        guard let down = NSEvent.mouseEvent(
-            with: downType, location: localPt, modifierFlags: modifiers,
-            timestamp: ts, windowNumber: window.windowNumber,
-            context: nil, eventNumber: 0, clickCount: 1, pressure: 1.0
-        ) else { return }
-
-        isForwarding = true
-        window.sendEvent(down)
-        if !stillHeld, let up = NSEvent.mouseEvent(
-            with: upType, location: localPt, modifierFlags: modifiers,
-            timestamp: ts + 0.015, windowNumber: window.windowNumber,
-            context: nil, eventNumber: 0, clickCount: 1, pressure: 0.0
-        ) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.015) { [weak self] in
-                guard let self else { return }
-                window.sendEvent(up)
-                self.isForwarding = false
-            }
-        } else {
-            isForwarding = false
-        }
     }
 }
 

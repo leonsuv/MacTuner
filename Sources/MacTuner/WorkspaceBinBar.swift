@@ -148,7 +148,7 @@ struct WorkspaceBinBar: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(accent.opacity(isActive || isCompare ? 0.45 : 0.18), lineWidth: 0.75)
         )
-        .contextMenu {
+        .clickThroughContextMenu {
             Button("Als aktive BIN (Links) setzen") { model.setActiveBin(doc.id) }
                 .disabled(isActive)
             Button("Als Vergleichs-BIN (Rechts) setzen") { model.setCompareSource(.bin(doc.id)) }
