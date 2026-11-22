@@ -25,6 +25,8 @@ final class ClickThroughMenuManager {
 
     private var anchors: [AnchorBox] = []
     private var panel: NonActivatingMenuPanel?
+    private weak var parentWindow: NSWindow?
+    private var openedAt: TimeInterval = 0
     private let hoverState = HoverState()
     private var localMonitor: Any?
     private var observersInstalled = false
@@ -53,13 +55,14 @@ final class ClickThroughMenuManager {
         nc.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] note in
             MainActor.assumeIsolated {
                 guard let self, let p = self.panel, p.isVisible,
-                      (note.object as? NSWindow) !== p else { return }
+                      let w = note.object as? NSWindow, w === self.parentWindow else { return }
                 self.dismiss()
             }
         }
         nc.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
             MainActor.assumeIsolated {
-                guard let self, let p = self.panel, (note.object as? NSWindow) !== p else { return }
+                guard let self, let p = self.panel, p.isVisible,
+                      let w = note.object as? NSWindow, w === self.parentWindow else { return }
                 self.dismiss()
             }
         }
@@ -106,9 +109,20 @@ final class ClickThroughMenuManager {
             }
             return false
 
-        case .scrollWheel, .otherMouseDown:
+        case .otherMouseDown:
             if menuOpen && !isInsideMenu {
                 dismiss()
+            }
+            return false
+
+        case .scrollWheel:
+            // Ignore MacBook trackpad two-finger click/lift micro-scroll events (`.mayBegin`/`.ended`/small delta within 220ms)
+            if menuOpen && !isInsideMenu {
+                let elapsed = ProcessInfo.processInfo.systemUptime - openedAt
+                let deliberate = abs(event.scrollingDeltaY) >= 4 || abs(event.scrollingDeltaX) >= 4
+                if elapsed > 0.22 && deliberate && event.phase != .mayBegin && event.phase != .cancelled {
+                    dismiss()
+                }
             }
             return false
 
@@ -204,6 +218,8 @@ final class ClickThroughMenuManager {
         hosting.sizingOptions = [.intrinsicContentSize]
         let fitting = hosting.fittingSize
         guard itemCount > 0, fitting.width > 20, fitting.height > 16 else { return false }
+        self.parentWindow = parentWindow
+        self.openedAt = ProcessInfo.processInfo.systemUptime
 
         let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: fitting))
         effect.material = .menu
