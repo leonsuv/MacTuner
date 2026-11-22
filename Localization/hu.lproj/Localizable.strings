@@ -766,3 +766,4 @@
 "Erkenne Kennfelder …" = "Jellegmezők felismerése …";
 "Keine erkannten Kennfelder" = "Nincs felismert jellegmező";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Kattintson az „Újrakeresés” gombra Bosch/Siemens jellegmezők, 1D görbék és Float32 struktúrák kereséséhez.";
+"Zurück zu Hex" = "Vissza a Hexhez";

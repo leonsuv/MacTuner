@@ -766,3 +766,4 @@
 "Erkenne Kennfelder …" = "맵 인식 중 …";
 "Keine erkannten Kennfelder" = "인식된 맵 없음";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "“다시 스캔”을 클릭하여 Bosch/Siemens 맵, 1D 곡선 및 Float32 구조를 검색하세요.";
+"Zurück zu Hex" = "Hex로 돌아가기";

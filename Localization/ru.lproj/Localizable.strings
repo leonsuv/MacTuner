@@ -766,3 +766,4 @@
 "Erkenne Kennfelder …" = "Распознавание карт …";
 "Keine erkannten Kennfelder" = "Карты не распознаны";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Нажмите «Сканировать снова», чтобы найти карты Bosch/Siemens, 1D-кривые и структуры Float32.";
+"Zurück zu Hex" = "Назад в Hex";

@@ -766,3 +766,4 @@
 "Erkenne Kennfelder …" = "Αναγνώριση χαρτών …";
 "Keine erkannten Kennfelder" = "Δεν αναγνωρίστηκαν χάρτες";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Κάντε κλικ στο «Επανασάρωση» για αναζήτηση χαρτών Bosch/Siemens, καμπυλών 1D και δομών Float32.";
+"Zurück zu Hex" = "Επιστροφή σε Hex";

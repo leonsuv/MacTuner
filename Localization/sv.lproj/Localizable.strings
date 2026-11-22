@@ -766,3 +766,4 @@
 "Erkenne Kennfelder …" = "Identifierar mappar …";
 "Keine erkannten Kennfelder" = "Inga identifierade mappar";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Klicka på ”Skanna igen” för att söka efter Bosch/Siemens-mappar, 1D-kurvor och Float32-strukturer.";
+"Zurück zu Hex" = "Tillbaka till Hex";

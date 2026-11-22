@@ -766,3 +766,4 @@
 "Erkenne Kennfelder …" = "Recognizing maps …";
 "Keine erkannten Kennfelder" = "No Recognized Maps";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Click “Rescan” to search for Bosch/Siemens maps, 1D curves, and Float32 structures.";
+"Zurück zu Hex" = "Back to Hex";

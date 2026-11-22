@@ -2463,6 +2463,16 @@ struct HexDiffView: View {
                     Button { viewportOffset = min(max(0, bin.count - elemBytes), viewportOffset + windowBytes / 2) } label: { Image(systemName: "chevron.right") }
                 }
                 .fixedSize()
+                if !compact {
+                    Button {
+                        viewMode = .text
+                    } label: {
+                        Label("Zurück zu Hex", systemImage: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.escape, modifiers: [])
+                    .help("Zurück zur Hex-Ansicht (Esc)")
+                }
             }
             .controlSize(.small)
 
@@ -2760,7 +2770,7 @@ struct HexDiffView: View {
         let palette = model.heatmapPalette
 
         return VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 10) {
                 Label(String(format: "3D-Vorschau ab 0x%05X (%d × %d · %@-Bit %@)",
                              baseAddr, rows, cols, dataFormat.rawValue, lsbFirst ? "LoHi" : "HiLo"),
                       systemImage: "cube")
@@ -2768,6 +2778,16 @@ struct HexDiffView: View {
                 Spacer()
                 Text("Spalten (M/W) & Byte-Shift anpassen, um Kennfelder in 3D auszurichten")
                     .font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Button {
+                    viewMode = .text
+                } label: {
+                    Label("Zurück zu Hex", systemImage: "xmark.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .keyboardShortcut(.escape, modifiers: [])
+                .help("3D-Vorschau schließen und zurück zu Hex (Esc)")
             }
 
             GeometryReader { geo in

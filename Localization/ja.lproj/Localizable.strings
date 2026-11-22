@@ -766,3 +766,4 @@
 "Erkenne Kennfelder …" = "マップを認識中 …";
 "Keine erkannten Kennfelder" = "認識されたマップなし";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "「再スキャン」をクリックしてBosch/Siemensマップ、1D曲線、Float32構造を検索します。";
+"Zurück zu Hex" = "Hexに戻る";

@@ -766,3 +766,4 @@
 "Erkenne Kennfelder …" = "正在辨識脈譜 …";
 "Keine erkannten Kennfelder" = "未辨識到脈譜";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "點擊「重新掃描」以搜尋 Bosch/Siemens 脈譜、1D 曲線與 Float32 結構。";
+"Zurück zu Hex" = "返回 Hex";

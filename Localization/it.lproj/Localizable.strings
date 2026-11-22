@@ -766,3 +766,4 @@
 "Erkenne Kennfelder …" = "Riconoscimento mappe …";
 "Keine erkannten Kennfelder" = "Nessuna mappa riconosciuta";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Fai clic su «Ripeti scansione» per cercare mappe Bosch/Siemens, curve 1D e strutture Float32.";
+"Zurück zu Hex" = "Torna a Hex";
