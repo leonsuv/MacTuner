@@ -212,6 +212,7 @@ struct HexDiffView: View {
     @State private var lastClickOffset: Int?
     @State private var lastWaveClickTime: Date = .distantPast
     @State private var lastWaveClickItemID: Int?
+    @State private var lastWaveClickCandidateKey: String?
     @State private var hoverState = HexHoverState()
 
     @Observable
@@ -1362,7 +1363,12 @@ struct HexDiffView: View {
                             let off = visibleRowBases[r] + col * elemBytes
                             let now = Date()
                             if lastClickOffset == off && now.timeIntervalSince(lastClickTime) < 0.35 {
-                                if let span = cachedIndex.span(at: off) { model.selection = span.itemID }
+                                if let span = cachedIndex.span(at: off) {
+                                    model.selection = span.itemID
+                                } else if showPotentialMaps, let (cand, _) = cachedPotentialIndex.candidate(at: off) {
+                                    selectedStart = cand.address
+                                    selectedEnd = max(cand.address, cand.dataRange.upperBound - elemBytes)
+                                }
                                 lastClickOffset = nil
                             } else {
                                 lastClickOffset = off
@@ -1822,6 +1828,9 @@ struct HexDiffView: View {
                             if lastClickOffset == off && now.timeIntervalSince(lastClickTime) < 0.35 {
                                 if let span = cachedIndex.span(at: off) {
                                     model.selection = span.itemID
+                                } else if showPotentialMaps, let (cand, _) = cachedPotentialIndex.candidate(at: off) {
+                                    selectedStart = cand.address
+                                    selectedEnd = max(cand.address, cand.dataRange.upperBound - elemBytes)
                                 }
                                 lastClickOffset = nil
                             } else {
@@ -2669,6 +2678,7 @@ struct HexDiffView: View {
                                 let addr = min(bin.count - elemBytes, startAddr + el * elemBytes)
                                 let now = Date()
                                 if let span = cachedIndex.span(at: addr) {
+                                    lastWaveClickCandidateKey = nil
                                     if lastWaveClickItemID == span.itemID && now.timeIntervalSince(lastWaveClickTime) < 0.35 {
                                         model.selection = span.itemID
                                         lastWaveClickItemID = nil
@@ -2676,8 +2686,19 @@ struct HexDiffView: View {
                                         lastWaveClickItemID = span.itemID
                                         lastWaveClickTime = now
                                     }
+                                } else if showPotentialMaps, let (cand, _) = cachedPotentialIndex.candidate(at: addr) {
+                                    lastWaveClickItemID = nil
+                                    if lastWaveClickCandidateKey == cand.signatureKey && now.timeIntervalSince(lastWaveClickTime) < 0.35 {
+                                        selectedStart = cand.address
+                                        selectedEnd = max(cand.address, cand.dataRange.upperBound - elemBytes)
+                                        lastWaveClickCandidateKey = nil
+                                    } else {
+                                        lastWaveClickCandidateKey = cand.signatureKey
+                                        lastWaveClickTime = now
+                                    }
                                 } else {
                                     lastWaveClickItemID = nil
+                                    lastWaveClickCandidateKey = nil
                                 }
                             }
                     )
