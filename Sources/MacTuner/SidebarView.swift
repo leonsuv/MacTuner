@@ -47,6 +47,7 @@ struct SidebarView: View {
                             .padding(.vertical, 5.5)
                             .foregroundStyle(isHex ? .white : .secondary)
                             .background(isHex ? theme.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         }
                         .buttonStyle(.plain)
 
@@ -66,6 +67,7 @@ struct SidebarView: View {
                             .padding(.vertical, 5.5)
                             .foregroundStyle(isMap ? .white : .secondary)
                             .background(isMap ? theme.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
@@ -90,13 +92,17 @@ struct SidebarView: View {
                 Divider().opacity(0.45)
 
                 // Active tab content
-                switch activeTab {
-                case .maps:
-                    mapsSidebarContent
-                case .diffs, .detected, .bookmarks:
-                    binSidebarContent
+                SwiftUI.Group {
+                    switch activeTab {
+                    case .maps:
+                        mapsSidebarContent
+                    case .diffs, .detected, .bookmarks:
+                        binSidebarContent
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .onAppear {
                 model.schedulePotentialMapScan()
                 if !didInitializeTab {
@@ -133,6 +139,7 @@ struct SidebarView: View {
             .padding(.vertical, 4)
             .foregroundStyle(active ? .primary : .secondary)
             .background(active ? theme.accentColor.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
     }

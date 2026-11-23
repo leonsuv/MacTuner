@@ -153,6 +153,9 @@ struct StudioSubBar: View {
                                 .clipShape(Capsule())
                         }
                         .fixedSize()
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .disabled(item.disabled)
@@ -194,6 +197,7 @@ struct IDETabBar: View {
                                         .lineLimit(1)
                                         .frame(maxWidth: 160, alignment: .leading)
                                 }
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
 
@@ -334,6 +338,7 @@ struct CanvasFloatingDock: View {
             .padding(.vertical, 5.5)
             .foregroundStyle(active ? .white : .primary.opacity(0.8))
             .background(active ? theme.accentColor : Color.clear, in: Capsule())
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .help(label)
@@ -346,6 +351,7 @@ struct CanvasFloatingDock: View {
                 .frame(width: 26, height: 24)
                 .foregroundStyle(active ? theme.accentColor : .secondary)
                 .background(active ? theme.accentColor.opacity(0.16) : Color.clear, in: Circle())
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .help(help)

@@ -65,6 +65,7 @@ struct ContentView: View {
                                 .padding(.vertical, 4.5)
                                 .foregroundStyle(active ? .white : .secondary)
                                 .background(active ? theme.accentColor : Color.clear, in: Capsule())
+                                .contentShape(Capsule())
                             }
                             .buttonStyle(.plain)
                         }

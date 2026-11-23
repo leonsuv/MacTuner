@@ -80,6 +80,7 @@ struct BottomDrawerView: View {
             .padding(.horizontal, 9).padding(.vertical, 3.5)
             .foregroundStyle(active ? .white : .secondary)
             .background(active ? theme.accentColor : Color.clear, in: Capsule())
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
     }

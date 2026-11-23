@@ -72,6 +72,7 @@ struct InspectorView: View {
                     .foregroundStyle(active ? theme.accentColor : .secondary)
                     .background(active ? theme.accentColor.opacity(0.15) : Color.clear,
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 if badge > 0 {
                     Text("\(badge)")
                         .font(.system(size: 8.5, weight: .bold).monospacedDigit())
