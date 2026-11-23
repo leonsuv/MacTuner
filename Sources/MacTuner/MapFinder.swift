@@ -198,7 +198,7 @@ enum MapFinder {
 
             // Pass 2: Headerless 16-bit 2D Surfaces (full-range overlap guard, zero-row guard, immediate contiguous axes ONLY)
             scanHeaderless2D16(buf: buf, calMask: calMask, lsb: primaryLSB,
-                               occupied: &occupied, scratch: &scratch, out: &candidates, localLimit: 1500)
+                               occupied: &occupied, scratch: &scratch, out: &candidates, localLimit: 6000)
 
             return deduplicateNMS(candidates, maxResults: maxResults)
         }
@@ -776,7 +776,9 @@ enum MapFinder {
                         let accept = isShortValid || (res.score >= 0.55) || (isStandardLen && isFlatValid)
 
                         if accept {
-                            let conf: Double = isFlatValid ? 0.78 : (res.isMonotonic ? min(0.94, 0.64 + res.score * 0.30) : min(0.91, 0.56 + res.score * 0.34))
+                            // Never give tiny 2-3 point curves high confidence (prevents false hits in bootloader/magic words)
+                            let rawConf: Double = isFlatValid ? 0.76 : (res.isMonotonic ? min(0.94, 0.64 + res.score * 0.30) : min(0.91, 0.56 + res.score * 0.34))
+                            let conf: Double = n < 4 ? min(0.62, rawConf) : rawConf
                             let hint = isFlatValid
                                 ? "1D-Kennlinie (konstant)"
                                 : (inferDomainHint(buf: buf, xAxisOff: axOff, xCount: n, yAxisOff: nil, yCount: 0, lsb: lsb, signed: useSigned) ?? "1D-Kennlinie")
@@ -1038,6 +1040,8 @@ enum MapFinder {
                     }
                 }
                 guard chosenRes.score > 0.72 else { continue }
+                // Reject trivial 1D linear counters/countdowns (e.g. 0x0393, 0x0392, 0x0391, ...)
+                if isTrivialLinearRamp(scratch: scratch, count: r * c) { continue }
                 let wrap = rowWrapContrast(scratch: scratch, rows: r, cols: c)
                 let pScore = chosenRes.score + 0.18 * wrap
                 if pScore > (best?.pitchScore ?? 0) {
@@ -1050,7 +1054,8 @@ enum MapFinder {
                 // STRICT: ONLY accept immediately contiguous unoccupied axes — NEVER fish 512B into other maps!
                 let axes = findImmediateAxes16(buf: buf, dataOff: off, rows: b.r, cols: b.c, lsb: lsb, occupied: occupied)
                 let hasAx = axes.xAxis != nil || axes.yAxis != nil
-                let conf = min(0.92, b.res.score * 0.94 + (hasAx ? 0.06 : 0))
+                // Cap pure headerless Datenmuster at <= 0.80 so High Confidence (>= 85%) only surfaces axis/header-backed maps
+                let conf = hasAx ? min(0.93, b.res.score * 0.94 + 0.06) : min(0.80, b.res.score * 0.86)
                 let pat: MapPatternKind = hasAx ? .splitAxis2D : .smooth2DSurface
                 let hint = inferDomainHint(buf: buf, xAxisOff: axes.xAxis, xCount: b.c, yAxisOff: axes.yAxis, yCount: b.r,
                                            lsb: lsb, signed: b.signed)
@@ -1077,6 +1082,17 @@ enum MapFinder {
         }
     }
 
+    /// Returns true if >= 85% of consecutive elements have the exact same constant step (e.g. a 1D index/countdown table like 0x0393, 0x0392, 0x0391...).
+    private static func isTrivialLinearRamp(scratch: [Double], count: Int) -> Bool {
+        guard count >= 16, scratch.count >= count else { return false }
+        let d0 = scratch[1] - scratch[0]
+        var same = 0
+        for i in 1..<(count - 1) {
+            if abs((scratch[i + 1] - scratch[i]) - d0) < 1e-6 { same += 1 }
+        }
+        return Double(same) / Double(count - 2) >= 0.85
+    }
+
     private static func scanHeaderless2D8(buf: UnsafeBufferPointer<UInt8>, calMask: [Bool], signed: Bool,
                                           occupied: inout WordBitset, scratch: inout [Double],
                                           out: inout [Candidate], localLimit: Int) {
@@ -1093,6 +1109,7 @@ enum MapFinder {
                 let res = surfaceSmoothness(buf: buf, offset: off, rows: r, cols: c,
                                             bits: 8, signed: signed, isFloat: false, lsb: true,
                                             allowSparse: false, scratch: &scratch)
+                if isTrivialLinearRamp(scratch: scratch, count: r * c) { continue }
                 if res.score > 0.74, res.score > (best?.res.score ?? 0) {
                     best = (r, c, res)
                 }
@@ -1105,7 +1122,7 @@ enum MapFinder {
                     lsbFirst: true, columnMajor: false,
                     xAxisAddress: nil, yAxisAddress: nil, xAxisSigned: false, yAxisSigned: false,
                     axisBits: 8, axisInferred: false,
-                    confidence: min(0.89, b.res.score), minVal: b.res.minVal, maxVal: b.res.maxVal, meanVal: b.res.meanVal,
+                    confidence: min(0.80, b.res.score * 0.86), minVal: b.res.minVal, maxVal: b.res.maxVal, meanVal: b.res.meanVal,
                     domainHint: nil, reason: "Glatte 8-Bit 2D-Oberfläche (\(b.r)×\(b.c))"
                 ))
                 occupied.mark(byteRange: off ..< (off + b.r * b.c))

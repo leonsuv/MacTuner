@@ -256,7 +256,7 @@ struct HexDiffView: View {
 
     // Potential map recognition overlay state
     @State private var showPotentialMaps = true
-    @State private var potentialMinConfidence: Double = 0.85
+    @AppStorage("potentialMinConfidence") private var potentialMinConfidence: Double = 0.85
     @State private var potentialPatternFilter: PotentialFilter = .all
     @State private var autoAlignOnPotentialJump = true
     @State private var pinnedCandidateKey: String? = nil

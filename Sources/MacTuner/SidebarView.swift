@@ -4,6 +4,7 @@ import SwiftUI
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
+    @AppStorage("potentialMinConfidence") private var potentialMinConfidence: Double = 0.85
     let search: String
     @State private var expanded: Set<Int> = []
     @State private var activeTab: SidebarTab = .diffs
@@ -83,7 +84,7 @@ struct SidebarView: View {
                 HStack(spacing: 2) {
                     navTabPill(.maps, count: model.definition?.items.count ?? 0)
                     navTabPill(.diffs, count: model.diffClusters.count)
-                    navTabPill(.detected, count: model.activePotentialMaps.count)
+                    navTabPill(.detected, count: model.activePotentialMaps.filter { $0.confidence >= potentialMinConfidence }.count)
                     navTabPill(.bookmarks, count: model.hexBookmarks.count)
                 }
                 .padding(.horizontal, 10)
@@ -191,7 +192,7 @@ struct SidebarView: View {
 
     @ViewBuilder private var binSidebarContent: some View {
         let clusters = model.diffClusters
-        let potentialMaps = model.activePotentialMaps
+        let potentialMaps = model.activePotentialMaps.filter { $0.confidence >= potentialMinConfidence }
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
         let filteredClusters = q.isEmpty ? clusters : clusters.filter { c in
             String(format: "0x%05x", c.range.lowerBound).contains(q) ||
