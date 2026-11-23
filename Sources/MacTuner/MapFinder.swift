@@ -750,7 +750,7 @@ enum MapFinder {
             if occupied.isSet(byteOffset: off) { off += 2; continue }
 
             let n = readU16(buf, off, lsb: lsb)
-            let isSmallChainLen = (n == 2 || n == 3)
+            let isSmallChainLen = false // Never match 2-3 pt noise; prevents swallowing adjacent real 4+ pt Bosch curves!
             let isStandardLen = (n >= 4 && n <= 32) || (n <= 64 && (off - lastBoschEnd) <= 16)
             if isStandardLen || isSmallChainLen {
                 let axOff = off + 2
