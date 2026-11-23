@@ -787,3 +787,16 @@
 "Definition Smart-Merge (Adressen übernehmen) …" = "Chytré sloučení definice (přenést adresy) …";
 "A2L / WinOLS .kp / RomRaider .xml importieren …" = "Importovat A2L / WinOLS .kp / RomRaider .xml …";
 "Slices (WinOLS)" = "Řezy (WinOLS)";
+
+/* MacTuner v3.0 UI */
+"Kalibrieren" = "Kalibrace";
+"Erkunden" = "Průzkum";
+"Loggen" = "Logy";
+"Flashen" = "Flash";
+"Layout-Modus" = "Režim rozvržení";
+"Design-Theme" = "Vizuální motiv";
+"Studio (4 Modi)" = "Studio (4 režimy)";
+"IDE (Tabs)" = "IDE (Karty)";
+"Canvas (Minimal)" = "Plátno (Minimal)";
+"Rechten Inspector umschalten" = "Přepnout pravý inspektor";
+"Unteres Panel umschalten" = "Přepnout spodní panel";

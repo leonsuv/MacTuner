@@ -787,3 +787,16 @@
 "Definition Smart-Merge (Adressen übernehmen) …" = "Mesclagem inteligente de definição (endereços) …";
 "A2L / WinOLS .kp / RomRaider .xml importieren …" = "Importar A2L / WinOLS .kp / RomRaider .xml …";
 "Slices (WinOLS)" = "Fatias (WinOLS)";
+
+/* MacTuner v3.0 UI */
+"Kalibrieren" = "Calibrar";
+"Erkunden" = "Explorar";
+"Loggen" = "Logs";
+"Flashen" = "Flash";
+"Layout-Modus" = "Modo de layout";
+"Design-Theme" = "Tema visual";
+"Studio (4 Modi)" = "Estúdio (4 modos)";
+"IDE (Tabs)" = "IDE (Abas)";
+"Canvas (Minimal)" = "Canvas (Minimal)";
+"Rechten Inspector umschalten" = "Alternar inspetor direito";
+"Unteres Panel umschalten" = "Alternar painel inferior";

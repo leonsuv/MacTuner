@@ -787,3 +787,16 @@
 "Definition Smart-Merge (Adressen übernehmen) …" = "定義智慧合併（僅更新位址）…";
 "A2L / WinOLS .kp / RomRaider .xml importieren …" = "匯入 A2L / WinOLS .kp / RomRaider .xml …";
 "Slices (WinOLS)" = "切片檢視 (WinOLS)";
+
+/* MacTuner v3.0 UI */
+"Kalibrieren" = "標定";
+"Erkunden" = "探索";
+"Loggen" = "日誌";
+"Flashen" = "刷寫";
+"Layout-Modus" = "版面模式";
+"Design-Theme" = "視覺主題";
+"Studio (4 Modi)" = "工作室（4 模式）";
+"IDE (Tabs)" = "IDE（多分頁）";
+"Canvas (Minimal)" = "極簡畫布";
+"Rechten Inspector umschalten" = "切換右側檢查器";
+"Unteres Panel umschalten" = "切換底部抽屜";

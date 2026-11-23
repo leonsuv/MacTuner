@@ -787,3 +787,16 @@
 "Definition Smart-Merge (Adressen übernehmen) …" = "Akıllı Tanım Birleştirme (Adresleri Aktar) …";
 "A2L / WinOLS .kp / RomRaider .xml importieren …" = "A2L / WinOLS .kp / RomRaider .xml içe aktar …";
 "Slices (WinOLS)" = "Dilimler (WinOLS)";
+
+/* MacTuner v3.0 UI */
+"Kalibrieren" = "Kalibrasyon";
+"Erkunden" = "Keşfet";
+"Loggen" = "Log";
+"Flashen" = "Flash";
+"Layout-Modus" = "Düzen Modu";
+"Design-Theme" = "Görsel Tema";
+"Studio (4 Modi)" = "Stüdyo (4 Mod)";
+"IDE (Tabs)" = "IDE (Sekmeler)";
+"Canvas (Minimal)" = "Tuval (Minimal)";
+"Rechten Inspector umschalten" = "Sağ Denetçiyi Aç/Kapat";
+"Unteres Panel umschalten" = "Alt Paneli Aç/Kapat";

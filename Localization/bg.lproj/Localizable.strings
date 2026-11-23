@@ -787,3 +787,16 @@
 "Definition Smart-Merge (Adressen übernehmen) …" = "Интелигентно сливане на дефиниция (адреси) …";
 "A2L / WinOLS .kp / RomRaider .xml importieren …" = "Импортирай A2L / WinOLS .kp / RomRaider .xml …";
 "Slices (WinOLS)" = "Срезове (WinOLS)";
+
+/* MacTuner v3.0 UI */
+"Kalibrieren" = "Калибриране";
+"Erkunden" = "Разглеждане";
+"Loggen" = "Логове";
+"Flashen" = "Флаш";
+"Layout-Modus" = "Режим на оформление";
+"Design-Theme" = "Визуална тема";
+"Studio (4 Modi)" = "Студио (4 режима)";
+"IDE (Tabs)" = "IDE (Табове)";
+"Canvas (Minimal)" = "Платно (Минимал)";
+"Rechten Inspector umschalten" = "Превключи десния инспектор";
+"Unteres Panel umschalten" = "Превключи долния панел";

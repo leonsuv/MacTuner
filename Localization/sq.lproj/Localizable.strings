@@ -787,3 +787,16 @@
 "Definition Smart-Merge (Adressen übernehmen) …" = "Bashkim inteligjent i definicionit (adresat) …";
 "A2L / WinOLS .kp / RomRaider .xml importieren …" = "Importo A2L / WinOLS .kp / RomRaider .xml …";
 "Slices (WinOLS)" = "Feta (WinOLS)";
+
+/* MacTuner v3.0 UI */
+"Kalibrieren" = "Kalibro";
+"Erkunden" = "Eksploro";
+"Loggen" = "Log";
+"Flashen" = "Flash";
+"Layout-Modus" = "Mënyra e paraqitjes";
+"Design-Theme" = "Tema vizuale";
+"Studio (4 Modi)" = "Studio (4 mënyra)";
+"IDE (Tabs)" = "IDE (Skeda)";
+"Canvas (Minimal)" = "Kanavacë (Minimal)";
+"Rechten Inspector umschalten" = "Ndërro inspektorin e djathtë";
+"Unteres Panel umschalten" = "Ndërro panelin e poshtëm";

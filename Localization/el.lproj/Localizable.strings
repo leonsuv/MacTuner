@@ -787,3 +787,16 @@
 "Definition Smart-Merge (Adressen übernehmen) …" = "Έξυπνη συγχώνευση ορισμού (διευθύνσεις) …";
 "A2L / WinOLS .kp / RomRaider .xml importieren …" = "Εισαγωγή A2L / WinOLS .kp / RomRaider .xml …";
 "Slices (WinOLS)" = "Φέτες (WinOLS)";
+
+/* MacTuner v3.0 UI */
+"Kalibrieren" = "Βαθμονόμηση";
+"Erkunden" = "Εξερεύνηση";
+"Loggen" = "Καταγραφή";
+"Flashen" = "Flash";
+"Layout-Modus" = "Λειτουργία διάταξης";
+"Design-Theme" = "Οπτικό θέμα";
+"Studio (4 Modi)" = "Studio (4 λειτουργίες)";
+"IDE (Tabs)" = "IDE (Καρτέλες)";
+"Canvas (Minimal)" = "Καμβάς (Μίνιμαλ)";
+"Rechten Inspector umschalten" = "Εναλλαγή δεξιού επιθεωρητή";
+"Unteres Panel umschalten" = "Εναλλαγή κάτω πίνακα";

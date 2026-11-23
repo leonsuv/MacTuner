@@ -1,6 +1,79 @@
 import AppKit
 import SwiftUI
 
+/// User-selectable visual aesthetic for MacTuner v3.0.
+enum AppTheme: String, CaseIterable, Identifiable {
+    case liquidGlass = "liquidGlass"
+    case adaptiveNative = "adaptiveNative"
+    case motorsportTelemetry = "motorsportTelemetry"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .liquidGlass: return String(localized: "Liquid Glass (Pro Dark)")
+        case .adaptiveNative: return String(localized: "macOS Nativ (Adaptiv)")
+        case .motorsportTelemetry: return String(localized: "Motorsport Telemetry")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .liquidGlass: return "sparkles.rectangle.stack"
+        case .adaptiveNative: return "macwindow"
+        case .motorsportTelemetry: return "gauge.with.needle.fill"
+        }
+    }
+
+    var preferredColorScheme: ColorScheme? {
+        switch self {
+        case .liquidGlass: return .dark
+        case .adaptiveNative: return nil
+        case .motorsportTelemetry: return .dark
+        }
+    }
+
+    var canvasBackground: Color {
+        switch self {
+        case .liquidGlass: return Color(red: 0.075, green: 0.082, blue: 0.102)
+        case .adaptiveNative: return Color(nsColor: .windowBackgroundColor)
+        case .motorsportTelemetry: return Color(red: 0.043, green: 0.051, blue: 0.067)
+        }
+    }
+
+    var surfaceBackground: Color {
+        switch self {
+        case .liquidGlass: return Color.white.opacity(0.055)
+        case .adaptiveNative: return Color(nsColor: .controlBackgroundColor)
+        case .motorsportTelemetry: return Color(red: 0.078, green: 0.090, blue: 0.118)
+        }
+    }
+
+    var hairlineBorder: Color {
+        switch self {
+        case .liquidGlass: return Color.white.opacity(0.11)
+        case .adaptiveNative: return Color(nsColor: .separatorColor).opacity(0.6)
+        case .motorsportTelemetry: return Color(red: 0.00, green: 0.88, blue: 1.00).opacity(0.18)
+        }
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .liquidGlass: return Color(red: 0.25, green: 0.62, blue: 1.00)
+        case .adaptiveNative: return .accentColor
+        case .motorsportTelemetry: return Color(red: 0.00, green: 0.88, blue: 1.00)
+        }
+    }
+
+    var changedColor: Color {
+        switch self {
+        case .liquidGlass: return Color(red: 1.00, green: 0.58, blue: 0.18)
+        case .adaptiveNative: return .orange
+        case .motorsportTelemetry: return Color(red: 1.00, green: 0.30, blue: 0.24)
+        }
+    }
+}
+
 enum HeatmapPalette: String, CaseIterable, Identifiable {
     case classic = "classic"
     case viridis = "viridis"
@@ -101,12 +174,24 @@ enum Theme {
 
 struct Card: ViewModifier {
     var padding: CGFloat = 12
+    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
+
+    private var theme: AppTheme { AppTheme(rawValue: appThemeRaw) ?? .liquidGlass }
 
     func body(content: Content) -> some View {
         content
             .padding(padding)
-            .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.separator.opacity(0.6)))
+            .background {
+                if theme == .liquidGlass {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.03)))
+                } else {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(theme.surfaceBackground)
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(theme.hairlineBorder, lineWidth: 0.75))
     }
 }
 

@@ -170,6 +170,18 @@ struct CommandPaletteView: View {
             Entry(id: "act.unit.orig", title: "Einheiten: Original (XDF)", subtitle: "Keine Einheitenumrechnung", icon: "ruler", shortcut: nil) { model.unitSystem = .original },
             Entry(id: "act.unit.metric", title: "Einheiten: Metrisch (°C, Nm, bar)", subtitle: "Metrische Anzeige aktivieren", icon: "ruler", shortcut: nil) { model.unitSystem = .metric },
             Entry(id: "act.unit.imp", title: "Einheiten: Imperial (°F, lb-ft, psi)", subtitle: "Imperiale Anzeige aktivieren", icon: "ruler", shortcut: nil) { model.unitSystem = .imperial },
+            Entry(id: "act.lay.studio", title: "Layout: Studio (4 Modi)", subtitle: "Kalibrieren · Erkunden · Loggen · Flashen", icon: "rectangle.split.3x1", shortcut: nil) { UserDefaults.standard.set(WorkspaceLayoutMode.studio.rawValue, forKey: "workspaceLayoutMode") },
+            Entry(id: "act.lay.ide", title: "Layout: IDE (Tabs)", subtitle: "Multi-Tab-Editor + einheitliche Sidebar", icon: "macwindow.on.rectangle", shortcut: nil) { UserDefaults.standard.set(WorkspaceLayoutMode.ide.rawValue, forKey: "workspaceLayoutMode") },
+            Entry(id: "act.lay.canvas", title: "Layout: Canvas (Minimal)", subtitle: "Vollbild-Canvas mit schwebendem Dock", icon: "rectangle.inset.filled", shortcut: nil) { UserDefaults.standard.set(WorkspaceLayoutMode.canvas.rawValue, forKey: "workspaceLayoutMode") },
+            Entry(id: "act.thm.glass", title: "Theme: Liquid Glass (Pro Dark)", subtitle: "Dunkles Apple-Pro-App-Design", icon: "sparkles.rectangle.stack", shortcut: nil) { UserDefaults.standard.set(AppTheme.liquidGlass.rawValue, forKey: "appTheme") },
+            Entry(id: "act.thm.native", title: "Theme: macOS Nativ (Adaptiv)", subtitle: "Folgt Hell-/Dunkelmodus des Systems", icon: "macwindow", shortcut: nil) { UserDefaults.standard.set(AppTheme.adaptiveNative.rawValue, forKey: "appTheme") },
+            Entry(id: "act.thm.motor", title: "Theme: Motorsport Telemetry", subtitle: "Carbon-Dunkel mit Telemetrie-Akzenten", icon: "gauge.with.needle.fill", shortcut: nil) { UserDefaults.standard.set(AppTheme.motorsportTelemetry.rawValue, forKey: "appTheme") },
+            Entry(id: "act.insp", title: "Rechten Inspector umschalten", subtitle: "Eigenschaften, Sync, Preflight & ECU", icon: "sidebar.right", shortcut: "⌥⌘I") {
+                UserDefaults.standard.set(!UserDefaults.standard.bool(forKey: "showRightInspector"), forKey: "showRightInspector")
+            },
+            Entry(id: "act.drawer", title: "Unteres Panel umschalten", subtitle: "3D-Fläche, Datalog-Trace & Preflight", icon: "rectangle.bottomthird.inset.filled", shortcut: "⇧⌘Y") {
+                UserDefaults.standard.set(!UserDefaults.standard.bool(forKey: "showBottomDrawer"), forKey: "showBottomDrawer")
+            },
         ].map { e in
             Entry(id: e.id, title: Bundle.main.localizedString(forKey: e.title, value: nil, table: nil),
                   subtitle: Bundle.main.localizedString(forKey: e.subtitle, value: nil, table: nil),

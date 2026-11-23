@@ -787,3 +787,16 @@
 "Definition Smart-Merge (Adressen übernehmen) …" = "Pametno združevanje definicij (naslovi) …";
 "A2L / WinOLS .kp / RomRaider .xml importieren …" = "Uvozi A2L / WinOLS .kp / RomRaider .xml …";
 "Slices (WinOLS)" = "Rezi (WinOLS)";
+
+/* MacTuner v3.0 UI */
+"Kalibrieren" = "Kalibriraj";
+"Erkunden" = "Razišči";
+"Loggen" = "Dnevniki";
+"Flashen" = "Flash";
+"Layout-Modus" = "Način postavitve";
+"Design-Theme" = "Vizualna tema";
+"Studio (4 Modi)" = "Studio (4 načini)";
+"IDE (Tabs)" = "IDE (Zavihki)";
+"Canvas (Minimal)" = "Platno (Minimal)";
+"Rechten Inspector umschalten" = "Preklopi desni inšpektor";
+"Unteres Panel umschalten" = "Preklopi spodnjo ploščo";

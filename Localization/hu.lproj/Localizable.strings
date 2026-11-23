@@ -787,3 +787,16 @@
 "Definition Smart-Merge (Adressen übernehmen) …" = "Definíció Smart-Merge (címek átvétele) …";
 "A2L / WinOLS .kp / RomRaider .xml importieren …" = "A2L / WinOLS .kp / RomRaider .xml importálása …";
 "Slices (WinOLS)" = "Szeletek (WinOLS)";
+
+/* MacTuner v3.0 UI */
+"Kalibrieren" = "Kalibrálás";
+"Erkunden" = "Felfedezés";
+"Loggen" = "Naplózás";
+"Flashen" = "Flash";
+"Layout-Modus" = "Elrendezési mód";
+"Design-Theme" = "Vizuális téma";
+"Studio (4 Modi)" = "Stúdió (4 mód)";
+"IDE (Tabs)" = "IDE (Lapok)";
+"Canvas (Minimal)" = "Vászon (Minimál)";
+"Rechten Inspector umschalten" = "Jobb felügyelő ki/be";
+"Unteres Panel umschalten" = "Alsó panel ki/be";

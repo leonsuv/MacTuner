@@ -787,3 +787,16 @@
 "Definition Smart-Merge (Adressen übernehmen) …" = "定義スマートマージ（アドレス引き継ぎ）…";
 "A2L / WinOLS .kp / RomRaider .xml importieren …" = "A2L / WinOLS .kp / RomRaider .xml を読み込む …";
 "Slices (WinOLS)" = "スライス (WinOLS)";
+
+/* MacTuner v3.0 UI */
+"Kalibrieren" = "キャリブレーション";
+"Erkunden" = "解析";
+"Loggen" = "ログ";
+"Flashen" = "フラッシュ";
+"Layout-Modus" = "レイアウトモード";
+"Design-Theme" = "デザインテーマ";
+"Studio (4 Modi)" = "スタジオ (4モード)";
+"IDE (Tabs)" = "IDE (タブ)";
+"Canvas (Minimal)" = "キャンバス (ミニマル)";
+"Rechten Inspector umschalten" = "右インスペクタを切替";
+"Unteres Panel umschalten" = "下部ドロワーを切替";

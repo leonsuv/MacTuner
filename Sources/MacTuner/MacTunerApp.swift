@@ -135,6 +135,31 @@ struct MacTunerApp: App {
                         }
                     }
                 }
+                Menu("Layout-Modus") {
+                    ForEach(WorkspaceLayoutMode.allCases) { mode in
+                        Button(mode.label) {
+                            UserDefaults.standard.set(mode.rawValue, forKey: "workspaceLayoutMode")
+                        }
+                    }
+                }
+                Menu("Design-Theme") {
+                    ForEach(AppTheme.allCases) { t in
+                        Button(t.label) {
+                            UserDefaults.standard.set(t.rawValue, forKey: "appTheme")
+                        }
+                    }
+                }
+                Button("Rechten Inspector umschalten") {
+                    let cur = UserDefaults.standard.bool(forKey: "showRightInspector")
+                    UserDefaults.standard.set(!cur, forKey: "showRightInspector")
+                }
+                .keyboardShortcut("i", modifiers: [.command, .option])
+                Button("Unteres Panel umschalten") {
+                    let cur = UserDefaults.standard.bool(forKey: "showBottomDrawer")
+                    UserDefaults.standard.set(!cur, forKey: "showBottomDrawer")
+                }
+                .keyboardShortcut("y", modifiers: [.command, .shift])
+                Divider()
                 Menu("Farbpalette (Heatmap)") {
                     ForEach(HeatmapPalette.allCases) { p in
                         Button {

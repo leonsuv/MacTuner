@@ -4,9 +4,12 @@ import SwiftUI
 /// Users can switch Active (L), assign Compare (R), swap L⇄R, add BINs, or close (`×`) ANY individual file.
 struct WorkspaceBinBar: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
+    private var theme: AppTheme { AppTheme(rawValue: appThemeRaw) ?? .liquidGlass }
 
     var body: some View {
-        if model.definition != nil || !model.openBins.isEmpty {
+        // Auto-hide when only 1 BIN and no XDF is open — eliminates unnecessary vertical chrome!
+        if model.definition != nil || model.openBins.count > 1 {
             HStack(spacing: 8) {
                 // XDF Pill (closable)
                 if let def = model.definition {

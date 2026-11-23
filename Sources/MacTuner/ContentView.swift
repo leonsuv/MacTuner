@@ -3,56 +3,130 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @State private var search = ""
+    @AppStorage("workspaceLayoutMode") private var layoutModeRaw: String = WorkspaceLayoutMode.studio.rawValue
+    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
+    @AppStorage("showRightInspector") private var showInspector: Bool = false
+    @AppStorage("showBottomDrawer") private var showBottomDrawer: Bool = false
+    @State private var bottomDrawerHeight: CGFloat = 240
+    @State private var canvasShowNavigator: Bool = false
+    @State private var ideTabs: [EditorTab] = [
+        EditorTab(selectionID: nil, title: String(localized: "Übersicht"), icon: "house")
+    ]
+
+    private var layoutMode: WorkspaceLayoutMode {
+        WorkspaceLayoutMode(rawValue: layoutModeRaw) ?? .studio
+    }
+
+    private var theme: AppTheme {
+        AppTheme(rawValue: appThemeRaw) ?? .liquidGlass
+    }
+
+    private var activeStudioMode: StudioMode {
+        StudioMode.from(selection: model.selection)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                WorkbenchRail()
-                NavigationSplitView {
-                    SidebarView(search: search)
-                        .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 460)
-                } detail: {
-                    VStack(spacing: 0) {
-                        WorkspaceBinBar()
-                        autoAlignBanner
-                        detail
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .searchable(text: $search, placement: .sidebar, prompt: "Kennfeld suchen")
-                .toolbar {
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        Button { model.showCommandPalette.toggle() } label: {
-                            Label("Suche (⌘K)", systemImage: "command")
-                        }
-                        .help("Befehlspalette öffnen (⌘K)")
-                        OpenMenu()
-                        ControlGroup {
-                            Button { model.selectChange(-1) } label: { Label("Vorherige Änderung", systemImage: "chevron.up") }
-                                .help("Vorherige Änderung (⌥⌘↑)")
-                            Button { model.selectChange(1) } label: { Label("Nächste Änderung", systemImage: "chevron.down") }
-                                .help("Nächste Änderung (⌥⌘↓)")
-                        }
-                        .disabled(model.changedItems.isEmpty)
-                        ControlGroup {
-                            Button { model.undo() } label: { Label("Widerrufen", systemImage: "arrow.uturn.backward") }
-                                .disabled(!model.canUndo)
-                                .help("Widerrufen (⌘Z)")
-                            Button { model.redo() } label: { Label("Wiederholen", systemImage: "arrow.uturn.forward") }
-                                .disabled(!model.canRedo)
-                                .help("Wiederholen (⇧⌘Z)")
-                        }
-                        Button { model.save() } label: {
-                            Label("Speichern", systemImage: "square.and.arrow.down")
-                        }
-                        .tint(model.dirty ? Color.accentColor : nil)
-                        .disabled(!model.hasBin || !model.dirty)
-                        .help("BIN speichern (⌘S)")
-                    }
+            Group {
+                switch layoutMode {
+                case .studio:
+                    studioShell
+                case .ide:
+                    ideShell
+                case .canvas:
+                    canvasShell
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(theme.canvasBackground)
             StatusBar()
+        }
+        .preferredColorScheme(theme.preferredColorScheme)
+        .tint(theme.accentColor)
+        .toolbar {
+            // Center: 4-Mode Studio Segmented Switcher (replaces the cluttered 15-icon left rail!)
+            if layoutMode == .studio {
+                ToolbarItem(placement: .principal) {
+                    Picker("Modus", selection: Binding(
+                        get: { activeStudioMode },
+                        set: { switchStudioMode($0) }
+                    )) {
+                        ForEach(StudioMode.allCases) { m in
+                            Label(m.title, systemImage: m.icon).tag(m)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 340)
+                }
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button { model.showCommandPalette.toggle() } label: {
+                    Label("Suche (⌘K)", systemImage: "command")
+                }
+                .help("Befehlspalette öffnen (⌘K)")
+
+                OpenMenu()
+
+                ControlGroup {
+                    Button { model.undo() } label: { Label("Widerrufen", systemImage: "arrow.uturn.backward") }
+                        .disabled(!model.canUndo)
+                        .help("Widerrufen (⌘Z)")
+                    Button { model.redo() } label: { Label("Wiederholen", systemImage: "arrow.uturn.forward") }
+                        .disabled(!model.canRedo)
+                        .help("Wiederholen (⇧⌘Z)")
+                }
+
+                Button { model.save() } label: {
+                    Label("Speichern", systemImage: "square.and.arrow.down")
+                }
+                .tint(model.dirty ? theme.accentColor : nil)
+                .disabled(!model.hasBin || !model.dirty)
+                .help("BIN speichern (⌘S)")
+
+                // Layout Mode + Visual Theme switcher menu (all 3 layouts + all 3 themes!)
+                Menu {
+                    Section("Layout-Modus") {
+                        ForEach(WorkspaceLayoutMode.allCases) { mode in
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.18)) { layoutModeRaw = mode.rawValue }
+                            } label: {
+                                Label(mode.label, systemImage: layoutMode == mode ? "checkmark" : mode.icon)
+                            }
+                        }
+                    }
+                    Divider()
+                    Section("Design-Theme") {
+                        ForEach(AppTheme.allCases) { t in
+                            Button {
+                                appThemeRaw = t.rawValue
+                            } label: {
+                                Label(t.label, systemImage: theme == t ? "checkmark" : t.icon)
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Ansicht", systemImage: layoutMode.icon)
+                }
+                .help("Layout-Modus (Studio / IDE / Canvas) & Design-Theme wechseln")
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) { showBottomDrawer.toggle() }
+                } label: {
+                    Label("Unteres Panel", systemImage: "rectangle.bottomthird.inset.filled")
+                }
+                .tint(showBottomDrawer ? theme.accentColor : nil)
+                .help("Unteres Panel ein-/ausblenden (⇧⌘Y)")
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) { showInspector.toggle() }
+                } label: {
+                    Label("Inspector", systemImage: "sidebar.right")
+                }
+                .tint(showInspector ? theme.accentColor : nil)
+                .help("Rechten Inspector ein-/ausblenden (⌥⌘I)")
+            }
         }
         .navigationTitle(model.windowTitle)
         .navigationSubtitle(model.hasBin ? (model.definition?.title ?? "") : "")
@@ -71,7 +145,10 @@ struct ContentView: View {
         } message: {
             Text("Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 % sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell.")
         }
-        .onChange(of: model.selection) { model.rememberSelection() }
+        .onChange(of: model.selection) {
+            model.rememberSelection()
+            syncIDETab(for: model.selection)
+        }
         .overlay {
             if model.showCommandPalette {
                 CommandPaletteView(isPresented: Binding(get: { model.showCommandPalette }, set: { model.showCommandPalette = $0 }))
@@ -85,6 +162,162 @@ struct ContentView: View {
             ContentPortingSheet()
                 .environment(model)
         }
+    }
+
+    // MARK: - 1. Studio Shell (4-Mode Apple Pro App)
+
+    private var studioShell: some View {
+        NavigationSplitView {
+            SidebarView(search: search)
+                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 420)
+        } detail: {
+            HStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    StudioSubBar(mode: activeStudioMode, theme: theme)
+                    WorkspaceBinBar()
+                    autoAlignBanner
+                    detail
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if showBottomDrawer {
+                        BottomDrawerView(isOpen: $showBottomDrawer, height: $bottomDrawerHeight, theme: theme)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if showInspector {
+                    InspectorView(theme: theme)
+                }
+            }
+        }
+        .searchable(text: $search, placement: .sidebar, prompt: "Kennfeld suchen")
+    }
+
+    // MARK: - 2. IDE Shell (Tabbed Workspace)
+
+    private var ideShell: some View {
+        NavigationSplitView {
+            SidebarView(search: search)
+                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 420)
+        } detail: {
+            HStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    IDETabBar(tabs: $ideTabs, theme: theme)
+                    WorkspaceBinBar()
+                    autoAlignBanner
+                    detail
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if showBottomDrawer {
+                        BottomDrawerView(isOpen: $showBottomDrawer, height: $bottomDrawerHeight, theme: theme)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if showInspector {
+                    InspectorView(theme: theme)
+                }
+            }
+        }
+        .searchable(text: $search, placement: .sidebar, prompt: "Kennfeld suchen")
+    }
+
+    // MARK: - 3. Canvas-First Minimal Shell (Full-Bleed + Floating Bottom Dock)
+
+    private var canvasShell: some View {
+        ZStack(alignment: .bottom) {
+            HStack(spacing: 0) {
+                if canvasShowNavigator {
+                    SidebarView(search: search)
+                        .frame(width: 270)
+                        .overlay(alignment: .trailing) { Divider().opacity(0.6) }
+                }
+
+                VStack(spacing: 0) {
+                    WorkspaceBinBar()
+                    autoAlignBanner
+                    detail
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if showBottomDrawer {
+                        BottomDrawerView(isOpen: $showBottomDrawer, height: $bottomDrawerHeight, theme: theme)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if showInspector {
+                    InspectorView(theme: theme)
+                }
+            }
+
+            CanvasFloatingDock(
+                showNavigator: $canvasShowNavigator,
+                showInspector: $showInspector,
+                showBottomDrawer: $showBottomDrawer,
+                theme: theme
+            )
+            .padding(.bottom, showBottomDrawer ? bottomDrawerHeight + 12 : 14)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func switchStudioMode(_ mode: StudioMode) {
+        switch mode {
+        case .calibrate:
+            if StudioMode.from(selection: model.selection) != .calibrate {
+                model.selection = model.lastMapSelection ?? model.definition?.items.first?.id
+            }
+        case .explore:
+            if StudioMode.from(selection: model.selection) != .explore {
+                model.selection = AppModel.hexDiffSelection
+            }
+        case .log:
+            model.selection = AppModel.datalogSelection
+        case .flash:
+            if StudioMode.from(selection: model.selection) != .flash {
+                model.selection = AppModel.checksumSelection
+            }
+        }
+    }
+
+    private func syncIDETab(for sel: Int?) {
+        if ideTabs.contains(where: { $0.selectionID == sel }) { return }
+        let tab: EditorTab
+        switch sel {
+        case nil:
+            tab = EditorTab(selectionID: nil, title: String(localized: "Übersicht"), icon: "house")
+        case AppModel.hexDiffSelection:
+            tab = EditorTab(selectionID: sel, title: "Hex-Diff", icon: "doc.text.magnifyingglass")
+        case AppModel.memoryAtlasSelection:
+            tab = EditorTab(selectionID: sel, title: "Speicheratlas", icon: "square.grid.3x3.topleft.filled")
+        case AppModel.mapFinderSelection:
+            tab = EditorTab(selectionID: sel, title: "Kennfeld-Finder", icon: "sparkle.magnifyingglass")
+        case AppModel.multiCompareSelection:
+            tab = EditorTab(selectionID: sel, title: "Mehrdatei", icon: "square.split.2x1")
+        case AppModel.dtcSelection:
+            tab = EditorTab(selectionID: sel, title: "DTCs", icon: "exclamationmark.octagon")
+        case AppModel.datalogSelection:
+            tab = EditorTab(selectionID: sel, title: "Datalogging", icon: "waveform.path.ecg")
+        case AppModel.checksumSelection:
+            tab = EditorTab(selectionID: sel, title: "Prüfsummen", icon: "checkmark.shield")
+        case AppModel.diagnosticsSelection:
+            tab = EditorTab(selectionID: sel, title: "Diagnose", icon: "stethoscope")
+        case AppModel.snapshotsSelection:
+            tab = EditorTab(selectionID: sel, title: "Snapshots", icon: "camera")
+        case AppModel.historySelection:
+            tab = EditorTab(selectionID: sel, title: "Verlauf", icon: "clock")
+        case AppModel.versionPortSelection:
+            tab = EditorTab(selectionID: sel, title: "Portierung", icon: "arrow.triangle.branch")
+        case AppModel.batchTunerSelection:
+            tab = EditorTab(selectionID: sel, title: "Batch", icon: "square.stack.3d.up")
+        case AppModel.pluginsSelection:
+            tab = EditorTab(selectionID: sel, title: "Plugins", icon: "puzzlepiece.extension")
+        default:
+            if let id = sel, let item = model.definition?.items.first(where: { $0.id == id }) {
+                tab = EditorTab(selectionID: id, title: item.title, icon: item.isTable ? "tablecells" : "number")
+            } else {
+                return
+            }
+        }
+        ideTabs.append(tab)
     }
 
     @ViewBuilder private var autoAlignBanner: some View {

@@ -787,3 +787,16 @@
 "Definition Smart-Merge (Adressen übernehmen) …" = "정의 스마트 병합 (주소 가져오기) …";
 "A2L / WinOLS .kp / RomRaider .xml importieren …" = "A2L / WinOLS .kp / RomRaider .xml 가져오기 …";
 "Slices (WinOLS)" = "슬라이스 (WinOLS)";
+
+/* MacTuner v3.0 UI */
+"Kalibrieren" = "캘리브레이션";
+"Erkunden" = "탐색";
+"Loggen" = "로그";
+"Flashen" = "플래시";
+"Layout-Modus" = "레이아웃 모드";
+"Design-Theme" = "디자인 테마";
+"Studio (4 Modi)" = "스튜디오 (4모드)";
+"IDE (Tabs)" = "IDE (탭)";
+"Canvas (Minimal)" = "캔버스 (미니멀)";
+"Rechten Inspector umschalten" = "오른쪽 인스펙터 토글";
+"Unteres Panel umschalten" = "하단 패널 토글";

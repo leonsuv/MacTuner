@@ -152,95 +152,40 @@ struct ItemDetailView: View {
 
                 Spacer(minLength: 12)
 
-                // Clean labeled secondary action cluster
+                // Ultra-clean minimal header actions (full properties, Sync, Pin, Lock & Notes live in Right Inspector ⌥⌘I)
                 HStack(spacing: 6) {
-                    if item.isTable {
-                        if let sb = model.syncBlock(for: item.id) {
-                            HStack(spacing: 3) {
-                                Image(systemName: "link.circle.fill").foregroundStyle(Color.accentColor)
-                                Text("Sync (\(sb.itemIDs.count)×)").font(.caption2.weight(.semibold))
-                                Button { model.jumpToNextSyncBlockMember(from: item.id, direction: -1) } label: {
-                                    Image(systemName: "chevron.left")
-                                }
-                                .buttonStyle(.plain)
-                                .help("Vorherige Parallel-Map in Sync-Block")
-                                Button { model.jumpToNextSyncBlockMember(from: item.id, direction: 1) } label: {
-                                    Image(systemName: "chevron.right")
-                                }
-                                .buttonStyle(.plain)
-                                .help("Nächste Parallel-Map in Sync-Block")
-                                Button { model.removeSyncBlock(id: sb.id) } label: {
-                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                                .help("Sync-Block aufheben")
+                    if item.isTable, let sb = model.syncBlock(for: item.id) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "link.circle.fill").foregroundStyle(Color.accentColor)
+                            Text("Sync (\(sb.itemIDs.count)×)").font(.caption2.weight(.semibold))
+                            Button { model.jumpToNextSyncBlockMember(from: item.id, direction: -1) } label: {
+                                Image(systemName: "chevron.left")
                             }
-                            .padding(.horizontal, 7).padding(.vertical, 3)
-                            .background(Color.accentColor.opacity(0.14), in: Capsule())
-                        } else {
-                            Button {
-                                model.createSyncBlockForParallelMaps(item: item)
-                            } label: {
-                                Label("Sync-Block", systemImage: "link.badge.plus")
+                            .buttonStyle(.plain)
+                            Button { model.jumpToNextSyncBlockMember(from: item.id, direction: 1) } label: {
+                                Image(systemName: "chevron.right")
                             }
-                            .help("Parallele Zwillingskennfelder in der ECU finden & Änderungen automatisch synchron halten (WinOLS Strg+Alt+P)")
+                            .buttonStyle(.plain)
+                            Button { model.removeSyncBlock(id: sb.id) } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
                         }
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(Color.accentColor.opacity(0.14), in: Capsule())
                     }
 
-                    Button {
-                        model.pinnedItemID = (model.pinnedItemID == item.id) ? nil : item.id
-                    } label: {
-                        Label(model.pinnedItemID == item.id ? "Angeheftet" : "Anheften",
-                              systemImage: model.pinnedItemID == item.id ? "pin.fill" : "pin")
-                            .foregroundStyle(model.pinnedItemID == item.id ? Color.accentColor : Color.primary)
+                    if locked {
+                        Button { model.toggleLock(item) } label: {
+                            Label("Gesperrt", systemImage: "lock.fill").foregroundStyle(.red)
+                        }
+                        .help("Kennfeld entsperren (⌘L)")
                     }
-                    .help("Kennfeld für geteilte Neben-einander-Ansicht anheften (z. B. Bank 1/2, Hoch-/Runterschalten)")
 
                     Button { model.showInHexEditor(item) } label: {
                         Label("Hex", systemImage: "doc.text.magnifyingglass")
                     }
                     .help("Dieses Kennfeld direkt im Hex-Editor anzeigen & links ausrichten")
-
-                    Button {
-                        noteText = model.note(for: item)
-                        showNotes.toggle()
-                    } label: {
-                        Label(hasNote ? "Notiz" as LocalizedStringKey : "Notiz", systemImage: hasNote ? "note.text" : "note.text.badge.plus")
-                            .foregroundStyle(hasNote ? Color.accentColor : Color.primary)
-                    }
-                    .popover(isPresented: $showNotes) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Notizen: \(item.title)").font(.headline).lineLimit(1)
-                            TextEditor(text: $noteText)
-                                .font(.body)
-                                .frame(width: 340, height: 140)
-                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
-                            HStack {
-                                Text("Wird neben der XDF gespeichert").font(.caption2).foregroundStyle(.tertiary)
-                                Spacer()
-                                Button("Speichern") {
-                                    model.setNote(noteText, for: item)
-                                    showNotes = false
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                            }
-                        }
-                        .padding(12)
-                    }
-
-                    Button { showHistory.toggle() } label: {
-                        Label(historyCount > 0 ? "Verlauf (\(historyCount))" as LocalizedStringKey : "Verlauf", systemImage: "clock")
-                    }
-                    .popover(isPresented: $showHistory) {
-                        ItemHistoryPopover(item: item)
-                    }
-
-                    Button { model.toggleLock(item) } label: {
-                        Label(locked ? "Gesperrt" as LocalizedStringKey : "Sperren", systemImage: locked ? "lock.fill" : "lock.open")
-                            .foregroundStyle(locked ? Color.red : Color.primary)
-                    }
-                    .help(locked ? "Kennfeld entsperren (⌘L)" as LocalizedStringKey : "Kennfeld gegen Änderungen sperren (⌘L)")
 
                     if info.isChanged {
                         Button { withAnimation(.snappy) { model.restore(item) } } label: {
@@ -251,6 +196,31 @@ struct ItemDetailView: View {
                     }
 
                     Menu {
+                        if item.isTable && model.syncBlock(for: item.id) == nil {
+                            Button { model.createSyncBlockForParallelMaps(item: item) } label: {
+                                Label("Parallel-Maps synchronisieren (Sync-Block)", systemImage: "link.badge.plus")
+                            }
+                        }
+                        Button {
+                            model.pinnedItemID = (model.pinnedItemID == item.id) ? nil : item.id
+                        } label: {
+                            Label(model.pinnedItemID == item.id ? "Anheften lösen" : "Für Split-Ansicht anheften",
+                                  systemImage: model.pinnedItemID == item.id ? "pin.slash" : "pin")
+                        }
+                        Button { model.toggleLock(item) } label: {
+                            Label(locked ? "Kennfeld entsperren (⌘L)" : "Kennfeld sperren (⌘L)",
+                                  systemImage: locked ? "lock.open" : "lock")
+                        }
+                        Button {
+                            noteText = model.note(for: item)
+                            showNotes.toggle()
+                        } label: {
+                            Label(hasNote ? "Notiz bearbeiten …" : "Notiz hinzufügen …", systemImage: "note.text")
+                        }
+                        Button { showHistory.toggle() } label: {
+                            Label(historyCount > 0 ? "Verlauf (\(historyCount)) …" : "Verlauf …", systemImage: "clock")
+                        }
+                        Divider()
                         if item.scaling.output != .hex {
                             Button {
                                 safeMinText = sr.min.map(item.scaling.format) ?? ""
@@ -274,6 +244,29 @@ struct ItemDetailView: View {
                     .fixedSize()
                     .popover(isPresented: $showSafeRange) {
                         safeRangePopover
+                    }
+                    .popover(isPresented: $showNotes) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Notizen: \(item.title)").font(.headline).lineLimit(1)
+                            TextEditor(text: $noteText)
+                                .font(.body)
+                                .frame(width: 340, height: 140)
+                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
+                            HStack {
+                                Text("Wird neben der XDF gespeichert").font(.caption2).foregroundStyle(.tertiary)
+                                Spacer()
+                                Button("Speichern") {
+                                    model.setNote(noteText, for: item)
+                                    showNotes = false
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            }
+                        }
+                        .padding(12)
+                    }
+                    .popover(isPresented: $showHistory) {
+                        ItemHistoryPopover(item: item)
                     }
                 }
                 .controlSize(.small)
