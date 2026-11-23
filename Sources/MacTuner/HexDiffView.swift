@@ -361,10 +361,22 @@ struct HexDiffView: View {
         }
         .onChange(of: potentialMinConfidence) { _, _ in rebuildCaches() }
         .onChange(of: potentialPatternFilter) { _, _ in rebuildCaches() }
-        .onChange(of: model.activeBinID) { _, _ in
+        .onChange(of: model.activeBinID) { _, newID in
             splitDiffMode = hasExternalCompare
             pinnedCandidateKey = nil
-            model.schedulePotentialMapScan()
+            selectedStart = nil
+            selectedEnd = nil
+            hoverState.hex = nil
+            hoverState.wave = nil
+            byteShift = 0
+            cachedPotentialIndex = .empty
+            if newID != nil {
+                applyAutoFormatForActiveBin()
+                viewportOffset = min(viewportOffset, max(0, model.bin.count - rowStride))
+                model.schedulePotentialMapScan(for: newID, force: true)
+            } else {
+                viewportOffset = 0
+            }
             rebuildCaches()
         }
         .onChange(of: model.compareSource) { _, _ in
@@ -381,6 +393,27 @@ struct HexDiffView: View {
         case .openedState: return model.dirty
         case .none: return false
         }
+    }
+
+    /// Auto-selects 8/16-bit format, endianness, and default column width for the newly active ECU binary.
+    private func applyAutoFormatForActiveBin() {
+        let fam = (model.ecuIdentity.ecuFamily ?? "").lowercased()
+        let isBigEndian16 = fam.contains("med9") || fam.contains("edc16") || fam.contains("mpc5") || fam.contains("me9") || fam.contains("simos")
+        let isLittleEndian16 = fam.contains("edc17") || fam.contains("med17") || fam.contains("mg1") || fam.contains("md1") || fam.contains("me7") || fam.contains("ms4") || fam.contains("dq250") || fam.contains("dq381")
+        if isBigEndian16 {
+            dataFormat = .u16
+            lsbFirst = false
+            columns = 16
+        } else if isLittleEndian16 {
+            dataFormat = .u16
+            lsbFirst = true
+            columns = 16
+        } else {
+            dataFormat = model.bin.count >= 256 * 1024 ? .u16 : .u8
+            lsbFirst = true
+            columns = 16
+        }
+        isSigned = false
     }
 
     // MARK: - Calm, Decluttered Pro-App Hex Toolbar (1 Single Clean Row!)

@@ -339,12 +339,27 @@ final class AppModel {
         let ecu = openBins[idx].ecuIdentity
         guard bytes.count >= 64 else { return }
 
+        // Clear any stuck scanning flags on other BINs before cancelling their in-flight task
+        potentialScanTask?.cancel()
+        for i in openBins.indices where openBins[i].id != id {
+            openBins[i].isScanningPotentialMaps = false
+        }
+        if force {
+            openBins[idx].rawPotentialMaps = []
+            openBins[idx].potentialMapsScanned = false
+        }
         openBins[idx].isScanningPotentialMaps = true
         potentialMapRevision &+= 1
-        potentialScanTask?.cancel()
         potentialScanTask = Task.detached(priority: .utility) {
             let results = MapFinder.scanWorkspaceBin(bytes: bytes, ecu: ecu)
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                await MainActor.run {
+                    if let liveIdx = self.openBins.firstIndex(where: { $0.id == id }) {
+                        self.openBins[liveIdx].isScanningPotentialMaps = false
+                    }
+                }
+                return
+            }
             await MainActor.run {
                 guard let liveIdx = self.openBins.firstIndex(where: { $0.id == id }) else { return }
                 self.openBins[liveIdx].rawPotentialMaps = results
@@ -1465,6 +1480,10 @@ final class AppModel {
         }
 
         openBins.remove(at: idx)
+        potentialScanTask?.cancel()
+        for i in openBins.indices {
+            openBins[i].isScanningPotentialMaps = false
+        }
 
         if activeBinID == id {
             if let cmpID = compareBinID, openBins.contains(where: { $0.id == cmpID }) {
@@ -1488,6 +1507,8 @@ final class AppModel {
         }
 
         checksumCache = nil
+        potentialMapRevision &+= 1
+        if hasBin { schedulePotentialMapScan() }
         persistOpenBins()
         touch()
     }
