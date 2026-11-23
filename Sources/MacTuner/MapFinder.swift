@@ -829,13 +829,28 @@ enum MapFinder {
                         let useSigned = shouldUseSigned16(uRes: uRes, sRes: sRes, count: n)
                         let res = useSigned ? sRes : uRes
 
-                        let isFlatValid = (res.maxVal - res.minVal) < 8 && res.ffCount == 0
+                        // Reject curves that are mostly zeros (padding like 0000 0000 0000 0000 0000 4000) or where dataOff itself starts another Bosch axis header!
+                        var curveZeros = 0
+                        for ci in 0..<n where readU16(buf, dataOff + ci * 2, lsb: lsb) == 0 { curveZeros += 1 }
+                        if curveZeros * 2 > n || (n >= 4 && readU16(buf, dataOff, lsb: lsb) == 0 && readU16(buf, dataOff + 2, lsb: lsb) == 0 && readU16(buf, dataOff + 4, lsb: lsb) == 0) {
+                            off += 2
+                            continue
+                        }
+                        let nextLen = readU16(buf, dataOff, lsb: lsb)
+                        if nextLen >= 4 && nextLen <= 32 && dataOff + 2 + nextLen * 2 <= count
+                            && validateAxis16(buf, dataOff + 2, count: nextLen, lsb: lsb).valid {
+                            // [n, ax] is a standalone shared axis followed by another [nextLen, ax2] — do not eat ax2 as Z-data!
+                            off = dataOff
+                            continue
+                        }
+
+                        let isFlatValid = (res.maxVal - res.minVal) < 8 && res.ffCount == 0 && curveZeros == 0
                         let isShortValid = isSmallChainLen && res.ffCount == 0 && (isFlatValid || res.score >= 0.40)
-                        let accept = isShortValid || (res.score >= 0.55) || (isStandardLen && isFlatValid)
+                        let accept = isShortValid || (res.score >= 0.55 && res.ffCount == 0) || (isStandardLen && isFlatValid)
 
                         if accept {
-                            // Never give tiny 2-3 point curves high confidence (prevents false hits in bootloader/magic words)
-                            let rawConf: Double = isFlatValid ? 0.76 : (res.isMonotonic ? min(0.94, 0.64 + res.score * 0.30) : min(0.91, 0.56 + res.score * 0.34))
+                            // Never give tiny 2-3 point curves or flat/constant arrays high confidence
+                            let rawConf: Double = isFlatValid ? 0.72 : (res.isMonotonic ? min(0.94, 0.64 + res.score * 0.30) : min(0.91, 0.56 + res.score * 0.34))
                             let conf: Double = n < 4 ? min(0.62, rawConf) : rawConf
                             let hint = isFlatValid
                                 ? "1D-Kennlinie (konstant)"
@@ -1768,7 +1783,10 @@ enum MapFinder {
                 let evalU = surfaceSmoothness(buf: buf, offset: zOff, rows: ny, cols: nx, bits: 16, signed: false, isFloat: false, lsb: lsb, allowSparse: true, scratch: &scratch)
                 let evalS = surfaceSmoothness(buf: buf, offset: zOff, rows: ny, cols: nx, bits: 16, signed: true, isFloat: false, lsb: lsb, allowSparse: true, scratch: &scratch)
                 let best = (evalS.score > evalU.score + 0.05) ? (evalS, true) : (evalU, false)
-                guard best.0.score >= 0.45 else { continue }
+                guard best.0.ffCount == 0 && best.0.score >= 0.60 else { continue }
+                var zZeros = 0
+                for wi in 0..<(nx * ny) where readU16(buf, zOff + wi * 2, lsb: lsb) == 0 { zZeros += 1 }
+                guard zZeros * 100 <= nx * ny * 40 else { continue }
                 if is1DMonotonicOrUnwrappedRamp(scratch: scratch, rows: ny, cols: nx) { continue }
 
                 let conf = min(0.98, 0.91 + best.0.score * 0.07)
