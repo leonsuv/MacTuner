@@ -207,21 +207,39 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             if activeTab == .diffs && !clusters.isEmpty {
                 HStack(spacing: 6) {
-                    Text("Cluster:").font(.caption2).foregroundStyle(.secondary)
-                    ForEach([0, 16, 32, 64], id: \.self) { g in
-                        Button("\(g)B") { model.diffClusterGap = g }
-                            .buttonStyle(.plain)
-                            .font(.caption2.monospacedDigit().weight(model.diffClusterGap == g ? .bold : .regular))
-                            .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(model.diffClusterGap == g ? Color.accentColor.opacity(0.22) : Color.clear,
-                                        in: RoundedRectangle(cornerRadius: 4))
-                            .foregroundStyle(model.diffClusterGap == g ? Color.accentColor : .secondary)
-                    }
-                    Spacer()
+                    Text("\(clusters.count) Blöcke")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                     Text("\(model.outsideByteCount) B Δ")
-                        .font(.caption2.monospacedDigit()).foregroundStyle(Theme.changed)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(Theme.changed)
+                    Spacer()
+                    Menu {
+                        Section("Blöcke zusammenfassen bis Abstand") {
+                            ForEach([0, 16, 32, 64], id: \.self) { g in
+                                Button {
+                                    model.diffClusterGap = g
+                                } label: {
+                                    Label(g == 0 ? "0 B (exakt)" : "\(g) Bytes", systemImage: model.diffClusterGap == g ? "checkmark" : "")
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 22, height: 18)
+                            .contentShape(Rectangle())
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("Maximaler Byte-Abstand zum Gruppieren benachbarter Diffs")
                 }
-                .padding(.horizontal, 10).padding(.bottom, 6)
+                .padding(.horizontal, 10).padding(.bottom, 5)
             }
             Divider()
 

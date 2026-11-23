@@ -256,7 +256,7 @@ struct HexDiffView: View {
 
     // Potential map recognition overlay state
     @State private var showPotentialMaps = true
-    @State private var potentialMinConfidence: Double = 0.70
+    @State private var potentialMinConfidence: Double = 0.85
     @State private var potentialPatternFilter: PotentialFilter = .all
     @State private var autoAlignOnPotentialJump = true
     @State private var pinnedCandidateKey: String? = nil
@@ -317,8 +317,10 @@ struct HexDiffView: View {
                                 verticalHexScrollbar
                             }
                             .frame(minHeight: 240, maxHeight: .infinity)
+                            .padding(.bottom, 5)
                             waveform2DPane(compact: true)
                                 .frame(minHeight: 135, idealHeight: 170, maxHeight: 320)
+                                .padding(.top, 5)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
@@ -899,10 +901,10 @@ struct HexDiffView: View {
             Menu {
                 Section("Konfidenz-Schwelle") {
                     Button { potentialMinConfidence = 0.85 } label: {
-                        Label("Hoch (≥ 85 % — wenig Rauschen)", systemImage: potentialMinConfidence >= 0.84 ? "checkmark" : "")
+                        Label("Hoch (≥ 85 % — Empfohlen)", systemImage: potentialMinConfidence >= 0.84 ? "checkmark" : "")
                     }
                     Button { potentialMinConfidence = 0.70 } label: {
-                        Label("Ausgewogen (≥ 70 % — Empfohlen)", systemImage: (potentialMinConfidence >= 0.68 && potentialMinConfidence < 0.84) ? "checkmark" : "")
+                        Label("Ausgewogen (≥ 70 %)", systemImage: (potentialMinConfidence >= 0.68 && potentialMinConfidence < 0.84) ? "checkmark" : "")
                     }
                     Button { potentialMinConfidence = 0.55 } label: {
                         Label("Sensitiv (≥ 55 % — inkl. Kurven)", systemImage: potentialMinConfidence < 0.68 ? "checkmark" : "")
@@ -1436,7 +1438,8 @@ struct HexDiffView: View {
                 pinnedCandidateOverlay(in: geo.size)
             }
         }
-        .card(padding: 4)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .card(padding: 0)
     }
 
     // MARK: - 60-FPS Windowed Hexdump + Right Bar-Graph Canvas
@@ -1973,6 +1976,7 @@ struct HexDiffView: View {
                 hexContextMenu(targetAddr: contextMenuTargetAddress(is2D: false), is2D: false)
             }
         }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .card(padding: 0)
     }
 
