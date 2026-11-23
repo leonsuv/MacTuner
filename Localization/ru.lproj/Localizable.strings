@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Знаков после запятой:";
 "Map-Editor" = "Редактор карт";
 "Keine OEM DTC-Tabelle gefunden" = "OEM-таблица DTC не найдена";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Показать все";
+"Wert anpassen" = "Изменить значение";
+"Zeile auswählen" = "Выбрать строку";
+"Spalte auswählen" = "Выбрать столбец";
+"Auswahl aufheben (Alle Kurven)" = "Снять выделение (все кривые)";
+"Zelle im Hex-Editor anzeigen" = "Показать ячейку в Hex-редакторе";
+"Kamera-Ansicht" = "Вид камеры";
+"Kurven-Modus (Alle Zeilen)" = "Режим кривых (все строки)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Режим срезов (активная строка/столбец)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Показать все кривые";
+"Vergleichs-Wireframe" = "Сетка сравнения";
+"Punkte ziehen (Edit-Modus)" = "Перетаскивание точек (правка)";
+"Zoom zurücksetzen (100 %)" = "Сбросить масштаб (100%)";

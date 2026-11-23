@@ -290,7 +290,16 @@ struct TableEditorView: View {
                     grid(xs: xs, ys: ys, values: shown, deltas: deltas, lo: lo, hi: hi, maxDelta: maxDelta,
                          activeLogCell: logTrace.activeCell, hitCounts: logTrace.hits, maxHits: logTrace.maxHits)
                         .padding(10)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
+                .background(
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selection.removeAll()
+                            anchor = nil
+                        }
+                )
                 .focusable()
                 .focused($gridFocused)
                 .focusEffectDisabled()
@@ -312,10 +321,26 @@ struct TableEditorView: View {
                             Surface3DView(item: item, x: x, y: y, readOnly: isCompareView)
                         }
                         if showChart {
+                            let isFiltered = !selection.isEmpty && Set(selection.map(\.r)).count < l.rows
                             TableChart(points: chartPoints(values: shown, ys: ys), seriesCount: l.rows, dashedIsBin: isCompareView,
                                        units: slicesMode ? "Slices" : model.displayUnit(s.units),
                                        xUnits: mode == .wrapped || x.scaling.units.isEmpty ? "" : model.displayUnit(x.scaling.units),
-                                       slicesMode: l.rows > 1 ? $slicesMode : nil)
+                                       slicesMode: l.rows > 1 ? $slicesMode : nil,
+                                       onShowAll: isFiltered ? { selection.removeAll(); anchor = nil } : nil,
+                                       onSelectAll: { selectAll() },
+                                       onSmooth: (!isCompareView && !model.isLocked(item) && selection.count >= 2) ? { smoothSelection() } : nil,
+                                       onResetOriginal: (!isCompareView && !model.isLocked(item) && model.compare != nil) ? {
+                                           let target = selection.isEmpty ? Set((0..<l.rows).flatMap { r in (0..<l.cols).map { Cell(r: r, c: $0) } }) : selection
+                                           apply(.restore, cells: target)
+                                       } : nil,
+                                       onJumpHex: {
+                                           let byteLen = max(1, l.rows * l.cols * max(1, l.bits / 8))
+                                           model.hexJumpTarget = l.address..<(l.address + byteLen)
+                                           model.selection = AppModel.hexDiffSelection
+                                       },
+                                       onEditXDF: {
+                                           model.xdfEditorRequest = XDFEditorRequest(existingItem: item)
+                                       })
                         }
                     }
                     .padding(.top, 8)
@@ -834,6 +859,80 @@ struct TableEditorView: View {
             .accessibilityValue("\(text) \(model.displayUnit(s.units))" + (changed ? ", geändert" : ""))
             .accessibilityAddTraits(selected ? .isSelected : [])
             .onTapGesture { click(c) }
+            .contextMenu { cellContextMenu(for: c) }
+    }
+
+    @ViewBuilder
+    private func cellContextMenu(for c: Cell) -> some View {
+        let target: Set<Cell> = selection.contains(c) ? selection : [c]
+        let canEdit = !isCompareView && !model.isLocked(item)
+
+        if canEdit {
+            Menu("Wert anpassen") {
+                Button("+1 %") { apply(.scale(percent: 1), cells: target) }
+                Button("−1 %") { apply(.scale(percent: -1), cells: target) }
+                Button("+5 %") { apply(.scale(percent: 5), cells: target) }
+                Button("−5 %") { apply(.scale(percent: -5), cells: target) }
+                Divider()
+                Button("+1 Schritt") { apply(.add(s.rawStep), cells: target) }
+                Button("−1 Schritt") { apply(.add(-s.rawStep), cells: target) }
+            }
+            if target.count >= 2 {
+                Button("Glätten (3×3)") {
+                    if !selection.contains(c) { selection = target; anchor = c }
+                    smoothSelection()
+                }
+                Button("Interpolieren (2D)") {
+                    if !selection.contains(c) { selection = target; anchor = c }
+                    interpolate(.bilinear)
+                }
+            }
+            if model.compare != nil {
+                Button("Auf Original zurücksetzen") {
+                    apply(.restore, cells: target)
+                }
+            }
+            Divider()
+        }
+
+        Button("Kopieren (⌘C)") {
+            if !selection.contains(c) { selection = target; anchor = c }
+            if let t = copyText() { setClipboard(t) }
+        }
+        if canEdit {
+            Button("Einfügen (⌘V)") {
+                if !selection.contains(c) { selection = target; anchor = c }
+                pasteFromClipboard()
+            }
+        }
+        Divider()
+
+        Button("Zeile auswählen") {
+            selection = Set((0..<l.cols).map { Cell(r: c.r, c: $0) })
+            anchor = Cell(r: c.r, c: 0)
+        }
+        Button("Spalte auswählen") {
+            selection = Set((0..<l.rows).map { Cell(r: $0, c: c.c) })
+            anchor = Cell(r: 0, c: c.c)
+        }
+        Button("Alles auswählen (⌘A)") { selectAll() }
+        if !selection.isEmpty {
+            Button("Auswahl aufheben (Alle Kurven)") {
+                selection.removeAll()
+                anchor = nil
+            }
+        }
+        Divider()
+
+        Button("Zelle im Hex-Editor anzeigen") {
+            let off = l.offset(c)
+            let bytes = max(1, l.bits / 8)
+            model.hexJumpTarget = off..<(off + bytes)
+            model.selection = AppModel.hexDiffSelection
+        }
+        Button("Im XDF-Editor bearbeiten …") {
+            model.xdfEditorRequest = XDFEditorRequest(existingItem: item)
+        }
     }
 
     private func heat(_ v: Double?, lo: Double, hi: Double) -> (bg: Color, fg: Color) {

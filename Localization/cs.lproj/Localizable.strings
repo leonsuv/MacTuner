@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Desetinná místa:";
 "Map-Editor" = "Editor map";
 "Keine OEM DTC-Tabelle gefunden" = "Nebyla nalezena OEM tabulka DTC";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Zobrazit vše";
+"Wert anpassen" = "Upravit hodnotu";
+"Zeile auswählen" = "Vybrat řádek";
+"Spalte auswählen" = "Vybrat sloupec";
+"Auswahl aufheben (Alle Kurven)" = "Zrušit výběr (všechny křivky)";
+"Zelle im Hex-Editor anzeigen" = "Zobrazit buňku v Hex editoru";
+"Kamera-Ansicht" = "Pohled kamery";
+"Kurven-Modus (Alle Zeilen)" = "Režim křivek (všechny řádky)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Režim řezů (aktivní řádek/sloupec)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Zobrazit všechny křivky";
+"Vergleichs-Wireframe" = "Srovnávací drátový model";
+"Punkte ziehen (Edit-Modus)" = "Tažení bodů (úpravy)";
+"Zoom zurücksetzen (100 %)" = "Obnovit přiblížení (100 %)";

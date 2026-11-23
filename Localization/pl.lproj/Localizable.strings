@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Miejsca dziesiętne:";
 "Map-Editor" = "Edytor map";
 "Keine OEM DTC-Tabelle gefunden" = "Nie znaleziono tabeli DTC OEM";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Pokaż wszystko";
+"Wert anpassen" = "Dostosuj wartość";
+"Zeile auswählen" = "Zaznacz wiersz";
+"Spalte auswählen" = "Zaznacz kolumnę";
+"Auswahl aufheben (Alle Kurven)" = "Wyczyść zaznaczenie (wszystkie krzywe)";
+"Zelle im Hex-Editor anzeigen" = "Pokaż komórkę w edytorze Hex";
+"Kamera-Ansicht" = "Widok kamery";
+"Kurven-Modus (Alle Zeilen)" = "Tryb krzywych (wszystkie wiersze)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Tryb przekrojów (aktywny wiersz/kolumna)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Pokaż wszystkie krzywe";
+"Vergleichs-Wireframe" = "Siatka porównawcza";
+"Punkte ziehen (Edit-Modus)" = "Przeciągaj punkty (edycja)";
+"Zoom zurücksetzen (100 %)" = "Resetuj powiększenie (100%)";

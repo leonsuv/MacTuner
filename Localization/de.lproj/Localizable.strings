@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Dezimalstellen:";
 "Map-Editor" = "Map-Editor";
 "Keine OEM DTC-Tabelle gefunden" = "Keine OEM DTC-Tabelle gefunden";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Alle zeigen";
+"Wert anpassen" = "Wert anpassen";
+"Zeile auswählen" = "Zeile auswählen";
+"Spalte auswählen" = "Spalte auswählen";
+"Auswahl aufheben (Alle Kurven)" = "Auswahl aufheben (Alle Kurven)";
+"Zelle im Hex-Editor anzeigen" = "Zelle im Hex-Editor anzeigen";
+"Kamera-Ansicht" = "Kamera-Ansicht";
+"Kurven-Modus (Alle Zeilen)" = "Kurven-Modus (Alle Zeilen)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Slices-Modus (Aktive Zeile/Spalte)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Alle Kurven zeigen (Auswahl aufheben)";
+"Vergleichs-Wireframe" = "Vergleichs-Wireframe";
+"Punkte ziehen (Edit-Modus)" = "Punkte ziehen (Edit-Modus)";
+"Zoom zurücksetzen (100 %)" = "Zoom zurücksetzen (100 %)";

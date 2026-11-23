@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "小数桁数:";
 "Map-Editor" = "マップエディタ";
 "Keine OEM DTC-Tabelle gefunden" = "OEM DTCテーブルが見つかりません";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "すべて表示";
+"Wert anpassen" = "値を調整";
+"Zeile auswählen" = "行を選択";
+"Spalte auswählen" = "列を選択";
+"Auswahl aufheben (Alle Kurven)" = "選択解除（全カーブ表示）";
+"Zelle im Hex-Editor anzeigen" = "セルをHexエディタで表示";
+"Kamera-Ansicht" = "カメラ視点";
+"Kurven-Modus (Alle Zeilen)" = "カーブモード（全行）";
+"Slices-Modus (Aktive Zeile/Spalte)" = "スライスモード（選択行/列）";
+"Alle Kurven zeigen (Auswahl aufheben)" = "すべてのカーブを表示";
+"Vergleichs-Wireframe" = "比較ワイヤーフレーム";
+"Punkte ziehen (Edit-Modus)" = "頂点ドラッグ（編集モード）";
+"Zoom zurücksetzen (100 %)" = "ズームをリセット (100%)";

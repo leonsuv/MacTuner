@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Ondalık:";
 "Map-Editor" = "Harita Düzenleyici";
 "Keine OEM DTC-Tabelle gefunden" = "OEM DTC Tablosu Bulunamadı";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Tümünü Göster";
+"Wert anpassen" = "Değeri Ayarla";
+"Zeile auswählen" = "Satırı Seç";
+"Spalte auswählen" = "Sütunu Seç";
+"Auswahl aufheben (Alle Kurven)" = "Seçimi Temizle (Tüm Eğriler)";
+"Zelle im Hex-Editor anzeigen" = "Hücreyi Hex Düzenleyicide Göster";
+"Kamera-Ansicht" = "Kamera Görünümü";
+"Kurven-Modus (Alle Zeilen)" = "Eğri Modu (Tüm Satırlar)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Kesit Modu (Aktif Satır/Sütun)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Tüm Eğrileri Göster";
+"Vergleichs-Wireframe" = "Karşılaştırma Tel Kafesi";
+"Punkte ziehen (Edit-Modus)" = "Noktaları Sürükle (Düzenleme)";
+"Zoom zurücksetzen (100 %)" = "Yakınlaştırmayı Sıfırla (%100)";

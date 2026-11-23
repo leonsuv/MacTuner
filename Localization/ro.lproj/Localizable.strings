@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Zecimale:";
 "Map-Editor" = "Editor hărți";
 "Keine OEM DTC-Tabelle gefunden" = "Nu s-a găsit tabelul DTC OEM";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Arată tot";
+"Wert anpassen" = "Ajustare valoare";
+"Zeile auswählen" = "Selectează rândul";
+"Spalte auswählen" = "Selectează coloana";
+"Auswahl aufheben (Alle Kurven)" = "Anulează selecția (toate curbele)";
+"Zelle im Hex-Editor anzeigen" = "Arată celula în editorul Hex";
+"Kamera-Ansicht" = "Vedere cameră";
+"Kurven-Modus (Alle Zeilen)" = "Mod curbe (toate rândurile)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Mod secțiuni (rând/coloană activă)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Arată toate curbele";
+"Vergleichs-Wireframe" = "Wireframe comparație";
+"Punkte ziehen (Edit-Modus)" = "Trage puncte (mod editare)";
+"Zoom zurücksetzen (100 %)" = "Resetează zoom (100%)";

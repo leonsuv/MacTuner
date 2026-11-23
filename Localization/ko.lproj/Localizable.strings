@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "소수 자릿수:";
 "Map-Editor" = "맵 편집기";
 "Keine OEM DTC-Tabelle gefunden" = "OEM DTC 테이블을 찾을 수 없음";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "모두 표시";
+"Wert anpassen" = "값 조정";
+"Zeile auswählen" = "행 선택";
+"Spalte auswählen" = "열 선택";
+"Auswahl aufheben (Alle Kurven)" = "선택 해제 (모든 곡선)";
+"Zelle im Hex-Editor anzeigen" = "Hex 편집기에서 셀 보기";
+"Kamera-Ansicht" = "카메라 보기";
+"Kurven-Modus (Alle Zeilen)" = "곡선 모드 (모든 행)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "슬라이스 모드 (활성 행/열)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "모든 곡선 표시";
+"Vergleichs-Wireframe" = "비교 와이어프레임";
+"Punkte ziehen (Edit-Modus)" = "정점 드래그 (편집 모드)";
+"Zoom zurücksetzen (100 %)" = "확대/축소 재설정 (100%)";

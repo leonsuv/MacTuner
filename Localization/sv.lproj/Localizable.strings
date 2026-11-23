@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Decimaler:";
 "Map-Editor" = "Map-redigerare";
 "Keine OEM DTC-Tabelle gefunden" = "Ingen OEM DTC-tabell hittades";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Visa alla";
+"Wert anpassen" = "Justera värde";
+"Zeile auswählen" = "Markera rad";
+"Spalte auswählen" = "Markera kolumn";
+"Auswahl aufheben (Alle Kurven)" = "Avmarkera (alla kurvor)";
+"Zelle im Hex-Editor anzeigen" = "Visa cell i Hex-redigerare";
+"Kamera-Ansicht" = "Kameravy";
+"Kurven-Modus (Alle Zeilen)" = "Kurvläge (alla rader)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Skivläge (aktiv rad/kolumn)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Visa alla kurvor";
+"Vergleichs-Wireframe" = "Jämförelse-wireframe";
+"Punkte ziehen (Edit-Modus)" = "Dra punkter (redigering)";
+"Zoom zurücksetzen (100 %)" = "Återställ zoom (100 %)";

@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Δεκαδικά:";
 "Map-Editor" = "Επεξεργαστής χαρτών";
 "Keine OEM DTC-Tabelle gefunden" = "Δεν βρέθηκε πίνακας OEM DTC";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Εμφάνιση όλων";
+"Wert anpassen" = "Προσαρμογή τιμής";
+"Zeile auswählen" = "Επιλογή γραμμής";
+"Spalte auswählen" = "Επιλογή στήλης";
+"Auswahl aufheben (Alle Kurven)" = "Αποεπιλογή (όλες οι καμπύλες)";
+"Zelle im Hex-Editor anzeigen" = "Εμφάνιση κελιού στον επεξεργαστή Hex";
+"Kamera-Ansicht" = "Προβολή κάμερας";
+"Kurven-Modus (Alle Zeilen)" = "Λειτουργία καμπυλών (όλες οι γραμμές)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Λειτουργία τομών (ενεργή γραμμή/στήλη)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Εμφάνιση όλων των καμπυλών";
+"Vergleichs-Wireframe" = "Πλέγμα σύγκρισης";
+"Punkte ziehen (Edit-Modus)" = "Σύρσιμο σημείων (επεξεργασία)";
+"Zoom zurücksetzen (100 %)" = "Επαναφορά ζουμ (100%)";

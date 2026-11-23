@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Знаків після коми:";
 "Map-Editor" = "Редактор карт";
 "Keine OEM DTC-Tabelle gefunden" = "OEM-таблицю DTC не знайдено";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Показати всі";
+"Wert anpassen" = "Змінити значення";
+"Zeile auswählen" = "Вибрати рядок";
+"Spalte auswählen" = "Вибрати стовпець";
+"Auswahl aufheben (Alle Kurven)" = "Зняти виділення (всі криві)";
+"Zelle im Hex-Editor anzeigen" = "Показати комірку в Hex-редакторі";
+"Kamera-Ansicht" = "Вигляд камери";
+"Kurven-Modus (Alle Zeilen)" = "Режим кривих (всі рядки)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Режим зрізів (активний рядок/стовпець)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Показати всі криві";
+"Vergleichs-Wireframe" = "Сітка порівняння";
+"Punkte ziehen (Edit-Modus)" = "Перетягування точок (правка)";
+"Zoom zurücksetzen (100 %)" = "Скинути масштаб (100%)";

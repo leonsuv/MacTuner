@@ -348,6 +348,9 @@ struct HexDiffView: View {
             consumeJumpTarget()
         }
         .onChange(of: model.hexJumpTarget) { _, _ in consumeJumpTarget() }
+        .onChange(of: viewportOffset) { _, _ in
+            if hoverState.hex != nil { hoverState.hex = nil }
+        }
         .onChange(of: model.hexSnapCandidate) { _, _ in consumeJumpTarget() }
         .onChange(of: model.bin.count) { _, _ in rebuildCaches() }
         .onChange(of: model.xdfURL) { _, _ in rebuildCaches() }

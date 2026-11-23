@@ -582,6 +582,12 @@ struct TableChart: View {
     let units: String
     let xUnits: String
     var slicesMode: Binding<Bool>? = nil
+    var onShowAll: (() -> Void)? = nil
+    var onSelectAll: (() -> Void)? = nil
+    var onSmooth: (() -> Void)? = nil
+    var onResetOriginal: (() -> Void)? = nil
+    var onJumpHex: (() -> Void)? = nil
+    var onEditXDF: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -589,6 +595,17 @@ struct TableChart: View {
                 Text("2D-Kurven").font(.headline)
                 if !xUnits.isEmpty { Text("über \(xUnits)").font(.caption).foregroundStyle(.secondary) }
                 Spacer()
+                if let showAll = onShowAll {
+                    Button {
+                        showAll()
+                    } label: {
+                        Label("Alle zeigen", systemImage: "line.3.horizontal.decrease.circle")
+                            .font(.caption.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Auswahl aufheben und wieder alle Kurven anzeigen")
+                }
                 if points.contains(where: \.original) {
                     Group {
                         if dashedIsBin {
@@ -631,6 +648,39 @@ struct TableChart: View {
             .chartYAxis { AxisMarks(position: .leading) { AxisGridLine().foregroundStyle(.separator); AxisValueLabel() } }
         }
         .card(padding: 14)
+        .contextMenu {
+            if let showAll = onShowAll {
+                Button("Alle Kurven zeigen (Auswahl aufheben)", action: showAll)
+                Divider()
+            }
+            if let slicesBinding = slicesMode {
+                Button { slicesBinding.wrappedValue = false } label: {
+                    Label("Kurven-Modus (Alle Zeilen)", systemImage: !slicesBinding.wrappedValue ? "checkmark" : "")
+                }
+                Button { slicesBinding.wrappedValue = true } label: {
+                    Label("Slices-Modus (Aktive Zeile/Spalte)", systemImage: slicesBinding.wrappedValue ? "checkmark" : "")
+                }
+                Divider()
+            }
+            if let selectAll = onSelectAll {
+                Button("Alles auswählen (⌘A)", action: selectAll)
+            }
+            if let smooth = onSmooth {
+                Button("Auswahl glätten (3×3)", action: smooth)
+            }
+            if let reset = onResetOriginal {
+                Button("Auf Original zurücksetzen", action: reset)
+            }
+            if onJumpHex != nil || onEditXDF != nil {
+                Divider()
+            }
+            if let jump = onJumpHex {
+                Button("Im Hex-Editor anzeigen", action: jump)
+            }
+            if let edit = onEditXDF {
+                Button("Im XDF-Editor bearbeiten …", action: edit)
+            }
+        }
     }
 }
 

@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Décimales :";
 "Map-Editor" = "Éditeur de cartes";
 "Keine OEM DTC-Tabelle gefunden" = "Aucune table DTC OEM trouvée";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Tout afficher";
+"Wert anpassen" = "Ajuster la valeur";
+"Zeile auswählen" = "Sélectionner la ligne";
+"Spalte auswählen" = "Sélectionner la colonne";
+"Auswahl aufheben (Alle Kurven)" = "Effacer la sélection (toutes les courbes)";
+"Zelle im Hex-Editor anzeigen" = "Afficher la cellule dans l'éditeur Hex";
+"Kamera-Ansicht" = "Vue caméra";
+"Kurven-Modus (Alle Zeilen)" = "Mode courbes (toutes les lignes)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Mode coupes (ligne/colonne active)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Afficher toutes les courbes";
+"Vergleichs-Wireframe" = "Filaire de comparaison";
+"Punkte ziehen (Edit-Modus)" = "Glisser les points (mode édition)";
+"Zoom zurücksetzen (100 %)" = "Réinitialiser le zoom (100 %)";

@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "小數位：";
 "Map-Editor" = "圖譜編輯器";
 "Keine OEM DTC-Tabelle gefunden" = "找不到 OEM DTC 表";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "顯示全部";
+"Wert anpassen" = "調整數值";
+"Zeile auswählen" = "選擇整列";
+"Spalte auswählen" = "選擇整欄";
+"Auswahl aufheben (Alle Kurven)" = "取消選取（顯示全部曲線）";
+"Zelle im Hex-Editor anzeigen" = "在 Hex 編輯器中顯示儲存格";
+"Kamera-Ansicht" = "相機視角";
+"Kurven-Modus (Alle Zeilen)" = "曲線模式（全部列）";
+"Slices-Modus (Aktive Zeile/Spalte)" = "切片模式（目前列/欄）";
+"Alle Kurven zeigen (Auswahl aufheben)" = "顯示全部曲線";
+"Vergleichs-Wireframe" = "對比線框";
+"Punkte ziehen (Edit-Modus)" = "拖曳頂點（編輯模式）";
+"Zoom zurücksetzen (100 %)" = "重設縮放 (100%)";

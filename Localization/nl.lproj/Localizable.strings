@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Decimalen:";
 "Map-Editor" = "Map-editor";
 "Keine OEM DTC-Tabelle gefunden" = "Geen OEM DTC-tabel gevonden";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Alles tonen";
+"Wert anpassen" = "Waarde aanpassen";
+"Zeile auswählen" = "Rij selecteren";
+"Spalte auswählen" = "Kolom selecteren";
+"Auswahl aufheben (Alle Kurven)" = "Selectie wissen (alle curves)";
+"Zelle im Hex-Editor anzeigen" = "Cel tonen in Hex-editor";
+"Kamera-Ansicht" = "Cameraweergave";
+"Kurven-Modus (Alle Zeilen)" = "Curvemodus (alle rijen)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Slices-modus (actieve rij/kolom)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Alle curves tonen";
+"Vergleichs-Wireframe" = "Vergelijkings-wireframe";
+"Punkte ziehen (Edit-Modus)" = "Punten slepen (bewerkmodus)";
+"Zoom zurücksetzen (100 %)" = "Zoom resetten (100%)";

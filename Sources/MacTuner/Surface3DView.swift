@@ -101,6 +101,63 @@ struct Surface3DView: View {
         }
         .card(padding: 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contextMenu {
+            Menu("Kamera-Ansicht") {
+                Button("Standardansicht (Isometrisch)") {
+                    yaw = -0.68; pitch = 0.52; zoom = 1.0; dragStartYaw = yaw; dragStartPitch = pitch
+                }
+                Button("Draufsicht (Oben)") {
+                    yaw = 0.0; pitch = 1.32; dragStartYaw = yaw; dragStartPitch = pitch
+                }
+                Button("Frontal (X-Achse)") {
+                    yaw = 0.0; pitch = 0.25; dragStartYaw = yaw; dragStartPitch = pitch
+                }
+                Button("Seitlich (Y-Achse)") {
+                    yaw = -.pi / 2; pitch = 0.25; dragStartYaw = yaw; dragStartPitch = pitch
+                }
+            }
+            Menu("Zoom") {
+                Button("Vergrößern") { zoom = min(2.0, zoom + 0.2) }
+                Button("Verkleinern") { zoom = max(0.55, zoom - 0.2) }
+                Button("Zoom zurücksetzen (100 %)") { zoom = 1.0 }
+            }
+            Divider()
+            if canEdit {
+                Button {
+                    editMode.toggle()
+                } label: {
+                    Label("Punkte ziehen (Edit-Modus)", systemImage: editMode ? "checkmark" : "")
+                }
+            }
+            Button {
+                showCompareWireframe.toggle()
+            } label: {
+                Label("Vergleichs-Wireframe", systemImage: showCompareWireframe ? "checkmark" : "")
+            }
+            if model.datalog != nil {
+                Button {
+                    showMeasurementCloud.toggle()
+                } label: {
+                    Label("3D-Messpunkte (Datalog)", systemImage: showMeasurementCloud ? "checkmark" : "")
+                }
+            }
+            if canEdit && model.compare != nil {
+                Divider()
+                Button("Kennfeld auf Original zurücksetzen") {
+                    let all = Set((0..<l.rows).flatMap { r in (0..<l.cols).map { Cell(r: r, c: $0) } })
+                    model.apply(.restore, item: item, cells: all)
+                }
+            }
+            Divider()
+            Button("Im Hex-Editor anzeigen") {
+                let byteLen = max(1, l.rows * l.cols * max(1, l.bits / 8))
+                model.hexJumpTarget = l.address..<(l.address + byteLen)
+                model.selection = AppModel.hexDiffSelection
+            }
+            Button("Im XDF-Editor bearbeiten …") {
+                model.xdfEditorRequest = XDFEditorRequest(existingItem: item)
+            }
+        }
     }
 
     private func surfaceCanvas(size: CGSize, canEdit: Bool) -> some View {

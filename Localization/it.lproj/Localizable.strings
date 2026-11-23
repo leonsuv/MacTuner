@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Decimali:";
 "Map-Editor" = "Editor mappe";
 "Keine OEM DTC-Tabelle gefunden" = "Nessuna tabella DTC OEM trovata";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Mostra tutto";
+"Wert anpassen" = "Regola valore";
+"Zeile auswählen" = "Seleziona riga";
+"Spalte auswählen" = "Seleziona colonna";
+"Auswahl aufheben (Alle Kurven)" = "Deseleziona (tutte le curve)";
+"Zelle im Hex-Editor anzeigen" = "Mostra cella nell'editor Hex";
+"Kamera-Ansicht" = "Vista telecamera";
+"Kurven-Modus (Alle Zeilen)" = "Modalità curve (tutte le righe)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Modalità sezioni (riga/colonna attiva)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Mostra tutte le curve";
+"Vergleichs-Wireframe" = "Wireframe di confronto";
+"Punkte ziehen (Edit-Modus)" = "Trascina vertici (modifica)";
+"Zoom zurücksetzen (100 %)" = "Ripristina zoom (100%)";

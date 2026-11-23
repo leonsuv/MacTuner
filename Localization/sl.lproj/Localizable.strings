@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Decimals:";
 "Map-Editor" = "Map Editor";
 "Keine OEM DTC-Tabelle gefunden" = "No OEM DTC Table Found";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Show All";
+"Wert anpassen" = "Adjust Value";
+"Zeile auswählen" = "Select Row";
+"Spalte auswählen" = "Select Column";
+"Auswahl aufheben (Alle Kurven)" = "Clear Selection (All Curves)";
+"Zelle im Hex-Editor anzeigen" = "Show Cell in Hex Editor";
+"Kamera-Ansicht" = "Camera View";
+"Kurven-Modus (Alle Zeilen)" = "Curves Mode (All Rows)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Slices Mode (Active Row/Column)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Show All Curves (Clear Selection)";
+"Vergleichs-Wireframe" = "Comparison Wireframe";
+"Punkte ziehen (Edit-Modus)" = "Drag Vertices (Edit Mode)";
+"Zoom zurücksetzen (100 %)" = "Reset Zoom (100%)";

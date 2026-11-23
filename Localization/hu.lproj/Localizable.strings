@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Tizedesjegyek:";
 "Map-Editor" = "Térképszerkesztő";
 "Keine OEM DTC-Tabelle gefunden" = "Nem található OEM DTC-tábla";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Összes megjelenítése";
+"Wert anpassen" = "Érték módosítása";
+"Zeile auswählen" = "Sor kijelölése";
+"Spalte auswählen" = "Oszlop kijelölése";
+"Auswahl aufheben (Alle Kurven)" = "Kijelölés törlése (összes görbe)";
+"Zelle im Hex-Editor anzeigen" = "Cella megjelenítése Hex-szerkesztőben";
+"Kamera-Ansicht" = "Kameranézete";
+"Kurven-Modus (Alle Zeilen)" = "Görbe mód (összes sor)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Szelet mód (aktív sor/oszlop)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Összes görbe megjelenítése";
+"Vergleichs-Wireframe" = "Összehasonlító drótváz";
+"Punkte ziehen (Edit-Modus)" = "Pontok húzása (szerkesztés)";
+"Zoom zurücksetzen (100 %)" = "Nagyítás visszaállítása (100%)";

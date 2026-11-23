@@ -828,3 +828,18 @@
 "Dezimalstellen:" = "Decimais:";
 "Map-Editor" = "Editor de mapas";
 "Keine OEM DTC-Tabelle gefunden" = "Nenhuma tabela DTC OEM encontrada";
+
+/* v3.0.1 Context Menus */
+"Alle zeigen" = "Mostrar tudo";
+"Wert anpassen" = "Ajustar valor";
+"Zeile auswählen" = "Selecionar linha";
+"Spalte auswählen" = "Selecionar coluna";
+"Auswahl aufheben (Alle Kurven)" = "Limpar seleção (todas as curvas)";
+"Zelle im Hex-Editor anzeigen" = "Mostrar célula no editor Hex";
+"Kamera-Ansicht" = "Vista da câmera";
+"Kurven-Modus (Alle Zeilen)" = "Modo curvas (todas as linhas)";
+"Slices-Modus (Aktive Zeile/Spalte)" = "Modo fatias (linha/coluna ativa)";
+"Alle Kurven zeigen (Auswahl aufheben)" = "Mostrar todas as curvas";
+"Vergleichs-Wireframe" = "Wireframe de comparação";
+"Punkte ziehen (Edit-Modus)" = "Arrastar vértices (edição)";
+"Zoom zurücksetzen (100 %)" = "Redefinir zoom (100%)";
