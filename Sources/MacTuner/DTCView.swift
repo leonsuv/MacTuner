@@ -6,6 +6,7 @@ struct DTCView: View {
     @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
     @State private var scanResult: DTCEngine.ScanResult?
     @State private var isScanning = false
+    @State private var hasScanned = false
     @State private var search = ""
     @State private var filterMode = 0 // 0 = Alle, 1 = Aktiv, 2 = Deaktiviert
 
@@ -154,9 +155,11 @@ struct DTCView: View {
                 }
             } else {
                 ContentUnavailableView(
-                    "DTC-Scanner bereit",
-                    systemImage: "exclamationmark.octagon",
-                    description: Text("Klicke auf „DTC-Tabellen suchen“, um OBD-II P-Codes und zugehörige Fehlerklassen-Schalter in der geladenen BIN zu erkennen.")
+                    hasScanned ? "Keine OEM DTC-Tabelle gefunden" : "DTC-Scanner bereit",
+                    systemImage: hasScanned ? "magnifyingglass" : "exclamationmark.octagon",
+                    description: Text(hasScanned
+                        ? "In dieser BIN wurde keine bekannte Bosch/Siemens OBD-II P-Code-Fehlermatrix erkannt."
+                        : "Klicke auf „DTC-Tabellen suchen“, um OBD-II P-Codes und zugehörige Fehlerklassen-Schalter in der geladenen BIN zu erkennen.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -168,6 +171,7 @@ struct DTCView: View {
         }
         .onChange(of: model.activeBinID) { _, _ in
             scanResult = nil
+            hasScanned = false
             if model.hasBin { runScan() }
         }
     }
@@ -192,6 +196,7 @@ struct DTCView: View {
             let res = DTCEngine.scan(bytes)
             await MainActor.run {
                 self.scanResult = res
+                self.hasScanned = true
                 self.isScanning = false
             }
         }

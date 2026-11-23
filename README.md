@@ -27,7 +27,7 @@
   <a href="#building">Building</a>
 </p>
 
-![MacTuner: Map sidebar, heatmap, top-down interactive 3D surface and 2D chart side by side](docs/v2.5-hero-editor.png)
+![MacTuner 3.0: Unified 4-tab sidebar, heatmap, interactive 3D surface and 2D curves side by side](docs/v3.0-hero-editor.png)
 
 TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI &amp; AppKit tuning workbench engineered from the ground up for macOS. Every edit is non-destructive and byte-exact: when saving a binary, only the exact bytes of edited values change.
 
@@ -35,17 +35,23 @@ TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI &amp; 
 
 ## Gallery
 
-| **WinOLS-Class Split Hex-Diff &amp; In-Hex Map Recognition** | **Overview, ECU Identification &amp; Change Summary** |
+| **WinOLS-Class Split Hex-Diff &amp; In-Hex Map Recognition** | **Visual Memory Atlas &amp; Shared-Axis Pool** |
 |---|---|
-| ![Split Hex-Diff with In-Hex Map Recognition and Live Mini-Heatmap HUD](docs/v2.5-hex-recognition.png) | ![Overview Dashboard with ECU Identification and Change List](docs/v2.5-overview.png) |
-| **Table Difference View (Δ / Δ %)** | **Multi-File Compare (Stock · Stage 1 · Stage 2)** |
-| ![Table Difference View with 3D Surface and 2D Chart](docs/v2.5-delta.png) | ![3-File Multi-Compare](docs/v2.5-multicompare.png) |
-| **OEM DTC Table Scanner &amp; 1-Click Switcher** | **Checksums, Flash-Tool Presets &amp; BIN Utilities** |
-| ![OEM DTC Table Scanner & 1-Click Switcher](docs/v2.5-dtc-scanner.png) | ![Checksums, Flash Presets & BIN Utilities](docs/v2.5-checksum-tools.png) |
+| ![Split Hex-Diff with In-Hex Map Recognition, Live Mini-Heatmap HUD and 2D Waveform](docs/v3.0-hex-recognition.png) | ![Visual Memory Atlas with proportional flash partition bar and sector table](docs/v3.0-memory-atlas.png) |
+| **Preflight, Checksums, CVN &amp; Flash-Tool Export** | **2-Column Live-Preview XDF Editor** |
+| ![Preflight & Checksums with KPI cards, block table and Flash-Tool export presets](docs/v3.0-checksum-flash.png) | ![2-Column Live-Preview XDF Editor with real-time 2D Mini-Heatmap, Min/Mean/Max and decoded cells](docs/v3.0-xdf-editor.png) |
+| **Overview, ECU Identification &amp; Change Summary** | **Map Editor: Heatmap, 3D Surface &amp; 2D Curves** |
+| ![Overview Dashboard with ECU Identification and Change List](docs/v3.0-overview.png) | ![Map Editor with Heatmap, 3D Surface and 2D Curves](docs/v3.0-hero-editor.png) |
 
 ---
 
 ## Highlights
+
+### Redesigned v3.0 Pro Workbench &amp; Visual Architecture
+- **3 Adaptive Workspace Modes (`⌃⌘1` / `⌃⌘2` / `⌃⌘3`):** Switch seamlessly between **Studio** (5 flat workflow sections: *Workspace*, *Discovery &amp; DTCs*, *Memory Map*, *Datalog*, *Flash*), **IDE** (live multi-tab editor bar), and **Canvas** (minimal distraction-free floating dock).
+- **3 Visual Themes:** **Liquid Glass (Pro Dark)**, **macOS Native (Adaptive Light/Dark)**, and **Motorsport Telemetry** — plus 5 color-blind-friendly heatmap palettes (Classic, Viridis, Cividis, Plasma, High Contrast).
+- **Unified 4-Tab Sidebar &amp; 1-Click `Hex-Editor | Map-Editor` Switch:** Permanent `Maps · Diffs · Detected · Bookmarks` navigator that never disappears when XDF maps are loaded, paired with a collapsible **Unified Right Inspector (`⌥⌘I`)** and **Bottom Drawer (`⇧⌘Y`)**.
+- **2-Column Live-Preview XDF Editor:** Edit tables, constants, flags, and patches with real-time 2D Mini-Heatmap / 1D curve rendering, Min/Mean/Max KPIs, decoded 4×4 cell sample grid, and live byte-nudge (`-2 / -1 / +1 / +2`) preview directly from the loaded BIN.
 
 ### In-Hex Map Recognition &amp; 60-FPS Binary Analyzer
 - **Automatic OEM Map Recognition:** Fast zero-allocation background scanner detects Bosch paired &amp; EDC17/MED17 interleaved 16-bit 2D headers, Bosch 8-bit headers, packed 1D curve chains, axis-anchored 2D surfaces, Signed (`±`) maps &amp; axes, IEEE-754 `Float32`, and row-pitch autocorrelated headerless maps.
@@ -80,7 +86,7 @@ MacTuner follows the macOS system language and falls back to English. To pick a 
 
 ## Installation
 
-1. Download **`MacTuner-2.5.2.zip`** from [**Releases**](../../releases/latest) and unzip it (universal binary for Apple Silicon &amp; Intel).
+1. Download **`MacTuner-3.0.0.zip`** from [**Releases**](../../releases/latest) and unzip it (universal binary for Apple Silicon &amp; Intel).
 2. Move `MacTuner.app` to `/Applications`.
 3. Because the release is unsigned/not notarized, allow the first launch under **System Settings → Privacy &amp; Security → Open Anyway**, or run:
    ```sh

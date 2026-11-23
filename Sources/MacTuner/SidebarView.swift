@@ -61,7 +61,7 @@ struct SidebarView: View {
                         } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: "tablecells").font(.system(size: 11))
-                                Text(model.definition == nil ? "XDF laden" : "Tabelle").font(.system(size: 11.5, weight: isMap ? .semibold : .medium))
+                                Text(model.definition == nil ? "XDF laden" : "Map-Editor").font(.system(size: 11.5, weight: isMap ? .semibold : .medium))
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 5.5)
