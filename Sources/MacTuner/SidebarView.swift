@@ -239,9 +239,10 @@ struct SidebarView: View {
                     .fixedSize()
                     .help("Maximaler Byte-Abstand zum Gruppieren benachbarter Diffs")
                 }
-                .padding(.horizontal, 10).padding(.bottom, 5)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 6)
             }
-            Divider()
 
             if activeTab == .detected {
                 if model.isScanningPotentialMaps && filteredPotential.isEmpty {
