@@ -171,11 +171,7 @@ enum MapFinder {
             // Pass 1C: Bosch 8-bit 2D Headers (Paired & Interleaved) — MUST run BEFORE 16-bit curve/heuristic passes!
             scanBosch8Headers(buf: buf, calMask: calMask, occupied: &occupied, scratch: &scratch, out: &candidates)
 
-            // Pass 1D: Bosch 16-bit 1D Curve Chains [len, ax, data] (with SST & embedded-header guard!)
-            scanBosch16Curves1D(buf: buf, calMask: calMask, lsb: primaryLSB,
-                                occupied: &occupied, scratch: &scratch, out: &candidates)
-
-            // Pass 1D-bis: TriCore 32-bit Pointer-Descriptor Scanner ([A4]+0x00 X, +0x04 Y, +0x08 Z)
+            // Pass 1D-bis: TriCore 32-bit Pointer-Descriptor Scanner ([A4]+0x00 X, +0x04 Y, +0x08 Z) — BEFORE 1D curves!
             let isTriCore = count >= 1_048_576 || {
                 let fam = ecu?.ecuFamily?.uppercased() ?? ""
                 return fam.contains("MED17") || fam.contains("EDC17") || fam.contains("MG1") || fam.contains("MD1") || fam.contains("SIMOS") || fam.contains("MSD8")
@@ -184,6 +180,10 @@ enum MapFinder {
                 scanTriCorePointerDescriptors(buf: buf, calMask: calMask, lsb: primaryLSB,
                                               occupied: &occupied, scratch: &scratch, out: &candidates)
             }
+
+            // Pass 1D: Bosch 16-bit 1D Curve Chains [len, ax, data] (with SST & embedded-header guard!)
+            scanBosch16Curves1D(buf: buf, calMask: calMask, lsb: primaryLSB,
+                                occupied: &occupied, scratch: &scratch, out: &candidates)
 
             // HEURISTIC PASSES SECOND (only over strictly unoccupied ranges):
             // Pass 1E: Strictly Contiguous Axis-Anchored 2D Surfaces (e.g. 0x292EEE -> 0x292F00)
@@ -376,6 +376,32 @@ enum MapFinder {
             }
             mask[b] = true
         }
+        // Stage 0b: Veto TriCore executable code blocks (4 KB local + 64 KB code-bank density) on >= 512 KB ECUs
+        if buf.count >= 524_288 {
+            let num4K = buf.count / 4096
+            var isCode4K = [Bool](repeating: false, count: num4K)
+            for k in 0..<num4K {
+                let s = k * 4096
+                var ret16 = 0, movha = 0
+                var i = s
+                while i + 3 < s + 4096 {
+                    if buf[i] == 0x00 && buf[i + 1] == 0x90 { ret16 += 1 } // TriCore RET (16-bit)
+                    if buf[i] == 0x91 && [0x80, 0xA0, 0xD0, 0x70].contains(buf[i + 3] & 0xF0) { movha += 1 } // MOVH.A
+                    i += 2
+                }
+                if ret16 >= 3 || (ret16 >= 1 && movha >= 2) || movha >= 4 { isCode4K[k] = true }
+            }
+            for k in 0..<num4K {
+                let bankStart = (k & ~15)
+                let bankEnd = min(num4K, bankStart + 16)
+                let bankCodeHits = (bankStart..<bankEnd).reduce(0) { $0 + (isCode4K[$1] ? 1 : 0) }
+                if isCode4K[k] || bankCodeHits >= 6 {
+                    let bLo = (k * 4096) >> blockShift
+                    let bHi = min(mask.count, ((k + 1) * 4096) >> blockShift)
+                    for b in bLo..<bHi { mask[b] = false }
+                }
+            }
+        }
         return mask
     }
 
@@ -510,12 +536,17 @@ enum MapFinder {
                             let v1 = validateAxis16(buf, ax1Off, count: n1, lsb: lsb)
                             let v2 = validateAxis16(buf, ax2Off, count: n2, lsb: lsb)
                             if v1.valid && v2.valid {
-                                // Standalone-axis lookahead guard: if `dataOff` itself begins with a valid `[n3, ax3[n3]]`,
-                                // then `[n1, ax1]` is a standalone shared axis and the real map starts at `hdr2Off`!
+                                // Standalone-axis lookahead guard: only treat [n1, ax1] as standalone if dataOff actually starts a valid [n3, ax3, Z(n2×n3)] map!
                                 if dataOff + 8 < count {
                                     let n3 = readU16(buf, dataOff, lsb: lsb)
-                                    if n3 >= 3 && n3 <= 32 && dataOff + 2 + n3 * 2 + n2 * n3 * 2 <= count
+                                    let altDataOff = dataOff + 2 + n3 * 2
+                                    let altEnd = altDataOff + n2 * n3 * 2
+                                    if n3 >= 4 && n3 <= 32 && altEnd <= count
                                         && validateAxis16(buf, dataOff + 2, count: n3, lsb: lsb).valid
+                                        && evaluateBosch2DData(buf: buf, headerOff: hdr2Off, secondHeaderOff: dataOff,
+                                                               dataOff: altDataOff, rows: n2, cols: n3,
+                                                               xOff: dataOff + 2, yOff: ax2Off, xSigned: false, ySigned: v2.signed,
+                                                               lsb: lsb, forcedSigned: forcedSigned, scratch: &scratch) != nil
                                     {
                                         occupied.mark(byteRange: off ..< hdr2Off)
                                         off = hdr2Off
@@ -720,7 +751,7 @@ enum MapFinder {
 
             let n = readU16(buf, off, lsb: lsb)
             let isSmallChainLen = (n == 2 || n == 3)
-            let isStandardLen = (n >= 4 && n <= 64) || n == 128 || n == 256
+            let isStandardLen = (n >= 4 && n <= 32) || (n <= 64 && (off - lastBoschEnd) <= 16)
             if isStandardLen || isSmallChainLen {
                 let axOff = off + 2
                 let dataOff = axOff + n * 2
@@ -728,6 +759,33 @@ enum MapFinder {
                 if dataEnd <= count && !occupied.overlaps(byteRange: off ..< dataEnd) {
                     let axVal = validateAxis16(buf, axOff, count: n, lsb: lsb)
                     if axVal.valid {
+                        // Guard 1: Reject if `n` and `data` are consecutive slices of one continuous monotonic 1D ramp!
+                        if !axVal.signed {
+                            let ax0 = readU16(buf, axOff, lsb: lsb)
+                            let axLast = readU16(buf, axOff + (n - 1) * 2, lsb: lsb)
+                            let dat0 = readU16(buf, dataOff, lsb: lsb)
+                            let avgAxStep = max(1, (axLast - ax0) / max(1, n - 1))
+                            if off >= 2 {
+                                let prevW = readU16(buf, off - 2, lsb: lsb)
+                                if prevW < n && n < ax0 && (ax0 - prevW) <= max(32, avgAxStep * 6) {
+                                    off += 2
+                                    continue
+                                }
+                            }
+                            if dat0 > axLast && (dat0 - axLast) <= max(16, avgAxStep * 4)
+                                && validateAxis16(buf, dataOff, count: n, lsb: lsb).valid {
+                                off += 2
+                                continue
+                            }
+                        }
+                        // Guard 2: Do not cannibalize 2 rows of a headerless 2D sawtooth map (where row 2 repeats row 1)!
+                        if n >= 6 && n <= 24 && dataEnd + n * 2 <= count && !hasBoschHeaderNear(buf: buf, offset: dataEnd, lsb: lsb) {
+                            if validateAxis16(buf, dataOff, count: n, lsb: lsb).valid
+                                && validateAxis16(buf, dataEnd, count: n, lsb: lsb).valid {
+                                off += 2
+                                continue
+                            }
+                        }
                         if isSmallChainLen {
                             let chainedFromPrev = (off - lastBoschEnd) <= 32
                             let followedByHeader = hasBoschHeaderNear(buf: buf, offset: dataEnd, lsb: lsb)
@@ -836,19 +894,20 @@ enum MapFinder {
 
             var runLen = 2
             var prev = v1
-            while runLen < 24 && (off + (runLen + 1) * 2) <= count {
+            while runLen <= 256 && (off + (runLen + 1) * 2) <= count {
                 let cur = readU16(buf, off + runLen * 2, lsb: lsb)
                 if cur <= prev || cur == 0xFFFF { break }
                 prev = cur
                 runLen += 1
             }
+            if runLen > 24 { off += runLen * 2; continue } // Long 1D lookup table — never slice into fake 24×24!
 
             let axVal = validateAxis16(buf, off, count: runLen, lsb: lsb)
             if runLen >= 5 && runLen <= 24 && axVal.valid {
                 let dataOff = off + runLen * 2
                 if !occupied.overlaps(byteRange: off ..< dataOff),
                    let found = detect2DRowsAfterAxis(buf: buf, dataOff: dataOff, cols: runLen, lsb: lsb,
-                                                     forcedSigned: forcedSigned, requireStrongWrap: false,
+                                                     forcedSigned: forcedSigned, requireStrongWrap: true,
                                                      occupied: occupied, scratch: &scratch) {
                     let dataBytes = found.rows * runLen * 2
                     let fullEnd = dataOff + dataBytes
@@ -920,11 +979,12 @@ enum MapFinder {
                 }
             }
             guard chosenRes.score >= 0.56 else { continue }
+            if is1DMonotonicOrUnwrappedRamp(scratch: scratch, rows: r, cols: cols) { continue }
+            let wrap = rowWrapContrast(scratch: scratch, rows: r, cols: cols)
             if requireStrongWrap {
-                let wrap = rowWrapContrast(scratch: scratch, rows: r, cols: cols)
                 guard wrap >= 0.15 else { continue }
             }
-            let rank = chosenRes.score + Double(r) * 0.008
+            let rank = chosenRes.score + 0.15 * wrap
             if rank > (best?.rank ?? 0) {
                 best = (r, chosenSigned, rank, chosenRes)
             }
@@ -1040,10 +1100,11 @@ enum MapFinder {
                     }
                 }
                 guard chosenRes.score > 0.72 else { continue }
-                // Reject trivial 1D linear counters/countdowns (e.g. 0x0393, 0x0392, 0x0391, ...)
-                if isTrivialLinearRamp(scratch: scratch, count: r * c) { continue }
+                // Reject 1D monotonic lookup/index ramps reshaped as 2D
+                if is1DMonotonicOrUnwrappedRamp(scratch: scratch, rows: r, cols: c) { continue }
                 let wrap = rowWrapContrast(scratch: scratch, rows: r, cols: c)
-                let pScore = chosenRes.score + 0.18 * wrap
+                let pitchSim = rowPitchSimilarity(scratch: scratch, rows: r, cols: c, range: chosenRes.maxVal - chosenRes.minVal)
+                let pScore = chosenRes.score + 0.22 * wrap + 0.15 * pitchSim
                 if pScore > (best?.pitchScore ?? 0) {
                     best = (r, c, chosenSigned, pScore, chosenRes)
                 }
@@ -1054,8 +1115,12 @@ enum MapFinder {
                 // STRICT: ONLY accept immediately contiguous unoccupied axes — NEVER fish 512B into other maps!
                 let axes = findImmediateAxes16(buf: buf, dataOff: off, rows: b.r, cols: b.c, lsb: lsb, occupied: occupied)
                 let hasAx = axes.xAxis != nil || axes.yAxis != nil
-                // Cap pure headerless Datenmuster at <= 0.80 so High Confidence (>= 85%) only surfaces axis/header-backed maps
-                let conf = hasAx ? min(0.93, b.res.score * 0.94 + 0.06) : min(0.80, b.res.score * 0.86)
+                // Re-populate scratch for winning shape so rowPitchSimilarity reflects b.r × b.c accurately
+                _ = surfaceSmoothness(buf: buf, offset: off, rows: b.r, cols: b.c, bits: 16, signed: b.signed, isFloat: false, lsb: lsb, allowSparse: false, scratch: &scratch)
+                let periodicSim = rowPitchSimilarity(scratch: scratch, rows: b.r, cols: b.c, range: b.res.maxVal - b.res.minVal)
+                let conf: Double = hasAx
+                    ? min(0.93, b.res.score * 0.94 + 0.06)
+                    : (periodicSim >= 0.55 ? min(0.90, 0.78 + periodicSim * 0.14) : min(0.78, b.res.score * 0.84))
                 let pat: MapPatternKind = hasAx ? .splitAxis2D : .smooth2DSurface
                 let hint = inferDomainHint(buf: buf, xAxisOff: axes.xAxis, xCount: b.c, yAxisOff: axes.yAxis, yCount: b.r,
                                            lsb: lsb, signed: b.signed)
@@ -1082,15 +1147,67 @@ enum MapFinder {
         }
     }
 
-    /// Returns true if >= 85% of consecutive elements have the exact same constant step (e.g. a 1D index/countdown table like 0x0393, 0x0392, 0x0391...).
-    private static func isTrivialLinearRamp(scratch: [Double], count: Int) -> Bool {
-        guard count >= 16, scratch.count >= count else { return false }
-        let d0 = scratch[1] - scratch[0]
-        var same = 0
-        for i in 1..<(count - 1) {
-            if abs((scratch[i + 1] - scratch[i]) - d0) < 1e-6 { same += 1 }
+    /// Rejects 1D monotonic lookup/index ramps reshaped as 2D: true if >= 90% of all linear steps move in one direction
+    /// OR if rows show monotonic drift across the full span with zero row-wrap resets.
+    private static func is1DMonotonicOrUnwrappedRamp(scratch: [Double], rows: Int, cols: Int) -> Bool {
+        let count = rows * cols
+        guard count >= 12, scratch.count >= count else { return false }
+        var nonDec = 0, nonInc = 0, nonZero = 0
+        for i in 0..<(count - 1) {
+            let d = scratch[i + 1] - scratch[i]
+            if abs(d) > 1e-9 { nonZero += 1 }
+            if d >= 0 { nonDec += 1 }
+            if d <= 0 { nonInc += 1 }
         }
-        return Double(same) / Double(count - 2) >= 0.85
+        if nonZero == 0 { return false }
+        if Double(max(nonDec, nonInc)) / Double(count - 1) >= 0.90 { return true }
+
+        guard rows >= 3, cols >= 4 else { return false }
+        var rowSlopeSum = 0.0
+        var wrapResetCount = 0
+        for r in 0..<rows {
+            let base = r * cols
+            let rowDelta = scratch[base + cols - 1] - scratch[base]
+            rowSlopeSum += rowDelta
+            if r + 1 < rows {
+                let wrapDelta = scratch[base + cols] - scratch[base + cols - 1]
+                if (rowDelta > 0 && wrapDelta < -0.15 * rowDelta) || (rowDelta < 0 && wrapDelta > -0.15 * rowDelta) {
+                    wrapResetCount += 1
+                }
+            }
+        }
+        let meanRowSpan = abs(rowSlopeSum) / Double(rows)
+        var lo = Double.infinity, hi = -Double.infinity
+        for i in 0..<count {
+            let v = scratch[i]
+            if v < lo { lo = v }
+            if v > hi { hi = v }
+        }
+        let fullRange = hi - lo
+        if fullRange > 0 && meanRowSpan < fullRange * 0.18 && wrapResetCount == 0 {
+            let startToEnd = abs(scratch[count - 1] - scratch[0])
+            if startToEnd > fullRange * 0.82 { return true }
+        }
+        return false
+    }
+
+    /// Measures genuine 2D row-to-row pitch correlation (0...1) for repeating sawtooth / shared-axis Bosch 2D maps.
+    private static func rowPitchSimilarity(scratch: [Double], rows: Int, cols: Int, range: Double) -> Double {
+        guard rows >= 4, cols >= 4, range >= 8 else { return 0 }
+        let wrap = rowWrapContrast(scratch: scratch, rows: rows, cols: cols)
+        guard wrap >= 0.30 else { return 0 }
+        var colDiffSum = 0.0
+        var n = 0
+        for r in 0..<(rows - 1) {
+            let b0 = r * cols, b1 = (r + 1) * cols
+            for c in 0..<cols {
+                colDiffSum += abs(scratch[b1 + c] - scratch[b0 + c])
+                n += 1
+            }
+        }
+        let interRowNorm = (colDiffSum / Double(max(1, n))) / range
+        guard interRowNorm <= 0.16 else { return 0 }
+        return min(1.0, (1.0 - interRowNorm * 4.0) * 0.65 + wrap * 0.35)
     }
 
     private static func scanHeaderless2D8(buf: UnsafeBufferPointer<UInt8>, calMask: [Bool], signed: Bool,
@@ -1109,7 +1226,7 @@ enum MapFinder {
                 let res = surfaceSmoothness(buf: buf, offset: off, rows: r, cols: c,
                                             bits: 8, signed: signed, isFloat: false, lsb: true,
                                             allowSparse: false, scratch: &scratch)
-                if isTrivialLinearRamp(scratch: scratch, count: r * c) { continue }
+                if is1DMonotonicOrUnwrappedRamp(scratch: scratch, rows: r, cols: c) { continue }
                 if res.score > 0.74, res.score > (best?.res.score ?? 0) {
                     best = (r, c, res)
                 }
@@ -1516,13 +1633,28 @@ enum MapFinder {
         }
         let xv = validateAxis16(buf, xImmediate, count: cols, lsb: lsb)
         guard xv.valid else { return (nil, nil, false, false) }
+        if !xv.signed {
+            let xFirst = readU16(buf, xImmediate, lsb: lsb)
+            let xLast = readU16(buf, dataOff - 2, lsb: lsb)
+            let zFirst = readU16(buf, dataOff, lsb: lsb)
+            // Reject when xAxis seamlessly continues into Z data (same 1D monotonic ramp!)
+            if zFirst > xLast && (zFirst - xLast) <= max(16, (xLast - xFirst) / max(1, cols - 1) * 3) {
+                return (nil, nil, false, false)
+            }
+        }
 
         var yFound: Int? = nil
         var ySig = false
         let yImmediate = xImmediate - rows * 2
         if rows > 1 && yImmediate >= 0 && !occupied.overlaps(byteRange: yImmediate ..< xImmediate) {
             let yv = validateAxis16(buf, yImmediate, count: rows, lsb: lsb)
-            if yv.valid { yFound = yImmediate; ySig = yv.signed }
+            if yv.valid {
+                let yLast = readU16(buf, xImmediate - 2, lsb: lsb)
+                let xFirst = readU16(buf, xImmediate, lsb: lsb)
+                if yv.signed || xv.signed || xFirst < yLast {
+                    yFound = yImmediate; ySig = yv.signed
+                }
+            }
         }
         return (xImmediate, yFound, xv.signed, ySig)
     }
@@ -1579,7 +1711,7 @@ enum MapFinder {
         var found = 0
         var off = 0
         while off + 12 <= n && found < 400 {
-            if !calMask[off >> 10] { off += 1024; continue }
+            if occupied.isSet(byteOffset: off) { off += 4; continue }
             let p0 = readU32(off)
             guard let r0 = resolvePtr(p0) else { off += 4; continue }
             let p1 = readU32(off + 4)
@@ -1606,6 +1738,7 @@ enum MapFinder {
                 let zBytes = nx * ny * 2
                 guard xDataOff + nx * 2 <= n, yDataOff + ny * 2 <= n, zOff + zBytes <= n else { continue }
                 guard !occupied.overlaps(byteRange: zOff ..< (zOff + zBytes)) else { continue }
+                if hasBoschHeaderNear(buf: buf, offset: zOff, lsb: lsb) { continue }
 
                 let xv = validateAxis16(buf, xDataOff, count: nx, lsb: lsb)
                 guard xv.valid else { continue }
@@ -1617,6 +1750,7 @@ enum MapFinder {
                 let evalS = surfaceSmoothness(buf: buf, offset: zOff, rows: ny, cols: nx, bits: 16, signed: true, isFloat: false, lsb: lsb, allowSparse: true, scratch: &scratch)
                 let best = (evalS.score > evalU.score + 0.05) ? (evalS, true) : (evalU, false)
                 guard best.0.score >= 0.45 else { continue }
+                if is1DMonotonicOrUnwrappedRamp(scratch: scratch, rows: ny, cols: nx) { continue }
 
                 let conf = min(0.98, 0.91 + best.0.score * 0.07)
                 let hint = inferDomainHint(buf: buf, xAxisOff: xDataOff, xCount: nx, yAxisOff: yDataOff, yCount: ny, lsb: lsb, signed: best.1)
