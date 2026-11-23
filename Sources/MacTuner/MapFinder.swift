@@ -608,7 +608,7 @@ enum MapFinder {
         let isFlatValid = (bestRes.maxVal - bestRes.minVal) < 8 && bestRes.ffCount * 5 < (rows * cols)
         guard bestRes.score > 0.36 || isFlatValid else { return nil }
 
-        let conf = isFlatValid ? 0.80 : min(0.99, 0.66 + bestRes.score * 0.33)
+        let conf = isFlatValid ? ((rows >= 4 && cols >= 4) ? 0.88 : 0.80) : min(0.99, 0.66 + bestRes.score * 0.33)
         let hint = isFlatValid
             ? "OEM-Kennfeld (konstant/0)"
             : inferDomainHint(buf: buf, xAxisOff: xOff, xCount: cols, yAxisOff: yOff, yCount: rows, lsb: lsb, signed: useSigned)
@@ -750,9 +750,8 @@ enum MapFinder {
             if occupied.isSet(byteOffset: off) { off += 2; continue }
 
             let n = readU16(buf, off, lsb: lsb)
-            let isSmallChainLen = false // Never match 2-3 pt noise; prevents swallowing adjacent real 4+ pt Bosch curves!
             let isStandardLen = (n >= 4 && n <= 32) || (n <= 64 && (off - lastBoschEnd) <= 16)
-            if isStandardLen || isSmallChainLen {
+            if isStandardLen {
                 let axOff = off + 2
                 let dataOff = axOff + n * 2
                 let dataEnd = dataOff + n * 2
@@ -782,15 +781,6 @@ enum MapFinder {
                         if n >= 6 && n <= 24 && dataEnd + n * 2 <= count && !hasBoschHeaderNear(buf: buf, offset: dataEnd, lsb: lsb) {
                             if validateAxis16(buf, dataOff, count: n, lsb: lsb).valid
                                 && validateAxis16(buf, dataEnd, count: n, lsb: lsb).valid {
-                                off += 2
-                                continue
-                            }
-                        }
-                        if isSmallChainLen {
-                            let chainedFromPrev = (off - lastBoschEnd) <= 32
-                            let followedByHeader = hasBoschHeaderNear(buf: buf, offset: dataEnd, lsb: lsb)
-                                || hasBoschHeaderNear(buf: buf, offset: dataEnd + 2, lsb: lsb)
-                            if !chainedFromPrev && !followedByHeader {
                                 off += 2
                                 continue
                             }
@@ -845,8 +835,7 @@ enum MapFinder {
                         }
 
                         let isFlatValid = (res.maxVal - res.minVal) < 8 && res.ffCount == 0 && curveZeros == 0
-                        let isShortValid = isSmallChainLen && res.ffCount == 0 && (isFlatValid || res.score >= 0.40)
-                        let accept = isShortValid || (res.score >= 0.55 && res.ffCount == 0) || (isStandardLen && isFlatValid)
+                        let accept = (res.score >= 0.55 && res.ffCount == 0) || (isStandardLen && isFlatValid)
 
                         if accept {
                             // Never give tiny 2-3 point curves or flat/constant arrays high confidence
