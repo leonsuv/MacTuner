@@ -44,20 +44,34 @@ struct ContentView: View {
         .preferredColorScheme(theme.preferredColorScheme)
         .tint(theme.accentColor)
         .toolbar {
-            // Center: 4-Mode Studio Segmented Switcher (replaces the cluttered 15-icon left rail!)
+            // Center: Sleek custom 4-Mode Studio Segmented Pill with crisp icon + text labels!
             if layoutMode == .studio {
                 ToolbarItem(placement: .principal) {
-                    Picker("Modus", selection: Binding(
-                        get: { activeStudioMode },
-                        set: { switchStudioMode($0) }
-                    )) {
+                    HStack(spacing: 2) {
                         ForEach(StudioMode.allCases) { m in
-                            Label(m.title, systemImage: m.icon).tag(m)
+                            let active = activeStudioMode == m
+                            Button {
+                                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                                    switchStudioMode(m)
+                                }
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: m.icon)
+                                        .font(.system(size: 11, weight: active ? .semibold : .regular))
+                                    Text(m.title)
+                                        .font(.system(size: 11.5, weight: active ? .semibold : .medium))
+                                }
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 4.5)
+                                .foregroundStyle(active ? .white : .secondary)
+                                .background(active ? theme.accentColor : Color.clear, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 340)
+                    .padding(3)
+                    .background(theme.surfaceBackground, in: Capsule())
+                    .overlay(Capsule().strokeBorder(theme.hairlineBorder, lineWidth: 0.75))
                 }
             }
 
@@ -236,6 +250,7 @@ struct ContentView: View {
                     autoAlignBanner
                     detail
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.bottom, showBottomDrawer ? 0 : 48)
                     if showBottomDrawer {
                         BottomDrawerView(isOpen: $showBottomDrawer, height: $bottomDrawerHeight, theme: theme)
                     }
@@ -448,16 +463,31 @@ struct ContentView: View {
 
 struct StatusBar: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
+    private var theme: AppTheme { AppTheme(rawValue: appThemeRaw) ?? .liquidGlass }
 
     var body: some View {
         HStack(spacing: 12) {
-            entry("doc.text", "XDF", model.xdfURL?.lastPathComponent ?? model.definition?.title)
-            entry("memorychip", "BIN", model.binURL.map { "\($0.lastPathComponent) (\(model.bin.count / 1024) KB)" })
-            if model.hasBin {
-                HStack(spacing: 4) {
-                    entry("arrow.left.arrow.right", "Vergleich", model.compareName)
+            if let doc = model.activeBin {
+                HStack(spacing: 6) {
+                    Image(systemName: "cpu").foregroundStyle(theme.accentColor)
+                    Text(doc.ecuIdentity.ecuFamily ?? "ECU Binary")
+                        .fontWeight(.medium)
+                    Text("· \(doc.bytes.count / 1024) KB")
+                        .foregroundStyle(.secondary).monospacedDigit()
+                    if let sw = doc.ecuIdentity.softwareNumber?.value {
+                        Text("· SW \(sw)")
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if model.openBins.count > 1 || model.compare != nil {
+                    Divider().frame(height: 11)
                     CompareMenu()
                 }
+            } else {
+                Text("Bereit — BIN oder XDF ins Fenster ziehen")
+                    .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 8)
@@ -573,13 +603,13 @@ struct StatusBar: View {
                 .help("Prüfsummen-Plugin wählen")
             }
         }
-        .font(.caption)
+        .font(.system(size: 11))
         .lineLimit(1)
         .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-        .background(.bar)
+        .padding(.vertical, 4.5)
+        .background(theme.canvasBackground)
         .overlay(alignment: .top) {
-            Rectangle().fill(.separator.opacity(0.5)).frame(height: 1)
+            Rectangle().fill(theme.hairlineBorder).frame(height: 0.75)
         }
     }
 

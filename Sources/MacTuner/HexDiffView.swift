@@ -197,6 +197,7 @@ struct HexDiffView: View {
     @State private var searchHitIndex = 0
     @State private var onlyDiffRows = false
     @State private var showEditPopover = false
+    @State private var showFormatPopover = false
     @State private var editValueInput = ""
     @State private var fillByteInput = "FF"
     @State private var twinMatches: [BinaryAnalysis.TwinMatch] = []
@@ -301,9 +302,6 @@ struct HexDiffView: View {
                 switch viewMode {
                 case .text:
                     VStack(spacing: 6) {
-                        if hasExternalCompare || model.openBins.count >= 2 {
-                            hexPairSelectorBar
-                        }
                         syncSuggestionBanner
                         VSplitView {
                             HStack(spacing: 0) {
@@ -378,66 +376,78 @@ struct HexDiffView: View {
         }
     }
 
-    // MARK: - Adaptive Responsive WinOLS Toolbar (1 Row Wide -> 2 Rows Medium -> 3 Rows Narrow)
+    // MARK: - Calm, Decluttered Pro-App Hex Toolbar (1 Single Clean Row!)
 
     private var winolsToolbar: some View {
-        ViewThatFits(in: .horizontal) {
-            // Tier 1: Ultra-wide / high-DPI — single crisp row (right-side nav pinned rock-solid!)
+        HStack(spacing: 10) {
+            // 1. Primary view switcher: Text / 2D / 3D
+            Picker("Ansicht", selection: $viewMode) {
+                ForEach(ViewMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+
+            // 2. Unified Format & Layout Popover Pill (replaces 14 noisy buttons with 1 calm pill!)
+            Button {
+                showFormatPopover.toggle()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 10.5))
+                    Text("\(dataFormat.rawValue)\(dataFormat == .u8 ? "" : (lsbFirst ? " LoHi" : " HiLo")) · \(numberBase.rawValue)\(isSigned ? " ±" : "") · \(columns) Sp.")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    Image(systemName: "chevron.down").font(.system(size: 8.5, weight: .semibold)).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(.quaternary.opacity(0.65), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showFormatPopover, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Datenformat & Ansicht").font(.headline)
+                    HStack(spacing: 8) {
+                        toolbarFormatGroup
+                    }
+                    Divider()
+                    HStack(spacing: 8) {
+                        toolbarLayoutGroup
+                    }
+                    if hasExternalCompare {
+                        Divider()
+                        HStack(spacing: 8) {
+                            Button {
+                                if let res = model.autoSyncLocalWindow(around: viewportOffset) {
+                                    model.compareSyncOffset = res.delta
+                                }
+                            } label: {
+                                Label("Auto-Sync Vergleich", systemImage: "wand.and.stars")
+                            }
+                            if model.compareSyncOffset != 0 {
+                                Text(String(format: "Sync: %+d B", model.compareSyncOffset))
+                                    .font(.caption.monospaced()).foregroundStyle(.secondary)
+                                Button("Reset") { model.compareSyncOffset = 0 }
+                            }
+                        }
+                    }
+                }
+                .padding(14)
+                .controlSize(.small)
+            }
+            .help("Datenformat, Endianness, Zahlensystem, Spalten & Split-Ansicht")
+
+            Spacer(minLength: 8)
+
+            // 3. Clean Navigation & Search cluster
             HStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    toolbarFormatGroup
-                    Divider().frame(height: 18)
-                    toolbarLayoutGroup
-                }
-                .fixedSize()
-                Spacer(minLength: 8)
-                HStack(spacing: 8) {
-                    toolbarNavigationGroup
-                }
-                .fixedSize()
+                toolbarNavigationGroup
             }
-
-            // Tier 2: Standard / medium window — 2 clean rows
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    toolbarFormatGroup
-                    Divider().frame(height: 18)
-                    toolbarLayoutGroup
-                    Spacer(minLength: 0)
-                }
-                HStack(spacing: 8) {
-                    toolbarNavigationGroup
-                    Spacer(minLength: 0)
-                }
-            }
-
-            // Tier 3: Half-screen / narrow window — 3 compact rows, zero cut-off
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 6) {
-                    toolbarFormatGroup
-                    Spacer(minLength: 0)
-                }
-                HStack(spacing: 6) {
-                    toolbarLayoutGroup
-                    Spacer(minLength: 0)
-                }
-                HStack(spacing: 6) {
-                    toolbarNavigationGroup
-                    Spacer(minLength: 0)
-                }
-            }
+            .fixedSize()
         }
         .controlSize(.small)
+        .padding(.vertical, 2)
     }
 
     @ViewBuilder private var toolbarFormatGroup: some View {
-        Picker("Ansicht", selection: $viewMode) {
-            ForEach(ViewMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
-
         // 8 / 16 / 32 / Float
         Picker("Typ", selection: $dataFormat) {
             ForEach(DataFormat.allCases, id: \.self) { f in Text(f.rawValue).tag(f) }

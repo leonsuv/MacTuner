@@ -312,47 +312,49 @@ struct SidebarView: View {
                             model.hexJumpTarget = c.range
                             model.selection = AppModel.hexDiffSelection
                         } label: {
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 6) {
-                                    Text(String(format: "0x%05X", c.range.lowerBound))
-                                        .font(.caption.monospaced().weight(.semibold))
-                                    Text(c.shapeHint)
-                                        .font(.caption2.weight(.medium))
-                                        .padding(.horizontal, 5).padding(.vertical, 1)
-                                        .background((c.isLikelySignature ? Color.secondary : Color.accentColor).opacity(0.16),
-                                                    in: Capsule())
-                                        .foregroundStyle(c.isLikelySignature ? .secondary : Color.accentColor)
-                                    Spacer()
-                                    Text("\(c.spanBytes) B")
-                                        .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-                                }
-                                HStack(spacing: 6) {
-                                    // Mini Coral (+) / Cyan (−) diverging bar
-                                    GeometryReader { g in
-                                        let w = g.size.width
-                                        let hiW = w * CGFloat(c.higherRatio)
-                                        HStack(spacing: 0) {
-                                            Rectangle().fill(Color(red: 0.90, green: 0.34, blue: 0.28)).frame(width: hiW)
-                                            Rectangle().fill(Color(red: 0.20, green: 0.62, blue: 0.96)).frame(width: max(0, w - hiW))
+                            HStack(spacing: 8) {
+                                // Sleek 2.5px vertical diverging accent indicator
+                                RoundedRectangle(cornerRadius: 1.5)
+                                    .fill(c.higherCount >= c.lowerCount
+                                          ? Color(red: 0.94, green: 0.36, blue: 0.30)
+                                          : Color(red: 0.24, green: 0.68, blue: 0.98))
+                                    .frame(width: 2.5, height: 26)
+                                    .opacity(c.isLikelySignature ? 0.35 : 0.85)
+
+                                VStack(alignment: .leading, spacing: 2.5) {
+                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                        Text(String(format: "0x%05X", c.range.lowerBound))
+                                            .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                                            .foregroundStyle(.primary)
+                                        Text(c.shapeHint)
+                                            .font(.system(size: 10.5, weight: .regular))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                        Spacer(minLength: 4)
+                                        Text("\(c.spanBytes) B")
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    HStack(spacing: 6) {
+                                        Text("\(c.changedBytes) Δ")
+                                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                        if c.higherCount > 0 {
+                                            Text("+\(c.higherCount)")
+                                                .font(.system(size: 9.5, design: .monospaced))
+                                                .foregroundStyle(Color(red: 0.94, green: 0.42, blue: 0.36).opacity(0.9))
                                         }
-                                        .clipShape(Capsule())
+                                        if c.lowerCount > 0 {
+                                            Text("−\(c.lowerCount)")
+                                                .font(.system(size: 9.5, design: .monospaced))
+                                                .foregroundStyle(Color(red: 0.32, green: 0.74, blue: 0.98).opacity(0.9))
+                                        }
+                                        Spacer()
                                     }
-                                    .frame(width: 44, height: 4)
-                                    Text("\(c.changedBytes) Δ")
-                                        .font(.caption2.monospacedDigit()).foregroundStyle(Theme.changed)
-                                    if c.higherCount > 0 {
-                                        Text("▲\(c.higherCount)").font(.caption2.monospacedDigit())
-                                            .foregroundStyle(Color(red: 0.90, green: 0.34, blue: 0.28))
-                                    }
-                                    if c.lowerCount > 0 {
-                                        Text("▼\(c.lowerCount)").font(.caption2.monospacedDigit())
-                                            .foregroundStyle(Color(red: 0.20, green: 0.62, blue: 0.96))
-                                    }
-                                    Spacer()
                                 }
                             }
-                            .padding(.vertical, 2)
-                            .opacity(c.isLikelySignature ? 0.6 : 1.0)
+                            .padding(.vertical, 3)
+                            .opacity(c.isLikelySignature ? 0.55 : 1.0)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)

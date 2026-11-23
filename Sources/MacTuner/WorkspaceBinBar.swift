@@ -71,33 +71,27 @@ struct WorkspaceBinBar: View {
                 .help("Weitere BIN-Datei(en) zum Workspace hinzufügen")
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(.bar)
-            Divider()
+            .padding(.vertical, 4.5)
+            .background(theme.canvasBackground)
+            Divider().opacity(0.45)
         }
     }
 
     private func binPill(_ doc: BinDocument) -> some View {
         let isActive = doc.id == model.activeBinID
         let isCompare = doc.id == model.compareBinID
-        let accent: Color = isActive ? .accentColor : (isCompare ? Theme.changed : .secondary)
+        let accent: Color = isActive ? theme.accentColor : (isCompare ? theme.changedColor : .secondary)
 
         return HStack(spacing: 5) {
-            // Role badge (L = Active/Editable, R = Compare/Reference)
-            if isActive {
-                Text("L")
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .padding(.horizontal, 4).padding(.vertical, 1)
-                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 3))
-                    .foregroundStyle(.white)
-                    .help("Aktive / bearbeitbare BIN (Links)")
-            } else if isCompare {
-                Text("R")
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .padding(.horizontal, 4).padding(.vertical, 1)
-                    .background(Theme.changed, in: RoundedRectangle(cornerRadius: 3))
-                    .foregroundStyle(.white)
-                    .help("Vergleichs-BIN / Referenz (Rechts)")
+            // Subtle role indicator dot + monospaced letter (Apple Pro App restraint)
+            if isActive || isCompare {
+                HStack(spacing: 3) {
+                    Circle().fill(accent).frame(width: 6, height: 6)
+                    Text(isActive ? "L" : "R")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(accent)
+                }
+                .help(isActive ? "Aktive / bearbeitbare BIN (Links)" : "Vergleichs-BIN / Referenz (Rechts)")
             }
 
             Button {
