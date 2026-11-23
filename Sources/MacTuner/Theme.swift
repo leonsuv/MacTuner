@@ -61,7 +61,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
         switch self {
         case .liquidGlass: return Color(red: 0.25, green: 0.62, blue: 1.00)
         case .adaptiveNative: return .accentColor
-        case .motorsportTelemetry: return Color(red: 0.00, green: 0.88, blue: 1.00)
+        case .motorsportTelemetry: return Color(red: 0.00, green: 0.54, blue: 0.68)
         }
     }
 
