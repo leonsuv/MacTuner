@@ -1112,15 +1112,24 @@ enum MapFinder {
 
             if let b = best {
                 let bytesNeeded = b.r * b.c * 2
+                // Reject C-struct / pointer-table arrays (e.g. repeated 0x0000 padding + 0x80xx/0xA0xx/0xD0xx virtual pointers)
+                var zeroWords = 0, ptrHiWords = 0
+                for wi in 0..<(b.r * b.c) {
+                    let w = readU16(buf, off + wi * 2, lsb: lsb)
+                    if w == 0 { zeroWords += 1 }
+                    else if (w >= 0x8000 && w <= 0x803F) || (w >= 0xA000 && w <= 0xA03F) || (w >= 0xD000 && w <= 0xD00F) { ptrHiWords += 1 }
+                }
+                if zeroWords * 100 > b.r * b.c * 40 || ptrHiWords >= b.r / 2 {
+                    off += step
+                    continue
+                }
                 // STRICT: ONLY accept immediately contiguous unoccupied axes — NEVER fish 512B into other maps!
                 let axes = findImmediateAxes16(buf: buf, dataOff: off, rows: b.r, cols: b.c, lsb: lsb, occupied: occupied)
                 let hasAx = axes.xAxis != nil || axes.yAxis != nil
-                // Re-populate scratch for winning shape so rowPitchSimilarity reflects b.r × b.c accurately
-                _ = surfaceSmoothness(buf: buf, offset: off, rows: b.r, cols: b.c, bits: 16, signed: b.signed, isFloat: false, lsb: lsb, allowSparse: false, scratch: &scratch)
-                let periodicSim = rowPitchSimilarity(scratch: scratch, rows: b.r, cols: b.c, range: b.res.maxVal - b.res.minVal)
+                // Pure headerless Datenmuster (no axes) are ALWAYS capped <= 0.80 so High Confidence (>= 85%) shows zero struct-array noise!
                 let conf: Double = hasAx
                     ? min(0.93, b.res.score * 0.94 + 0.06)
-                    : (periodicSim >= 0.55 ? min(0.90, 0.78 + periodicSim * 0.14) : min(0.78, b.res.score * 0.84))
+                    : min(0.80, b.res.score * 0.84)
                 let pat: MapPatternKind = hasAx ? .splitAxis2D : .smooth2DSurface
                 let hint = inferDomainHint(buf: buf, xAxisOff: axes.xAxis, xCount: b.c, yAxisOff: axes.yAxis, yCount: b.r,
                                            lsb: lsb, signed: b.signed)
