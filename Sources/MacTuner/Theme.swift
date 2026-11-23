@@ -72,6 +72,14 @@ enum AppTheme: String, CaseIterable, Identifiable {
         case .motorsportTelemetry: return Color(red: 1.00, green: 0.30, blue: 0.24)
         }
     }
+
+    var waveformColor: Color {
+        switch self {
+        case .liquidGlass: return Color(red: 0.28, green: 0.72, blue: 0.98)
+        case .adaptiveNative: return Color(red: 0.16, green: 0.52, blue: 0.92)
+        case .motorsportTelemetry: return Color(red: 0.00, green: 0.94, blue: 0.72)
+        }
+    }
 }
 
 enum HeatmapPalette: String, CaseIterable, Identifiable {

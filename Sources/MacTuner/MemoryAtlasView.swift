@@ -1,44 +1,59 @@
 import SwiftUI
 
-/// Visual Flash Memory Atlas (ECU-Studio-AI) + Central Shared-Axis Pool Manager (bimmerstein / COM_AXIS).
+/// Redesigned Apple-Pro-App Visual Flash Memory Map (macOS Storage Partition Bar + Interactive Region Breakdown)
+/// & Central Shared-Axis Pool Manager (`COM_AXIS`).
 struct MemoryAtlasView: View {
     @Environment(AppModel.self) private var model
-    @State private var selectedTab = 0 // 0 = Memory Atlas, 1 = Shared-Axis Pool
-    @State private var hoveredTileIndex: Int?
+    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
+    @State private var selectedTab = 0 // 0 = Flash-Partitionen, 1 = Shared-Axis-Pool
+    @State private var hoveredRegionID: UUID?
     @State private var axisSearch = ""
 
-    private enum TileRole {
-        case padding
-        case code
-        case definedMap
-        case candidate
-        case sharedAxis
-        case checksum
+    private var theme: AppTheme { AppTheme(rawValue: appThemeRaw) ?? .liquidGlass }
+
+    private enum RegionKind {
+        case startup
+        case tprot
+        case codeASW
+        case calibration
+        case variant
         case modified
+        case free
 
         var color: Color {
             switch self {
-            case .padding: return Color.secondary.opacity(0.14)
-            case .code: return Color.secondary.opacity(0.42)
-            case .definedMap: return Color.accentColor
-            case .candidate: return Color(red: 0.16, green: 0.78, blue: 0.62)
-            case .sharedAxis: return Color.purple
-            case .checksum: return Color.red
-            case .modified: return Theme.changed
+            case .startup: return Color(red: 0.56, green: 0.44, blue: 0.96)
+            case .tprot: return Color(red: 0.95, green: 0.28, blue: 0.34)
+            case .codeASW: return Color(red: 0.36, green: 0.42, blue: 0.54)
+            case .calibration: return Color(red: 0.24, green: 0.62, blue: 1.00)
+            case .variant: return Color(red: 0.14, green: 0.76, blue: 0.74)
+            case .modified: return Color(red: 0.98, green: 0.54, blue: 0.16)
+            case .free: return Color.secondary.opacity(0.22)
             }
         }
 
         var label: String {
             switch self {
-            case .padding: return "Leer / 0xFF / 0x00"
-            case .code: return "Programmcode / Sonstiges"
-            case .definedMap: return "Definierte Kennfelder (XDF/A2L)"
-            case .candidate: return "Auto-Erkannt (MapFinder)"
-            case .sharedAxis: return "Geteilte Achsen (COM_AXIS)"
-            case .checksum: return "Prüfsummen / TPROT"
-            case .modified: return "Geänderte Bytes"
+            case .startup: return "Startup / Boot"
+            case .tprot: return "TPROT / OTP"
+            case .codeASW: return "Programmcode (ASW)"
+            case .calibration: return "Kalibrierung / Dataset"
+            case .variant: return "Varianten-Dataset"
+            case .modified: return "Geänderte Bereiche"
+            case .free: return "Leer (0xFF / 0x00)"
             }
         }
+    }
+
+    private struct FlashRegion: Identifiable {
+        let id = UUID()
+        let name: String
+        let subtitle: String
+        let range: Range<Int>
+        let kind: RegionKind
+        let isProtected: Bool
+        let diffBytes: Int
+        let mapCount: Int
     }
 
     private struct SharedAxisEntry: Identifiable {
@@ -52,12 +67,18 @@ struct MemoryAtlasView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                Text("Speicheratlas & Shared-Axis-Pool").font(.system(size: 22, weight: .bold))
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Speicher-Map").font(.system(size: 20, weight: .bold))
+                    if let doc = model.activeBin {
+                        Text("\(doc.ecuIdentity.ecuFamily ?? "ECU Flash") · \(doc.bytes.count / 1024) KB")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                 Spacer()
                 Picker("Ansicht", selection: $selectedTab) {
-                    Text("Speicheratlas").tag(0)
+                    Text("Flash-Partitionen").tag(0)
                     Text("Shared-Axis-Pool (\(sharedAxes.count))").tag(1)
                 }
                 .pickerStyle(.segmented)
@@ -66,176 +87,279 @@ struct MemoryAtlasView: View {
             }
 
             if !model.hasBin {
-                ContentUnavailableView("Keine BIN geladen", systemImage: "square.grid.3x3.topleft.filled",
-                                       description: Text("Öffne eine BIN-Datei, um den Flash-Speicheratlas und geteilte Achsen (COM_AXIS) zu inspizieren."))
+                ContentUnavailableView("Keine BIN geladen", systemImage: "internaldrive",
+                                       description: Text("Öffne eine BIN-Datei, um Flash-Partitionen, Kalibrierungsblöcke und geteilte Achsen zu analysieren."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if selectedTab == 0 {
-                atlasPane
+                partitionMapPane
             } else {
                 sharedAxisPane
             }
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(theme.canvasBackground)
     }
 
-    // MARK: - Visual Memory Atlas
+    // MARK: - Redesigned macOS-Storage-Style Partition Map
 
-    private var atlasPane: some View {
-        let bin = model.bin
-        let totalBytes = max(1, bin.count)
-        let tileCount = min(2048, max(256, totalBytes / 2048))
-        let bytesPerTile = max(1, (totalBytes + tileCount - 1) / tileCount)
-        let tiles = classifyTiles(tileCount: tileCount, bytesPerTile: bytesPerTile)
-        let cols = 64
-        let rows = (tileCount + cols - 1) / cols
+    private var partitionMapPane: some View {
+        let regions = buildFlashRegions()
+        let totalBytes = max(1, model.bin.count)
+        let totalDiff = regions.reduce(0) { $0 + $1.diffBytes }
+        let calKB = regions.filter { $0.kind == .calibration || $0.kind == .variant }.reduce(0) { $0 + $1.range.count } / 1024
+        let freeKB = regions.filter { $0.kind == .free }.reduce(0) { $0 + $1.range.count } / 1024
 
-        return VStack(alignment: .leading, spacing: 12) {
-            // Legend
-            HStack(spacing: 12) {
-                ForEach([TileRole.definedMap, .candidate, .sharedAxis, .checksum, .modified, .code, .padding], id: \.label) { role in
-                    HStack(spacing: 4) {
-                        RoundedRectangle(cornerRadius: 2).fill(role.color).frame(width: 10, height: 10)
-                        Text(role.label).font(.caption2).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                Text(String(format: "%d KB · %d B/Kachel", totalBytes / 1024, bytesPerTile))
-                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-            }
-
-            // Hover telemetry bar
+        return VStack(alignment: .leading, spacing: 14) {
+            // 1. Clean 4-Metric KPI Strip
             HStack(spacing: 10) {
-                if let idx = hoveredTileIndex, idx >= 0, idx < tiles.count {
-                    let s = idx * bytesPerTile
-                    let e = min(totalBytes, s + bytesPerTile)
-                    Text(String(format: "Adresse: 0x%05X – 0x%05X", s, max(s, e - 1)))
-                        .font(.caption.monospaced().weight(.semibold))
-                    Text("· \(tiles[idx].label)")
-                        .font(.caption).foregroundStyle(tiles[idx].color)
-                    if let map = model.definition?.items.first(where: { $0.data.byteRange.overlaps(s..<e) }) {
-                        Text("· \(map.title)")
-                            .font(.caption.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
-                    }
-                } else {
-                    Text("Klicke auf eine beliebige Speicher-Kachel, um direkt an diese Adresse im Hex-Editor zu springen.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
+                kpiTile("Flash-Größe", value: "\(totalBytes / 1024) KB", sub: "\(regions.count) Regionen", color: theme.accentColor)
+                kpiTile("Kalibrierung", value: "\(calKB) KB", sub: "\(model.definition?.items.count ?? model.activePotentialMaps.count) Kennfelder", color: RegionKind.calibration.color)
+                kpiTile("Geänderte Bytes", value: "\(totalDiff) B", sub: "\(model.diffClusters.count) Diff-Blöcke", color: totalDiff > 0 ? theme.changedColor : .secondary)
+                kpiTile("Freier Speicher", value: "\(freeKB) KB", sub: "\(Int(Double(freeKB * 1024) / Double(totalBytes) * 100))% 0xFF/0x00", color: .secondary)
             }
-            .frame(height: 18)
 
-            // High-density 60-FPS Canvas Atlas
-            GeometryReader { geo in
-                let cellW = max(3, geo.size.width / CGFloat(cols))
-                let cellH = max(5, min(14, geo.size.height / CGFloat(max(1, rows))))
-                Canvas { ctx, _ in
-                    for idx in 0..<tiles.count {
-                        let r = idx / cols
-                        let c = idx % cols
-                        let rect = CGRect(x: CGFloat(c) * cellW + 0.5, y: CGFloat(r) * cellH + 0.5,
-                                          width: max(1, cellW - 1.0), height: max(1, cellH - 1.0))
-                        ctx.fill(Path(roundedRect: rect, cornerRadius: 1.5), with: .color(tiles[idx].color))
-                        if hoveredTileIndex == idx {
-                            ctx.stroke(Path(rect), with: .color(.white), lineWidth: 1.2)
+            // 2. Proportional macOS Storage Partition Bar
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Speicheraufteilung (0x00000 – \(String(format: "0x%05X", totalBytes - 1)))")
+                        .font(.caption.weight(.semibold))
+                    Spacer()
+                    if let hid = hoveredRegionID, let hr = regions.first(where: { $0.id == hid }) {
+                        Text("\(hr.name) · \(String(format: "0x%05X–0x%05X", hr.range.lowerBound, max(hr.range.lowerBound, hr.range.upperBound - 1))) (\(hr.range.count / 1024) KB)")
+                            .font(.caption.monospaced()).foregroundStyle(hr.kind.color)
+                    } else {
+                        Text("Segment anklicken → direkt im Hex-Editor öffnen")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+
+                GeometryReader { geo in
+                    let w = max(1, geo.size.width)
+                    HStack(spacing: 1.5) {
+                        ForEach(regions) { reg in
+                            let frac = max(0.008, Double(reg.range.count) / Double(totalBytes))
+                            let segW = max(4, w * frac - 1.5)
+                            let isHover = hoveredRegionID == reg.id
+                            ZStack(alignment: .bottom) {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(reg.kind.color.opacity(isHover ? 1.0 : 0.84))
+                                // Orange diff indicator strip along bottom edge if region contains modified bytes
+                                if reg.diffBytes > 0 {
+                                    Rectangle()
+                                        .fill(theme.changedColor)
+                                        .frame(height: 4)
+                                }
+                            }
+                            .frame(width: segW, height: 38)
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .strokeBorder(isHover ? Color.white.opacity(0.9) : Color.clear, lineWidth: 1.2)
+                            )
+                            .onHover { inside in hoveredRegionID = inside ? reg.id : nil }
+                            .onTapGesture {
+                                model.hexJumpTarget = reg.range
+                                model.selection = AppModel.hexDiffSelection
+                            }
                         }
                     }
                 }
-                .contentShape(Rectangle())
-                .onContinuousHover { phase in
-                    switch phase {
-                    case .active(let loc):
-                        let c = Int(loc.x / cellW)
-                        let r = Int(loc.y / cellH)
-                        let idx = r * cols + c
-                        hoveredTileIndex = (c >= 0 && c < cols && idx >= 0 && idx < tiles.count) ? idx : nil
-                    case .ended:
-                        hoveredTileIndex = nil
+                .frame(height: 38)
+
+                // Legend row
+                HStack(spacing: 14) {
+                    ForEach([RegionKind.startup, .tprot, .codeASW, .calibration, .variant, .modified, .free], id: \.label) { k in
+                        HStack(spacing: 5) {
+                            Circle().fill(k.color).frame(width: 7, height: 7)
+                            Text(k.label).font(.caption2).foregroundStyle(.secondary)
+                        }
                     }
-                }
-                .onTapGesture { loc in
-                    let c = Int(loc.x / cellW)
-                    let r = Int(loc.y / cellH)
-                    let idx = r * cols + c
-                    guard idx >= 0 && idx < tiles.count else { return }
-                    let s = idx * bytesPerTile
-                    let e = min(totalBytes, s + bytesPerTile)
-                    model.hexJumpTarget = s..<e
-                    model.selection = AppModel.hexDiffSelection
+                    Spacer()
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 280, maxHeight: .infinity)
-            .card(padding: 10)
+            .card(padding: 14)
+
+            // 3. Full-Height Interactive Partition & Region Table (ZERO empty void!)
+            Table(regions) {
+                TableColumn("Partition / Region") { r in
+                    HStack(spacing: 8) {
+                        Circle().fill(r.kind.color).frame(width: 8, height: 8)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(r.name).font(.caption.weight(.semibold))
+                            if !r.subtitle.isEmpty {
+                                Text(r.subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                    }
+                }
+                TableColumn("Adressbereich") { r in
+                    Text(String(format: "0x%05X – 0x%05X", r.range.lowerBound, max(r.range.lowerBound, r.range.upperBound - 1)))
+                        .font(.caption.monospaced())
+                }
+                .width(min: 140, ideal: 165)
+                TableColumn("Größe") { r in
+                    Text(r.range.count >= 1024 ? "\(r.range.count / 1024) KB" : "\(r.range.count) B")
+                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                .width(min: 65, ideal: 80)
+                TableColumn("Status / Diff") { r in
+                    HStack(spacing: 6) {
+                        if r.isProtected {
+                            Text("TPROT/OTP")
+                                .font(.system(size: 9.5, weight: .bold))
+                                .padding(.horizontal, 6).padding(.vertical, 1.5)
+                                .background(Color.red.opacity(0.16), in: Capsule())
+                                .foregroundStyle(.red)
+                        }
+                        if r.diffBytes > 0 {
+                            Text("\(r.diffBytes) B Δ")
+                                .font(.caption2.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(theme.changedColor)
+                        } else if !r.isProtected {
+                            Text("Unverändert").font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .width(min: 100, ideal: 130)
+                TableColumn("Aktion") { r in
+                    Button("Im Hex") {
+                        model.hexJumpTarget = r.range
+                        model.selection = AppModel.hexDiffSelection
+                    }
+                    .controlSize(.mini)
+                }
+                .width(70)
+            }
+            .card(padding: 4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    private func classifyTiles(tileCount: Int, bytesPerTile: Int) -> [TileRole] {
+    private func kpiTile(_ title: String, value: String, sub: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 9.5, weight: .bold))
+                .foregroundStyle(.secondary)
+                .tracking(0.5)
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(color)
+            Text(sub)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 11)
+    }
+
+    private func buildFlashRegions() -> [FlashRegion] {
         let bin = model.bin
         let ref = model.compare ?? model.activeBin?.openedSnapshot
-        var tiles = [TileRole](repeating: .code, count: tileCount)
+        let n = bin.count
+        guard n > 0 else { return [] }
 
-        // 1. Padding / Empty flash detection (all 0xFF or all 0x00)
-        for i in 0..<tileCount {
-            let s = i * bytesPerTile
-            let e = min(bin.count, s + bytesPerTile)
-            guard s < e else { continue }
-            var allFF = true, all00 = true
-            var p = s
-            while p < e {
-                let b = bin[p]
-                if b != 0xFF { allFF = false }
-                if b != 0x00 { all00 = false }
-                if !allFF && !all00 { break }
-                p += max(1, (e - s) / 32)
-            }
-            if allFF || all00 { tiles[i] = .padding }
+        func countDiff(_ r: Range<Int>) -> Int {
+            guard let ref, ref.count == n else { return 0 }
+            var c = 0
+            for i in r where bin[i] != ref[i] { c += 1 }
+            return c
         }
 
-        func markRange(_ range: Range<Int>, role: TileRole) {
-            let lo = max(0, range.lowerBound / bytesPerTile)
-            let hi = min(tileCount - 1, max(lo, (range.upperBound - 1) / bytesPerTile))
-            guard lo <= hi else { return }
-            for i in lo...hi { tiles[i] = role }
-        }
-
-        // 2. Auto-detected candidates
-        for cand in model.activePotentialMaps {
-            markRange(cand.dataRange, role: .candidate)
-        }
-
-        // 3. Defined XDF/A2L maps
-        if let def = model.definition {
-            for item in def.items where item.data.byteRange.upperBound <= bin.count {
-                markRange(item.data.byteRange, role: .definedMap)
-            }
-        }
-
-        // 4. Shared Axes (COM_AXIS)
-        for sa in sharedAxes {
-            let len = max(2, sa.count * max(1, sa.bits / 8))
-            markRange(sa.address..<(sa.address + len), role: .sharedAxis)
-        }
-
-        // 5. Checksum / TPROT blocks
-        if let rep = model.checksumReport {
-            for blk in rep.blocks {
-                markRange(blk.storeAddress..<(blk.storeAddress + 8), role: .checksum)
-            }
-        }
-
-        // 6. Modified bytes (highest priority overlay)
-        if let ref, ref.count == bin.count {
-            for i in 0..<tileCount {
-                let s = i * bytesPerTile
-                let e = min(bin.count, s + bytesPerTile)
-                for p in s..<e where bin[p] != ref[p] {
-                    tiles[i] = .modified
-                    break
+        // Fast-path 1: Real Bosch MED17 / EDC17 PFLASH Block Headers!
+        if let med17 = ChecksumRegistry.shared.plugin(id: "bosch-med17") as? BoschMED17ChecksumPlugin {
+            let blocks = med17.parseBoschBlocks(bin: bin).sorted { $0.fileOffset < $1.fileOffset }
+            if !blocks.isEmpty {
+                var out: [FlashRegion] = []
+                var cursor = 0
+                for b in blocks {
+                    if b.fileOffset > cursor {
+                        let gap = cursor..<b.fileOffset
+                        let isEmpty = isMostlyPadding(bin, range: gap)
+                        out.append(FlashRegion(
+                            name: isEmpty ? "Freier Bereich (0xFF/0x00)" : "System / Boot / Daten",
+                            subtitle: "",
+                            range: gap,
+                            kind: isEmpty ? .free : .codeASW,
+                            isProtected: false,
+                            diffBytes: countDiff(gap),
+                            mapCount: 0
+                        ))
+                    }
+                    let end = min(n, b.fileOffset + b.size)
+                    let range = b.fileOffset..<end
+                    let kind: RegionKind = switch b.blockTypeID {
+                    case 0x10: .startup
+                    case 0x20, 0x90: .tprot
+                    case 0x40, 0x50, 0xA0, 0xB0: .codeASW
+                    case 0x60, 0x70, 0xC0: .calibration
+                    case 0x80: .variant
+                    default: b.isOTP ? .tprot : .codeASW
+                    }
+                    out.append(FlashRegion(
+                        name: b.typeName,
+                        subtitle: b.variantString ?? b.swIdentifier,
+                        range: range,
+                        kind: kind,
+                        isProtected: b.isTPROTProtected,
+                        diffBytes: countDiff(range),
+                        mapCount: 0
+                    ))
+                    cursor = max(cursor, end)
                 }
+                if cursor < n {
+                    let tail = cursor..<n
+                    let isEmpty = isMostlyPadding(bin, range: tail)
+                    out.append(FlashRegion(
+                        name: isEmpty ? "Freier Bereich (0xFF/0x00)" : "Restbereich",
+                        subtitle: "",
+                        range: tail,
+                        kind: isEmpty ? .free : .codeASW,
+                        isProtected: false,
+                        diffBytes: countDiff(tail),
+                        mapCount: 0
+                    ))
+                }
+                return out
             }
         }
 
-        return tiles
+        // Fallback: Divide any ECU binary into 16 clean proportional blocks classified by padding/calibration/code
+        let segCount = min(16, max(4, n / 65_536))
+        let segSize = max(1, (n + segCount - 1) / segCount)
+        var out: [FlashRegion] = []
+        for i in 0..<segCount {
+            let s = i * segSize
+            let e = min(n, s + segSize)
+            guard s < e else { continue }
+            let r = s..<e
+            let d = countDiff(r)
+            let empty = isMostlyPadding(bin, range: r)
+            let hasMaps = (model.definition?.items.contains { $0.data.byteRange.overlaps(r) } ?? false) || d > 0
+            let kind: RegionKind = empty ? .free : (hasMaps ? .calibration : .codeASW)
+            out.append(FlashRegion(
+                name: String(format: "Sektor %02d (%@)", i + 1, kind.label),
+                subtitle: "",
+                range: r,
+                kind: kind,
+                isProtected: false,
+                diffBytes: d,
+                mapCount: 0
+            ))
+        }
+        return out
+    }
+
+    private func isMostlyPadding(_ bin: [UInt8], range: Range<Int>) -> Bool {
+        let step = max(1, range.count / 128)
+        var pad = 0, total = 0
+        var i = range.lowerBound
+        while i < range.upperBound {
+            if bin[i] == 0xFF || bin[i] == 0x00 { pad += 1 }
+            total += 1
+            i += step
+        }
+        return total > 0 && Double(pad) / Double(total) >= 0.90
     }
 
     // MARK: - Shared-Axis Pool Manager (`COM_AXIS`)

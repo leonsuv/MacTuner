@@ -198,6 +198,8 @@ struct HexDiffView: View {
     @State private var onlyDiffRows = false
     @State private var showEditPopover = false
     @State private var showFormatPopover = false
+    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
+    private var activeTheme: AppTheme { AppTheme(rawValue: appThemeRaw) ?? .liquidGlass }
     @State private var editValueInput = ""
     @State private var fillByteInput = "FF"
     @State private var twinMatches: [BinaryAnalysis.TwinMatch] = []
@@ -2649,7 +2651,7 @@ struct HexDiffView: View {
                                 let y = plot.maxY - CGFloat((pt.1 - minV) / span) * plot.height
                                 if k == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
                             }
-                            ctx.stroke(path, with: .color(.cyan), lineWidth: 1.35)
+                            ctx.stroke(path, with: .color(activeTheme.waveformColor), lineWidth: 1.35)
                         }
 
                         // Bottom X address ticks

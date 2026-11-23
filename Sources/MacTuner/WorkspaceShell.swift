@@ -2,7 +2,7 @@ import SwiftUI
 
 /// User-selectable workspace layout architecture for MacTuner v3.0.
 enum WorkspaceLayoutMode: String, CaseIterable, Identifiable {
-    case studio = "studio"   // 4-Mode Studio (Calibrate · Explore · Log · Flash)
+    case studio = "studio"   // Clean 5-Section Navigation in Titlebar
     case ide = "ide"         // Tabbed Workspace IDE (closable editor tabs + unified sidebar)
     case canvas = "canvas"   // Ultra-Minimalist Canvas-First (floating bottom dock, full-bleed canvas)
 
@@ -10,7 +10,7 @@ enum WorkspaceLayoutMode: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .studio: return String(localized: "Studio (4 Modi)")
+        case .studio: return String(localized: "Studio (5 Bereiche)")
         case .ide: return String(localized: "IDE (Tabs)")
         case .canvas: return String(localized: "Canvas (Minimal)")
         }
@@ -25,44 +25,49 @@ enum WorkspaceLayoutMode: String, CaseIterable, Identifiable {
     }
 }
 
-/// Top-level 4-Mode Studio categories replacing the legacy 15-icon vertical rail.
+/// Flat, crystal-clear 5-section primary navigation — zero arbitrary sub-grouping.
 enum StudioMode: String, CaseIterable, Identifiable {
-    case calibrate = "calibrate"
-    case explore = "explore"
-    case log = "log"
-    case flash = "flash"
+    case workspace = "workspace"   // Hex-Diff / Table Editor / Overview (auto-context, ZERO extra sub-bar!)
+    case discovery = "discovery"   // Map Finder · DTC Tables · Shared-Axis Pool
+    case memoryMap = "memoryMap"   // Visual Flash Partition Map & Region Breakdown
+    case datalog = "datalog"       // Datalogging · Scatterplot · Virtual Dyno
+    case flash = "flash"           // 4-Stage Preflight · Checksums · Diagnostics · Snapshots · History
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .calibrate: return String(localized: "Kalibrieren")
-        case .explore: return String(localized: "Erkunden")
-        case .log: return String(localized: "Loggen")
-        case .flash: return String(localized: "Flashen")
+        case .workspace: return String(localized: "Workspace")
+        case .discovery: return String(localized: "Erkennung & DTCs")
+        case .memoryMap: return String(localized: "Speicher-Map")
+        case .datalog: return String(localized: "Datalog")
+        case .flash: return String(localized: "Flash")
         }
     }
 
     var icon: String {
         switch self {
-        case .calibrate: return "slider.horizontal.3"
-        case .explore: return "magnifyingglass"
-        case .log: return "waveform.path.ecg"
+        case .workspace: return "square.split.2x1"
+        case .discovery: return "sparkle.magnifyingglass"
+        case .memoryMap: return "internaldrive"
+        case .datalog: return "waveform.path.ecg"
         case .flash: return "checkmark.shield"
         }
     }
 
     static func from(selection: Int?) -> StudioMode {
         switch selection {
-        case AppModel.hexDiffSelection, AppModel.mapFinderSelection, AppModel.memoryAtlasSelection:
-            return .explore
+        case AppModel.mapFinderSelection, AppModel.dtcSelection:
+            return .discovery
+        case AppModel.memoryAtlasSelection:
+            return .memoryMap
         case AppModel.datalogSelection:
-            return .log
+            return .datalog
         case AppModel.checksumSelection, AppModel.diagnosticsSelection, AppModel.snapshotsSelection,
              AppModel.historySelection, AppModel.pluginsSelection:
             return .flash
         default:
-            return .calibrate
+            return .workspace
         }
     }
 }
@@ -75,7 +80,7 @@ struct EditorTab: Identifiable, Equatable {
     var id: String { selectionID.map(String.init) ?? "overview" }
 }
 
-// MARK: - Studio Mode Sub-Navigation Strip (Slim, Contextual, Zero Clutter)
+// MARK: - Minimal Hairline Sub-Navigation (ONLY shown in Discovery & Flash — ZERO extra bar in Workspace!)
 
 struct StudioSubBar: View {
     @Environment(AppModel.self) private var model
@@ -93,42 +98,23 @@ struct StudioSubBar: View {
 
     private var items: [SubItem] {
         switch mode {
-        case .calibrate:
-            let mapTarget: Int? = model.lastMapSelection ?? model.definition?.items.first?.id
+        case .workspace, .memoryMap, .datalog:
+            return [] // ZERO redundant sub-bar in primary editing, memory map & datalog views!
+        case .discovery:
             return [
-                SubItem(id: "ov", title: String(localized: "Übersicht"), icon: "house", target: nil, badge: nil, disabled: false),
-                SubItem(id: "maps", title: String(localized: "Kennfeld"), icon: "tablecells", target: mapTarget,
-                        badge: model.changedItems.isEmpty ? nil : "\(model.changedItems.count)",
-                        disabled: model.definition == nil),
-                SubItem(id: "multi", title: String(localized: "Mehrdatei"), icon: "square.split.2x1",
-                        target: AppModel.multiCompareSelection, badge: nil, disabled: !model.hasBin),
-                SubItem(id: "dtc", title: String(localized: "DTCs"), icon: "exclamationmark.octagon",
-                        target: AppModel.dtcSelection, badge: nil, disabled: !model.hasBin),
-                SubItem(id: "port", title: String(localized: "Portierung"), icon: "arrow.triangle.branch",
-                        target: AppModel.versionPortSelection, badge: nil, disabled: !model.hasBin),
-                SubItem(id: "batch", title: String(localized: "Batch"), icon: "square.stack.3d.up",
-                        target: AppModel.batchTunerSelection, badge: nil, disabled: !model.hasBin),
-            ]
-        case .explore:
-            return [
-                SubItem(id: "hex", title: String(localized: "Hex-Diff"), icon: "doc.text.magnifyingglass",
-                        target: AppModel.hexDiffSelection, badge: nil, disabled: !model.hasBin),
                 SubItem(id: "finder", title: String(localized: "Kennfeld-Finder"), icon: "sparkle.magnifyingglass",
                         target: AppModel.mapFinderSelection, badge: nil, disabled: !model.hasBin),
-                SubItem(id: "atlas", title: String(localized: "Speicheratlas & Achsen"), icon: "square.grid.3x3.topleft.filled",
-                        target: AppModel.memoryAtlasSelection, badge: nil, disabled: !model.hasBin),
-            ]
-        case .log:
-            return [
-                SubItem(id: "datalog", title: String(localized: "Datalogging · Scatterplot · Dyno"), icon: "waveform.path.ecg",
-                        target: AppModel.datalogSelection, badge: model.datalog != nil ? "●" : nil, disabled: false),
+                SubItem(id: "dtc", title: String(localized: "DTC-Tabellen"), icon: "exclamationmark.octagon",
+                        target: AppModel.dtcSelection, badge: nil, disabled: !model.hasBin),
+                SubItem(id: "port", title: String(localized: "Tune-Portierung"), icon: "arrow.triangle.branch",
+                        target: AppModel.versionPortSelection, badge: nil, disabled: !model.hasBin),
             ]
         case .flash:
             let diagCount = model.diagnosticFindings.count
             return [
                 SubItem(id: "chk", title: String(localized: "Preflight & Prüfsummen"), icon: "checkmark.shield",
                         target: AppModel.checksumSelection, badge: nil, disabled: !model.hasBin),
-                SubItem(id: "diag", title: String(localized: "Diagnose"), icon: "stethoscope",
+                SubItem(id: "diag", title: String(localized: "Diagnose & Lint"), icon: "stethoscope",
                         target: AppModel.diagnosticsSelection, badge: diagCount > 0 ? "\(diagCount)" : nil, disabled: !model.hasBin),
                 SubItem(id: "snap", title: String(localized: "Snapshots"), icon: "camera",
                         target: AppModel.snapshotsSelection, badge: model.snapshots.isEmpty ? nil : "\(model.snapshots.count)", disabled: !model.hasBin),
@@ -140,49 +126,43 @@ struct StudioSubBar: View {
         }
     }
 
-    private func isSelected(_ item: SubItem) -> Bool {
-        if item.id == "maps" {
-            return (model.selection ?? -999) >= 0
-        }
-        return model.selection == item.target
-    }
-
     var body: some View {
-        if items.count > 1 {
-            HStack(spacing: 4) {
+        if !items.isEmpty {
+            HStack(spacing: 16) {
                 ForEach(items) { item in
-                    let active = isSelected(item)
+                    let active = model.selection == item.target
                     Button {
-                        if item.id == "maps" {
-                            model.selection = model.lastMapSelection ?? model.definition?.items.first?.id
-                        } else {
-                            model.selection = item.target
-                        }
+                        model.selection = item.target
                     } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: item.icon).font(.system(size: 11, weight: active ? .semibold : .regular))
-                            Text(item.title).font(.system(size: 11.5, weight: active ? .semibold : .medium))
-                            if let b = item.badge {
-                                Text(b)
-                                    .font(.system(size: 9.5, weight: .bold).monospacedDigit())
-                                    .padding(.horizontal, 5).padding(.vertical, 1)
-                                    .background((active ? Color.white : theme.accentColor).opacity(0.22), in: Capsule())
+                        VStack(spacing: 5) {
+                            HStack(spacing: 5) {
+                                Image(systemName: item.icon).font(.system(size: 11))
+                                Text(item.title).font(.system(size: 11.5, weight: active ? .semibold : .regular))
+                                if let b = item.badge {
+                                    Text(b)
+                                        .font(.system(size: 9.5, weight: .bold).monospacedDigit())
+                                        .padding(.horizontal, 5).padding(.vertical, 0.5)
+                                        .background(theme.accentColor.opacity(0.2), in: Capsule())
+                                        .foregroundStyle(theme.accentColor)
+                                }
                             }
+                            .foregroundStyle(active ? .primary : .secondary)
+                            Rectangle()
+                                .fill(active ? theme.accentColor : Color.clear)
+                                .frame(height: 2)
+                                .clipShape(Capsule())
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 4.5)
-                        .foregroundStyle(active ? .white : .secondary)
-                        .background(active ? theme.accentColor : Color.clear, in: Capsule())
                     }
                     .buttonStyle(.plain)
                     .disabled(item.disabled)
-                    .opacity(item.disabled ? 0.4 : 1.0)
+                    .opacity(item.disabled ? 0.35 : 1.0)
                 }
                 Spacer()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 5)
-            .background(theme.surfaceBackground.opacity(0.6))
-            .overlay(alignment: .bottom) { Divider().opacity(0.5) }
+            .padding(.horizontal, 18)
+            .padding(.top, 7)
+            .background(theme.canvasBackground)
+            .overlay(alignment: .bottom) { Divider().opacity(0.45) }
         }
     }
 }
@@ -243,19 +223,17 @@ struct IDETabBar: View {
 
             Divider().frame(height: 16).padding(.horizontal, 4)
 
-            // Quick "+" menu to open any tool as a new tab
             Menu {
                 Button("Übersicht") { model.selection = nil }
                 Button("Hex-Diff") { model.selection = AppModel.hexDiffSelection }
-                Button("Speicheratlas & Achsen") { model.selection = AppModel.memoryAtlasSelection }
-                Button("Kennfeld-Finder") { model.selection = AppModel.mapFinderSelection }
+                Button("Speicher-Map & Achsen") { model.selection = AppModel.memoryAtlasSelection }
                 Divider()
-                Button("Mehrdatei-Vergleich") { model.selection = AppModel.multiCompareSelection }
+                Button("Kennfeld-Finder") { model.selection = AppModel.mapFinderSelection }
                 Button("DTC-Tabellen") { model.selection = AppModel.dtcSelection }
-                Button("Datalogging") { model.selection = AppModel.datalogSelection }
+                Button("Datalog") { model.selection = AppModel.datalogSelection }
                 Divider()
                 Button("Preflight & Prüfsummen") { model.selection = AppModel.checksumSelection }
-                Button("Diagnose") { model.selection = AppModel.diagnosticsSelection }
+                Button("Diagnose & Lint") { model.selection = AppModel.diagnosticsSelection }
                 Button("Snapshots") { model.selection = AppModel.snapshotsSelection }
                 Button("Verlauf") { model.selection = AppModel.historySelection }
                 Button("Plugins") { model.selection = AppModel.pluginsSelection }
@@ -267,10 +245,10 @@ struct IDETabBar: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .padding(.trailing, 8)
-            .help("Neuen Werkzeug-Tab öffnen")
+            .help("Neuen Tab öffnen")
         }
-        .background(theme.canvasBackground.opacity(0.85))
-        .overlay(alignment: .bottom) { Divider().opacity(0.6) }
+        .background(theme.canvasBackground)
+        .overlay(alignment: .bottom) { Divider().opacity(0.45) }
     }
 
     private func closeTab(_ tab: EditorTab) {
@@ -282,7 +260,7 @@ struct IDETabBar: View {
     }
 }
 
-// MARK: - Canvas Mode: Ultra-Minimalist Floating Bottom Dock
+// MARK: - Canvas Mode: Ultra-Minimalist Floating Bottom Dock (5 Flat Sections)
 
 struct CanvasFloatingDock: View {
     @Environment(AppModel.self) private var model
@@ -292,37 +270,39 @@ struct CanvasFloatingDock: View {
     let theme: AppTheme
 
     var body: some View {
+        let activeMode = StudioMode.from(selection: model.selection)
         HStack(spacing: 4) {
             dockToggle(icon: "sidebar.left", help: "Navigator ein/aus", active: showNavigator) {
                 withAnimation(.easeInOut(duration: 0.18)) { showNavigator.toggle() }
             }
 
-            Divider().frame(height: 18).padding(.horizontal, 2)
+            Divider().frame(height: 16).padding(.horizontal, 2)
 
-            dockButton(icon: "house", label: "Übersicht", active: model.selection == nil) {
-                model.selection = nil
-            }
-            dockButton(icon: "tablecells", label: "Maps", active: (model.selection ?? -999) >= 0) {
-                model.selection = model.lastMapSelection ?? model.definition?.items.first?.id
-            }
-            .disabled(model.definition == nil)
-            dockButton(icon: "doc.text.magnifyingglass", label: "Hex", active: model.selection == AppModel.hexDiffSelection) {
-                model.selection = AppModel.hexDiffSelection
+            dockButton(icon: "square.split.2x1", label: "Workspace", active: activeMode == .workspace) {
+                if model.definition != nil, let last = model.lastMapSelection {
+                    model.selection = last
+                } else {
+                    model.selection = AppModel.hexDiffSelection
+                }
             }
             .disabled(!model.hasBin)
-            dockButton(icon: "square.grid.3x3.topleft.filled", label: "Atlas", active: model.selection == AppModel.memoryAtlasSelection) {
+            dockButton(icon: "sparkle.magnifyingglass", label: "Erkennung", active: activeMode == .discovery) {
+                model.selection = AppModel.mapFinderSelection
+            }
+            .disabled(!model.hasBin)
+            dockButton(icon: "internaldrive", label: "Speicher", active: activeMode == .memoryMap) {
                 model.selection = AppModel.memoryAtlasSelection
             }
             .disabled(!model.hasBin)
-            dockButton(icon: "waveform.path.ecg", label: "Log", active: model.selection == AppModel.datalogSelection) {
+            dockButton(icon: "waveform.path.ecg", label: "Datalog", active: activeMode == .datalog) {
                 model.selection = AppModel.datalogSelection
             }
-            dockButton(icon: "checkmark.shield", label: "Flash", active: model.selection == AppModel.checksumSelection) {
+            dockButton(icon: "checkmark.shield", label: "Flash", active: activeMode == .flash) {
                 model.selection = AppModel.checksumSelection
             }
             .disabled(!model.hasBin)
 
-            Divider().frame(height: 18).padding(.horizontal, 2)
+            Divider().frame(height: 16).padding(.horizontal, 2)
 
             dockToggle(icon: "rectangle.bottomthird.inset.filled", help: "Unteres Panel (⇧⌘Y)", active: showBottomDrawer) {
                 withAnimation(.easeInOut(duration: 0.18)) { showBottomDrawer.toggle() }
@@ -335,22 +315,22 @@ struct CanvasFloatingDock: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.vertical, 5.5)
         .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(theme.hairlineBorder, lineWidth: 0.9))
-        .shadow(color: .black.opacity(0.32), radius: 18, y: 8)
+        .overlay(Capsule().strokeBorder(theme.hairlineBorder, lineWidth: 0.85))
+        .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
     }
 
     private func dockButton(icon: String, label: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 12, weight: active ? .semibold : .regular))
+                Image(systemName: icon).font(.system(size: 11.5, weight: active ? .semibold : .regular))
                 if active {
                     Text(label).font(.system(size: 11, weight: .semibold))
                 }
             }
             .padding(.horizontal, active ? 10 : 8)
-            .padding(.vertical, 6)
+            .padding(.vertical, 5.5)
             .foregroundStyle(active ? .white : .primary.opacity(0.8))
             .background(active ? theme.accentColor : Color.clear, in: Capsule())
         }
@@ -361,8 +341,8 @@ struct CanvasFloatingDock: View {
     private func dockToggle(icon: String, help: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
-                .frame(width: 28, height: 26)
+                .font(.system(size: 11.5, weight: .medium))
+                .frame(width: 26, height: 24)
                 .foregroundStyle(active ? theme.accentColor : .secondary)
                 .background(active ? theme.accentColor.opacity(0.16) : Color.clear, in: Circle())
         }

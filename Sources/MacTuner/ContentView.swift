@@ -159,6 +159,14 @@ struct ContentView: View {
         } message: {
             Text("Auto-Ausrichten versucht, Kennfelder aus einer anderen Software-Version über Byte-Muster, Achsen und Modul-Offsets zu finden.\n\nDas Ergebnis ist NICHT 100 % sicher — besonders 1×1-Konstanten und Schalter können falsch ausgerichtet sein. Jedes Kennfeld erhält eine Sicherheits-Prozentzahl; prüfe Werte und Achsen vor dem Bearbeiten immer visuell.")
         }
+        .onChange(of: appThemeRaw, initial: true) { _, _ in
+            switch theme {
+            case .liquidGlass, .motorsportTelemetry:
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+            case .adaptiveNative:
+                NSApp.appearance = nil
+            }
+        }
         .onChange(of: model.selection) {
             model.rememberSelection()
             syncIDETab(for: model.selection)
@@ -276,15 +284,21 @@ struct ContentView: View {
 
     private func switchStudioMode(_ mode: StudioMode) {
         switch mode {
-        case .calibrate:
-            if StudioMode.from(selection: model.selection) != .calibrate {
-                model.selection = model.lastMapSelection ?? model.definition?.items.first?.id
+        case .workspace:
+            if StudioMode.from(selection: model.selection) != .workspace {
+                if model.definition != nil, let last = model.lastMapSelection {
+                    model.selection = last
+                } else {
+                    model.selection = model.hasBin ? AppModel.hexDiffSelection : nil
+                }
             }
-        case .explore:
-            if StudioMode.from(selection: model.selection) != .explore {
-                model.selection = AppModel.hexDiffSelection
+        case .discovery:
+            if StudioMode.from(selection: model.selection) != .discovery {
+                model.selection = AppModel.mapFinderSelection
             }
-        case .log:
+        case .memoryMap:
+            model.selection = AppModel.memoryAtlasSelection
+        case .datalog:
             model.selection = AppModel.datalogSelection
         case .flash:
             if StudioMode.from(selection: model.selection) != .flash {
@@ -511,22 +525,34 @@ struct StatusBar: View {
             .fixedSize()
             .help("Einheitensystem umschalten")
 
-            // Quick Heatmap Palette Switcher
+            // Unified Theme & Heatmap Palette Switcher
             Menu {
-                ForEach(HeatmapPalette.allCases) { p in
-                    Button {
-                        model.heatmapPalette = p
-                    } label: {
-                        if model.heatmapPalette == p { Label(p.label, systemImage: "checkmark") } else { Text(p.label) }
+                Section("Design-Theme") {
+                    ForEach(AppTheme.allCases) { t in
+                        Button {
+                            appThemeRaw = t.rawValue
+                        } label: {
+                            Label(t.label, systemImage: theme == t ? "checkmark" : t.icon)
+                        }
+                    }
+                }
+                Divider()
+                Section("Heatmap-Farbpalette") {
+                    ForEach(HeatmapPalette.allCases) { p in
+                        Button {
+                            model.heatmapPalette = p
+                        } label: {
+                            if model.heatmapPalette == p { Label(p.label, systemImage: "checkmark") } else { Text(p.label) }
+                        }
                     }
                 }
             } label: {
                 Image(systemName: "paintpalette")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.accentColor)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("Heatmap-Farbpalette wählen")
+            .help("Design-Theme & Heatmap-Farbpalette wählen")
 
             if model.xdfDirty {
                 Button { model.saveXDF() } label: {

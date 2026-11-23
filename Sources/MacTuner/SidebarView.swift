@@ -40,9 +40,6 @@ struct SidebarView: View {
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) { scopePicker }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if model.scope == .changed && model.hasBin { compareFooter }
-            }
             .overlay {
                 if items.isEmpty && !showOutside { emptyState }
             }
@@ -378,7 +375,6 @@ struct SidebarView: View {
                         }
                     }
                 }
-                .safeAreaInset(edge: .bottom, spacing: 0) { compareFooter }
             }
         }
     }
