@@ -3,9 +3,21 @@ import SwiftUI
 
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
     let search: String
     @State private var expanded: Set<Int> = []
-    @State private var binTab: Int = 0 // 0 = Diff-Blöcke, 1 = Lesezeichen
+    @State private var activeTab: SidebarTab = .diffs
+    @State private var didInitializeTab = false
+
+    private var theme: AppTheme { AppTheme(rawValue: appThemeRaw) ?? .liquidGlass }
+
+    enum SidebarTab: String, CaseIterable, Identifiable {
+        case maps = "Maps"
+        case diffs = "Diffs"
+        case detected = "Erkannt"
+        case bookmarks = "Marker"
+        var id: String { rawValue }
+    }
 
     private struct Group: Identifiable {
         let categoryID: Int
@@ -15,15 +27,125 @@ struct SidebarView: View {
     }
 
     var body: some View {
+        if !model.hasBin && model.definition == nil {
+            ContentUnavailableView("Keine Datei geladen", systemImage: "doc.badge.plus",
+                                   description: Text("XDF (⌘O) oder BIN (⇧⌘O) öffnen — oder zwei BINs ins Fenster ziehen."))
+        } else {
+            VStack(spacing: 0) {
+                // Always-obvious Hex-Editor ↔ Tabellen-Editor quick switcher!
+                if model.hasBin {
+                    HStack(spacing: 4) {
+                        let isHex = model.selection == AppModel.hexDiffSelection
+                        Button {
+                            model.selection = AppModel.hexDiffSelection
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "doc.text.magnifyingglass").font(.system(size: 11))
+                                Text("Hex-Editor").font(.system(size: 11.5, weight: isHex ? .semibold : .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5.5)
+                            .foregroundStyle(isHex ? .white : .secondary)
+                            .background(isHex ? theme.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+
+                        let isMap = (model.selection ?? -999) >= 0
+                        Button {
+                            if let target = model.lastMapSelection ?? model.definition?.items.first?.id {
+                                model.selection = target
+                            } else {
+                                model.openXDFPanel()
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "tablecells").font(.system(size: 11))
+                                Text(model.definition == nil ? "XDF laden" : "Tabelle").font(.system(size: 11.5, weight: isMap ? .semibold : .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5.5)
+                            .foregroundStyle(isMap ? .white : .secondary)
+                            .background(isMap ? theme.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(3)
+                    .background(theme.surfaceBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(theme.hairlineBorder, lineWidth: 0.75))
+                    .padding(.horizontal, 10)
+                    .padding(.top, 8)
+                    .padding(.bottom, 6)
+                }
+
+                // Unified 4-Tab Navigator — NEVER vanishes when you add maps!
+                HStack(spacing: 2) {
+                    navTabPill(.maps, count: model.definition?.items.count ?? 0)
+                    navTabPill(.diffs, count: model.diffClusters.count)
+                    navTabPill(.detected, count: model.activePotentialMaps.count)
+                    navTabPill(.bookmarks, count: model.hexBookmarks.count)
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 6)
+
+                Divider().opacity(0.45)
+
+                // Active tab content
+                switch activeTab {
+                case .maps:
+                    mapsSidebarContent
+                case .diffs, .detected, .bookmarks:
+                    binSidebarContent
+                }
+            }
+            .onAppear {
+                model.schedulePotentialMapScan()
+                if !didInitializeTab {
+                    if let def = model.definition, !def.items.isEmpty {
+                        activeTab = .maps
+                    } else if !model.diffClusters.isEmpty {
+                        activeTab = .diffs
+                    } else {
+                        activeTab = .detected
+                    }
+                    didInitializeTab = true
+                }
+            }
+            .onChange(of: model.activeBinID) { _, _ in
+                model.schedulePotentialMapScan()
+            }
+        }
+    }
+
+    private func navTabPill(_ tab: SidebarTab, count: Int) -> some View {
+        let active = activeTab == tab
+        return Button {
+            activeTab = tab
+        } label: {
+            VStack(spacing: 1) {
+                Text(tab.rawValue)
+                    .font(.system(size: 10.5, weight: active ? .semibold : .medium))
+                    .lineLimit(1)
+                Text("\(count)")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(active ? theme.accentColor : Color.secondary.opacity(0.65))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+            .foregroundStyle(active ? .primary : .secondary)
+            .background(active ? theme.accentColor.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var mapsSidebarContent: some View {
         @Bindable var model = model
-        if let def = model.definition {
+        if let def = model.definition, !def.items.isEmpty {
             let items = filtered(def)
             let showOutside = model.scope == .changed && search.isEmpty && model.outsideByteCount > 0
             List(selection: $model.selection) {
                 switch model.scope {
                 case .all:
-                    // Categories are plain rows, not Sections: a sidebar Section keeps its own collapse
-                    // state (hover chevron) and does not show rows that are added to it later.
                     ForEach(groups(def, items)) { g in
                         let open = isOpen(g.categoryID)
                         categoryRow(g, open: open)
@@ -45,37 +167,22 @@ struct SidebarView: View {
             }
             .onAppear { expandSelection(def) }
             .onChange(of: model.selection) { expandSelection(def) }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if !model.activePotentialMaps.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "sparkles")
-                            .font(.caption2)
-                            .foregroundStyle(PotentialMapIndex.amberData)
-                        Text("\(model.activePotentialMaps.count) unkartierte Kennfelder")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Im Hex zeigen") {
-                            model.selection = AppModel.hexDiffSelection
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(.bar)
-                    .overlay(alignment: .top) { Divider() }
-                }
-            }
-        } else if model.hasBin {
-            standaloneBinSidebar
         } else {
-            ContentUnavailableView("Keine Datei geladen", systemImage: "doc.badge.plus",
-                                   description: Text("XDF (⌘O) oder BIN (⇧⌘O) öffnen — oder zwei BINs ins Fenster ziehen."))
+            VStack(spacing: 10) {
+                Spacer()
+                Image(systemName: "tablecells.badge.ellipsis").font(.system(size: 28)).foregroundStyle(.secondary)
+                Text("Keine XDF-Kennfelder").font(.subheadline.weight(.semibold))
+                Text("Öffne eine XDF/A2L/KP-Definition oder füge erkannte Kennfelder per Rechtsklick hinzu.")
+                    .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 16)
+                Button("Definition öffnen …") { model.openXDFPanel() }
+                    .buttonStyle(.borderedProminent).controlSize(.small)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    @ViewBuilder private var standaloneBinSidebar: some View {
+    @ViewBuilder private var binSidebarContent: some View {
         let clusters = model.diffClusters
         let potentialMaps = model.activePotentialMaps
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -91,41 +198,7 @@ struct SidebarView: View {
             c.reason.lowercased().contains(q)
         }
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Label("Bin-vs-Bin", systemImage: "arrow.left.arrow.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if model.compareURL != nil {
-                    Button { model.swapWithCompare() } label: {
-                        Image(systemName: "arrow.left.arrow.right.circle")
-                    }
-                    .buttonStyle(.plain)
-                    .help("BIN und Vergleich tauschen")
-                }
-                Button("XDF …") { model.openXDFPanel() }
-                    .controlSize(.mini)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 7)
-
-            Picker("", selection: $binTab) {
-                Text("Blöcke (\(clusters.count))").tag(0)
-                Text("Erkannt (\(potentialMaps.count))").tag(1)
-                Text("Marker (\(model.hexBookmarks.count))").tag(2)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 10).padding(.bottom, 6)
-            .onAppear {
-                model.schedulePotentialMapScan()
-                if clusters.isEmpty && binTab == 0 { binTab = 1 }
-            }
-            .onChange(of: model.activeBinID) { _, _ in
-                model.schedulePotentialMapScan()
-                if model.diffClusters.isEmpty && binTab == 0 { binTab = 1 }
-            }
-
-            if binTab == 0 && !clusters.isEmpty {
+            if activeTab == .diffs && !clusters.isEmpty {
                 HStack(spacing: 6) {
                     Text("Cluster:").font(.caption2).foregroundStyle(.secondary)
                     ForEach([0, 16, 32, 64], id: \.self) { g in
@@ -145,7 +218,7 @@ struct SidebarView: View {
             }
             Divider()
 
-            if binTab == 1 {
+            if activeTab == .detected {
                 if model.isScanningPotentialMaps && filteredPotential.isEmpty {
                     VStack(spacing: 8) {
                         ProgressView()
@@ -247,7 +320,7 @@ struct SidebarView: View {
                     }
                     .listStyle(.sidebar)
                 }
-            } else if binTab == 2 {
+            } else if activeTab == .bookmarks {
                 if model.hexBookmarks.isEmpty {
                     ContentUnavailableView("Keine Lesezeichen", systemImage: "bookmark",
                                            description: Text("Setze im Hex-Diff Lesezeichen per Rechtsklick oder über das Lesezeichen-Menü."))

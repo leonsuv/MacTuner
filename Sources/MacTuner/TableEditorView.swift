@@ -312,24 +312,10 @@ struct TableEditorView: View {
                             Surface3DView(item: item, x: x, y: y, readOnly: isCompareView)
                         }
                         if showChart {
-                            VStack(alignment: .leading, spacing: 4) {
-                                if l.rows > 1 {
-                                    HStack(spacing: 6) {
-                                        Spacer()
-                                        Picker("2D-Modus", selection: $slicesMode) {
-                                            Text("Kurven").tag(false)
-                                            Text("Slices (WinOLS)").tag(true)
-                                        }
-                                        .pickerStyle(.segmented)
-                                        .labelsHidden()
-                                        .controlSize(.mini)
-                                        .fixedSize()
-                                    }
-                                }
-                                TableChart(points: chartPoints(values: shown, ys: ys), seriesCount: l.rows, dashedIsBin: isCompareView,
-                                           units: slicesMode ? "Slices" : model.displayUnit(s.units),
-                                           xUnits: mode == .wrapped || x.scaling.units.isEmpty ? "" : model.displayUnit(x.scaling.units))
-                            }
+                            TableChart(points: chartPoints(values: shown, ys: ys), seriesCount: l.rows, dashedIsBin: isCompareView,
+                                       units: slicesMode ? "Slices" : model.displayUnit(s.units),
+                                       xUnits: mode == .wrapped || x.scaling.units.isEmpty ? "" : model.displayUnit(x.scaling.units),
+                                       slicesMode: l.rows > 1 ? $slicesMode : nil)
                         }
                     }
                     .padding(.top, 8)

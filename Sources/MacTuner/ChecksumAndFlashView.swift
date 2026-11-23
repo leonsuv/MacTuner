@@ -1,9 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// Combined Checksum Verification/Correction & Flash Tool Hand-Off view.
+/// Redesigned Apple-Pro-App Preflight, Checksum Verification/Correction & Flash Hand-Off view.
 struct ChecksumAndFlashView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
     @State private var selectedPreset = FlashToolPreset.all[0]
     @State private var fixChecksumBeforeExport = true
     @State private var includeChangelog = true
@@ -21,322 +22,340 @@ struct ChecksumAndFlashView: View {
     @State private var manualMode: ManualChecksumMode = .boschMED17CRC32
     @State private var manualStatus: String?
 
+    private var theme: AppTheme { AppTheme(rawValue: appThemeRaw) ?? .liquidGlass }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Prüfsummen & Flashen").font(.system(size: 22, weight: .bold))
-
-                if !model.hasBin {
-                    ContentUnavailableView("Keine BIN geladen", systemImage: "checkmark.shield",
-                                           description: Text("Öffne eine BIN-Datei, um Prüfsummen zu prüfen und für Flash-Tools zu exportieren."))
-                } else {
-                    flashPreflightCard
-                    checksumCard
-                    flashHandoffCard
-                    binaryUtilitiesCard
-                }
-            }
-            .padding(20)
-            .frame(maxWidth: 980, alignment: .leading)
-        }
-    }
-
-    private var flashPreflightCard: some View {
-        let preflight = model.flashPreflightReport
-        let badgeColor: Color = switch preflight.overallStatus {
-        case .ready: .green
-        case .caution: .orange
-        case .blocked: .red
-        }
-        let badgeIcon: String = switch preflight.overallStatus {
-        case .ready: "checkmark.shield.fill"
-        case .caution: "exclamationmark.shield.fill"
-        case .blocked: "xmark.shield.fill"
-        }
-        let badgeText: String = switch preflight.overallStatus {
-        case .ready: "Bereit zum Flashen"
-        case .caution: "Prüfen empfohlen"
-        case .blocked: "Warnung — Blocker gefunden"
-        }
-
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Label("Flash-Preflight Sicherheits-Gate", systemImage: "shield.lefthalf.filled").font(.headline)
-                Spacer()
-                Label(badgeText, systemImage: badgeIcon)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(badgeColor)
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(badgeColor.opacity(0.14), in: Capsule())
-            }
-
-            // Gate 3: Byte-level Checksum Triage pills
-            let t = preflight.checksumTriage
-            HStack(spacing: 10) {
-                triagePill("Geprüft / Korrigierbar", value: "\(t.correctedBytes) B", color: .green)
-                triagePill("Nicht korrigierbar (TPROT/RSA)", value: "\(t.uncorrectableBytes) B", color: t.uncorrectableBytes > 0 ? .red : .secondary)
-                triagePill("Ungeprüft", value: "\(t.uncheckedBytes) B", color: t.uncheckedBytes > 0 ? .orange : .secondary)
-                Spacer()
-                Text("\(preflight.totalChangedMaps) geänderte Maps · \(t.totalChangedBytes) B gesamt")
-                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-            }
-
-            // Gate 2: EPK / SW Mismatch
-            if let epkWarn = preflight.epkMismatch {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    Text(epkWarn).font(.caption)
-                }
-                .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
-            }
-
-            // Gate 1: Forgotten Twin Maps
-            if !preflight.forgottenTwins.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Vergessene Zwillingskennfelder (\(preflight.forgottenTwins.count))", systemImage: "square.on.square.badge.person.crop")
-                        .font(.caption.weight(.semibold)).foregroundStyle(.orange)
-                    ForEach(preflight.forgottenTwins.prefix(6)) { tw in
-                        HStack(spacing: 8) {
-                            Text("„\(tw.sourceTitle)“ geändert — Zwilling „\(tw.twinTitle)“ (\(String(format: "%.0f%%", tw.similarityPct)) identisch) unverändert")
-                                .font(.caption).lineLimit(1)
-                            Spacer()
-                            Button("Auf Zwilling kopieren") {
-                                model.copyTableToTwin(sourceID: tw.sourceID, twinID: tw.twinID)
-                            }
-                            .controlSize(.mini).buttonStyle(.borderedProminent)
-                        }
+        VStack(alignment: .leading, spacing: 14) {
+            // Header row with ECU Profile picker
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Preflight & Prüfsummen").font(.system(size: 20, weight: .bold))
+                    if let doc = model.activeBin {
+                        Text("\(doc.ecuIdentity.ecuFamily ?? "ECU Flash") · \(doc.bytes.count / 1024) KB")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                .padding(8).background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 7))
+                Spacer()
+                if model.hasBin {
+                    Picker("Profil", selection: Binding(
+                        get: { model.checksumPluginID ?? "" },
+                        set: { model.setChecksumPlugin($0.isEmpty ? nil : $0) }
+                    )) {
+                        Text("Kein Prüfsummen-Profil").tag("")
+                        ForEach(ChecksumRegistry.shared.plugins, id: \.id) { p in
+                            Text("\(p.name)").tag(p.id)
+                        }
+                    }
+                    .frame(maxWidth: 280)
+                    .controlSize(.small)
+
+                    Button("Auto-Erkennung") { model.autoDetectChecksumPlugin() }
+                        .controlSize(.small)
+                }
             }
 
-            // Gate 4: Firmware Physics & Invariant Safety Warnings
-            if !preflight.physicsWarnings.isEmpty {
-                physicsWarningsBox(preflight.physicsWarnings)
+            if !model.hasBin {
+                ContentUnavailableView("Keine BIN geladen", systemImage: "checkmark.shield",
+                                       description: Text("Öffne eine BIN-Datei, um Flash-Preflight, Prüfsummen, CVN und den Flash-Export zu nutzen."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                let preflight = model.flashPreflightReport
+                let report = model.checksumReport
+
+                // 1. Plain-Language Hero Verdict Banner
+                heroBanner(preflight: preflight, report: report)
+
+                // 2. 4 Precision KPI Cards (matching Speicher-Map)
+                kpiStrip(preflight: preflight, report: report)
+
+                // 3. Full-Width 2-Column Workspace (ZERO dead right-side space!)
+                HStack(alignment: .top, spacing: 14) {
+                    // Left column: Alerts + Checksum Blocks Table + Manual Patcher
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let epk = preflight.epkMismatch {
+                            alertRow(icon: "exclamationmark.triangle.fill", color: .orange, title: "Software-Version weicht ab", detail: epk)
+                        }
+                        if !preflight.forgottenTwins.isEmpty {
+                            forgottenTwinsCard(preflight.forgottenTwins)
+                        }
+                        if !preflight.physicsWarnings.isEmpty {
+                            physicsWarningsCard(preflight.physicsWarnings)
+                        }
+                        checksumBlocksCard(report)
+                        manualPatcherCard
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+                    // Right column: Flash Export + BIN Utilities
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            flashHandoffCard
+                            binaryUtilitiesCard
+                        }
+                    }
+                    .frame(width: 340)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .card(padding: 14)
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(theme.canvasBackground)
     }
 
-    private func physicsWarningsBox(_ warnings: [PhysicsSafetyWarning]) -> some View {
+    private func heroBanner(preflight: FlashPreflightReport, report: ChecksumReport?) -> some View {
+        let (title, subtitle, icon, color): (String, String, String, Color) = {
+            switch preflight.overallStatus {
+            case .ready:
+                let blkTxt = report.map { "Alle \($0.blocks.count) Prüfsummen-Blöcke gültig." } ?? "Keine Blocker erkannt."
+                let tprotTxt = (report?.tprotBlockCount ?? 0) > 0 ? " \(report!.tprotBlockCount) OTP/TPROT-Blöcke bleiben schreibgeschützt." : ""
+                return ("Bereit zum Flashen", blkTxt + tprotTxt, "checkmark.shield.fill", .green)
+            case .caution:
+                return ("Prüfung vor dem Flashen empfohlen",
+                        "\(preflight.forgottenTwins.count) Zwillings-Hinweis(e) · \(preflight.physicsWarnings.count) Plausibilitäts-Hinweis(e) · \(preflight.checksumTriage.uncheckedBytes) ungeprüfte Bytes.",
+                        "exclamationmark.shield.fill", .orange)
+            case .blocked:
+                return ("Blocker gefunden — nicht ungeprüft flashen!",
+                        "\(preflight.checksumTriage.invalidFixableBlocks) ungültige Prüfsumme(n) · \(preflight.checksumTriage.uncorrectableBytes) B in geschützten TPROT/RSA-Bereichen.",
+                        "xmark.shield.fill", .red)
+            }
+        }()
+
+        return HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 26))
+                .foregroundStyle(color)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline).foregroundStyle(color)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if let report, report.canFix && report.invalidCount > 0 {
+                Button {
+                    model.correctChecksums()
+                } label: {
+                    Label("Prüfsummen korrigieren (\(report.invalidCount))", systemImage: "wand.and.stars")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+            }
+        }
+        .padding(14)
+        .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(color.opacity(0.32), lineWidth: 0.9))
+    }
+
+    private func kpiStrip(preflight: FlashPreflightReport, report: ChecksumReport?) -> some View {
+        let validCount = report?.blocks.filter(\.valid).count ?? 0
+        let totalBlocks = report?.blocks.count ?? 0
+        let t = preflight.checksumTriage
+        return HStack(spacing: 10) {
+            kpiTile("Prüfsummen-Blöcke",
+                    value: totalBlocks > 0 ? "\(validCount) / \(totalBlocks)" : "—",
+                    sub: report?.pluginName ?? "Kein Profil aktiv",
+                    color: (totalBlocks > 0 && validCount == totalBlocks) ? .green : (totalBlocks > 0 ? .red : .secondary))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("CVN / COMPTEST")
+                    .font(.system(size: 9.5, weight: .bold)).foregroundStyle(.secondary).tracking(0.5)
+                Text(report?.cvnHex ?? "—")
+                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .foregroundStyle(report?.cvnHex != nil ? theme.accentColor : .secondary)
+                if let cvn = report?.cvnHex, let comp = report?.compTestCVNHex, cvn != comp, report?.compTestPatchOffset != nil {
+                    Button("Soll \(comp) herstellen") { _ = model.correctCVNInPlace() }
+                        .buttonStyle(.borderedProminent).controlSize(.mini)
+                } else {
+                    Text(report?.compTestCVNHex.map { "Soll: \($0) ✓" } ?? "Kein CVN-Struct")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card(padding: 11)
+
+            kpiTile("TPROT / Geschützt",
+                    value: "\(report?.tprotBlockCount ?? 0) Blöcke",
+                    sub: t.uncorrectableBytes > 0 ? "\(t.uncorrectableBytes) B betroffen!" : "Unverändert (sicher)",
+                    color: t.uncorrectableBytes > 0 ? .red : .secondary)
+
+            kpiTile("Geänderte Bytes",
+                    value: "\(t.totalChangedBytes) B",
+                    sub: "\(t.correctedBytes) B geprüft · \(t.uncheckedBytes) B ungeprüft",
+                    color: t.totalChangedBytes > 0 ? theme.changedColor : .secondary)
+        }
+    }
+
+    private func kpiTile(_ title: String, value: String, sub: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 9.5, weight: .bold)).foregroundStyle(.secondary).tracking(0.5)
+            Text(value)
+                .font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(color)
+                .lineLimit(1)
+            Text(sub).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 11)
+    }
+
+    private func checksumBlocksCard(_ report: ChecksumReport?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Prüfsummen-Blöcke").font(.subheadline.weight(.semibold))
+                Spacer()
+                if let vStr = report?.detectedVariantString {
+                    Text(vStr).font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            if let report, !report.blocks.isEmpty {
+                Table(report.blocks) {
+                    TableColumn("Block") { b in Text(b.name).font(.caption.weight(.medium)) }
+                    TableColumn("Algo") { b in Text(b.algorithm.isEmpty ? "—" : b.algorithm).font(.caption2.monospaced()).foregroundStyle(.secondary) }
+                        .width(min: 68, ideal: 82)
+                    TableColumn("Adressbereich") { b in
+                        Text(String(format: "0x%05X–0x%05X", b.range.lowerBound, max(b.range.lowerBound, b.range.upperBound - 1)))
+                            .font(.caption.monospaced())
+                    }
+                    .width(min: 130, ideal: 150)
+                    TableColumn("Soll / Ist") { b in
+                        Text(b.valid ? b.computedHex : "\(b.storedHex) → \(b.computedHex)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(b.valid ? .green : (b.triage == .uncorrectable ? .orange : .red))
+                    }
+                    TableColumn("Status") { b in
+                        let (txt, col): (String, Color) = switch b.triage {
+                        case .corrected: (b.valid ? "OK" : "Fixbar", b.valid ? .green : .red)
+                        case .uncorrectable: ("TPROT/OTP", .orange)
+                        case .unchecked: ("Ungeprüft", .secondary)
+                        }
+                        Text(txt).font(.system(size: 9.5, weight: .bold))
+                            .padding(.horizontal, 6).padding(.vertical, 1.5)
+                            .background(col.opacity(0.16), in: Capsule())
+                            .foregroundStyle(col)
+                    }
+                    .width(78)
+                }
+                .frame(minHeight: 160, maxHeight: .infinity)
+            } else {
+                ContentUnavailableView("Keine Prüfsummen-Blöcke erkannt", systemImage: "shield.slash",
+                                       description: Text("Wähle oben ein passendes Steuergeräte-Profil oder klicke auf „Auto-Erkennung“."))
+                    .frame(minHeight: 140)
+            }
+        }
+        .card(padding: 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var manualPatcherCard: some View {
+        DisclosureGroup("Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)", isExpanded: $showManualPatcher) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Picker("Modus", selection: $manualMode) {
+                        ForEach(ManualChecksumMode.allCases) { m in Text(m.rawValue).tag(m) }
+                    }
+                    .frame(maxWidth: 230)
+                    TextField("Start 0x…", text: $manualStartHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 82)
+                    Text("–").foregroundStyle(.secondary)
+                    TextField("Ende 0x…", text: $manualEndHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 82)
+                    TextField("Patch @ 0x…", text: $manualPatchHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 88)
+                    Button("Patchen") {
+                        guard let s = XDFParser.int(manualStartHex),
+                              let e = XDFParser.int(manualEndHex),
+                              let po = XDFParser.int(manualPatchHex), s < e else {
+                            manualStatus = "Ungültige Hex-Adressen."; return
+                        }
+                        let target: UInt32? = manualTargetHex.trimmingCharacters(in: .whitespaces).isEmpty
+                            ? nil : XDFParser.int(manualTargetHex).map { UInt32(truncatingIfNeeded: $0) }
+                        if let patch = ChecksumMath.manualRangePatch(in: model.bin, range: s..<e, patchOffset: po, mode: manualMode, targetValue: target) {
+                            model.applyRawPatches([patch], label: "Manueller Checksum-Patch (\(manualMode.rawValue))")
+                            manualStatus = String(format: "Patch @ 0x%05X angewendet (⌘Z rückgängig).", po)
+                        } else {
+                            manualStatus = "Kein Patch nötig oder Bereich ungültig."
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .controlSize(.small)
+                if let manualStatus { Text(manualStatus).font(.caption2).foregroundStyle(.secondary) }
+            }
+            .padding(.top, 6)
+        }
+        .font(.caption.weight(.semibold))
+        .card(padding: 12)
+    }
+
+    private func forgottenTwinsCard(_ twins: [ForgottenTwinWarning]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Firmware-Invarianten & Plausibilität (\(warnings.count))", systemImage: "waveform.path.ecg")
+            Label("Vergessene Zwillingskennfelder (\(twins.count))", systemImage: "square.on.square")
+                .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+            ForEach(twins.prefix(5)) { tw in
+                HStack(spacing: 8) {
+                    Text("„\(tw.sourceTitle)“ geändert — Zwilling „\(tw.twinTitle)“ unverändert")
+                        .font(.caption).lineLimit(1)
+                    Spacer()
+                    Button("Auf Zwilling kopieren") {
+                        model.copyTableToTwin(sourceID: tw.sourceID, twinID: tw.twinID)
+                    }
+                    .controlSize(.mini).buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.orange.opacity(0.28), lineWidth: 0.75))
+    }
+
+    private func physicsWarningsCard(_ warnings: [PhysicsSafetyWarning]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Firmware-Invarianten (\(warnings.count))", systemImage: "waveform.path.ecg")
                 .font(.caption.weight(.semibold)).foregroundStyle(.red)
             ForEach(warnings) { pw in
                 let col: Color = pw.severity == .error ? .red : .orange
                 HStack(alignment: .top, spacing: 8) {
                     Text(pw.ruleCode)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(col.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
                         .foregroundStyle(col)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(pw.title).font(.caption.weight(.semibold))
-                        Text(pw.detail).font(.caption).foregroundStyle(.secondary)
+                        Text(pw.detail).font(.caption2).foregroundStyle(.secondary)
                     }
                     Spacer()
                     if let id = pw.itemID {
-                        Button("Öffnen") { model.selection = id }
-                            .controlSize(.mini)
+                        Button("Öffnen") { model.selection = id }.controlSize(.mini)
                     }
                 }
             }
         }
-        .padding(8).background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+        .padding(10)
+        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.red.opacity(0.25), lineWidth: 0.75))
     }
 
-    private func triagePill(_ label: String, value: String, color: Color) -> some View {
-        HStack(spacing: 5) {
-            Circle().fill(color).frame(width: 7, height: 7)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-            Text(value).font(.caption2.weight(.semibold).monospacedDigit()).foregroundStyle(color)
+    private func alertRow(icon: String, color: Color, title: String, detail: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon).foregroundStyle(color)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.caption.weight(.semibold))
+                Text(detail).font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer()
         }
-        .padding(.horizontal, 8).padding(.vertical, 4)
-        .background(color.opacity(0.09), in: Capsule())
-    }
-
-    private var checksumCard: some View {
-        let plugins = ChecksumRegistry.shared.plugins
-        let report = model.checksumReport
-
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Label("Prüfsummen-Plugin", systemImage: "checkmark.shield").font(.headline)
-                Spacer()
-                Picker("Steuergeräte-Familie", selection: Binding(
-                    get: { model.checksumPluginID ?? "" },
-                    set: { model.setChecksumPlugin($0.isEmpty ? nil : $0) }
-                )) {
-                    Text("Deaktiviert").tag("")
-                    ForEach(plugins, id: \.id) { p in
-                        Text("\(p.name) (\(p.family))").tag(p.id)
-                    }
-                }
-                .frame(maxWidth: 300)
-
-                Button("Auto-Erkennung") { model.autoDetectChecksumPlugin() }
-                    .controlSize(.small)
-            }
-
-            if let id = model.checksumPluginID, let plugin = ChecksumRegistry.shared.plugin(id: id) {
-                Text(plugin.description).font(.caption).foregroundStyle(.secondary)
-            }
-
-            if let report {
-                if let warn = report.advisoryWarning {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "exclamationmark.shield.fill").foregroundStyle(.orange)
-                        Text(warn).font(.caption).foregroundStyle(.primary)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
-                }
-
-                if !report.blocks.isEmpty || report.advisoryWarning == nil {
-                    HStack(spacing: 10) {
-                        if report.allValid {
-                            Label("Alle \(report.blocks.count) Prüfsummen-Blöcke gültig", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .font(.subheadline.weight(.semibold))
-                        } else if report.blocks.isEmpty {
-                            Label("Keine passenden Blöcke für dieses Profil gefunden", systemImage: "questionmark.circle")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Label("\(report.invalidCount) von \(report.blocks.count) korrigierbaren Prüfsummen stimmen nicht überein!", systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.red)
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        Spacer()
-                        if report.canFix && report.invalidCount > 0 {
-                            Button {
-                                model.correctChecksums()
-                            } label: {
-                                Label("Prüfsummen korrigieren", systemImage: "wand.and.stars")
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                        }
-                    }
-                }
-
-                // CVN & CompTest Recovery Bar (Bosch MED17 / EDC17)
-                if let cvn = report.cvnHex {
-                    HStack(spacing: 12) {
-                        Label("CVN: \(cvn)", systemImage: "number.square")
-                            .font(.caption.monospaced().weight(.semibold))
-                        if let comp = report.compTestCVNHex {
-                            Text("CompTest-Soll: \(comp)")
-                                .font(.caption.monospaced())
-                                .foregroundStyle(comp == cvn ? .green : .orange)
-                            if comp != cvn, report.compTestPatchOffset != nil {
-                                Button("CompTest-CVN wiederherstellen (GF(2))") {
-                                    _ = model.correctCVNInPlace()
-                                }
-                                .controlSize(.mini).buttonStyle(.borderedProminent)
-                            }
-                        }
-                        Spacer()
-                        if let vStr = report.detectedVariantString {
-                            Text(vStr).font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                    .padding(8)
-                    .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
-                }
-
-                if !report.blocks.isEmpty {
-                    Table(report.blocks) {
-                        TableColumn("Block") { b in Text(b.name) }
-                        TableColumn("Algo") { b in Text(b.algorithm.isEmpty ? "—" : b.algorithm).font(.caption.monospaced()) }
-                            .width(min: 70, ideal: 90)
-                        TableColumn("Bereich") { b in
-                            Text(String(format: "0x%05X–0x%05X", b.range.lowerBound, max(b.range.lowerBound, b.range.upperBound - 1))).monospaced()
-                        }
-                        .width(min: 140, ideal: 160)
-                        TableColumn("Gespeichert") { b in Text(b.storedHex).monospaced() }
-                        TableColumn("Berechnet") { b in
-                            Text(b.computedHex).monospaced()
-                                .foregroundStyle(b.valid ? Color.green : (b.triage == .uncorrectable ? Color.orange : Color.red))
-                        }
-                        TableColumn("Triage") { b in
-                            let (txt, col): (String, Color) = switch b.triage {
-                            case .corrected: (b.valid ? "OK" : "Fixbar", b.valid ? .green : .red)
-                            case .uncorrectable: ("TPROT/OTP", .orange)
-                            case .unchecked: ("Ungeprüft", .secondary)
-                            }
-                            Text(txt).font(.caption2.weight(.semibold)).foregroundStyle(col)
-                        }
-                        .width(72)
-                    }
-                    .frame(minHeight: 110, maxHeight: 240)
-                }
-            } else {
-                Text("Kein Prüfsummen-Plugin aktiv. Beim Öffnen und Speichern wird geprüft, sobald ein Steuergeräte-Profil gewählt ist.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            // Collapsible Manual Range Checksum / GF(2) Patcher
-            DisclosureGroup("Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)", isExpanded: $showManualPatcher) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Picker("Modus", selection: $manualMode) {
-                            ForEach(ManualChecksumMode.allCases) { m in Text(m.rawValue).tag(m) }
-                        }
-                        .frame(maxWidth: 260)
-                        TextField("Start 0x…", text: $manualStartHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 90)
-                        Text("–").foregroundStyle(.secondary)
-                        TextField("Ende 0x…", text: $manualEndHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 90)
-                        TextField("Patch @ 0x…", text: $manualPatchHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 96)
-                        TextField("Ziel 0x… (opt.)", text: $manualTargetHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 105)
-                        Button("Patchen") {
-                            guard let s = XDFParser.int(manualStartHex),
-                                  let e = XDFParser.int(manualEndHex),
-                                  let po = XDFParser.int(manualPatchHex), s < e else {
-                                manualStatus = "Ungültige Hex-Adressen."
-                                return
-                            }
-                            let target: UInt32? = manualTargetHex.trimmingCharacters(in: .whitespaces).isEmpty
-                                ? nil
-                                : XDFParser.int(manualTargetHex).map { UInt32(truncatingIfNeeded: $0) }
-                            if let patch = ChecksumMath.manualRangePatch(in: model.bin, range: s..<e, patchOffset: po, mode: manualMode, targetValue: target) {
-                                model.applyRawPatches([patch], label: "Manueller Checksum-Patch (\(manualMode.rawValue))")
-                                manualStatus = String(format: "Patch @ 0x%05X angewendet (rückgängig machbar).", po)
-                            } else {
-                                manualStatus = "Kein Patch nötig oder Bereich/Offset ungültig."
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .controlSize(.small)
-                    if let manualStatus {
-                        Text(manualStatus).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.top, 6)
-            }
-            .font(.caption.weight(.semibold))
-        }
-        .card(padding: 14)
+        .padding(10)
+        .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
     }
 
     private var flashHandoffCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Übergabe an Flash-Tool", systemImage: "bolt.horizontal.circle").font(.headline)
-            Text("Exportiert die BIN mit passendem Dateinamen, optionaler Prüfsummen-Korrektur, Flash-Größen-Padding und Änderungsprotokoll.")
-                .font(.caption).foregroundStyle(.secondary)
-
-            Picker("Flash-Tool Preset", selection: $selectedPreset) {
-                ForEach(FlashToolPreset.all) { preset in
-                    Text(preset.name).tag(preset)
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Flash-Tool Export", systemImage: "bolt.horizontal.circle").font(.subheadline.weight(.semibold))
+            Picker("Preset", selection: $selectedPreset) {
+                ForEach(FlashToolPreset.all) { preset in Text(preset.name).tag(preset) }
             }
-            .frame(maxWidth: 360)
+            .labelsHidden()
+            Text(selectedPreset.description).font(.caption2).foregroundStyle(.secondary)
 
-            Text(selectedPreset.description).font(.caption).foregroundStyle(.secondary)
-
-            HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 5) {
                 Toggle("Prüfsumme vor Export korrigieren", isOn: $fixChecksumBeforeExport)
                     .disabled(model.checksumPluginID == nil || model.checksumReport?.canFix == false)
                 Toggle("Änderungsliste (.txt) beilegen", isOn: $includeChangelog)
@@ -345,44 +364,38 @@ struct ChecksumAndFlashView: View {
             }
             .controlSize(.small)
 
-            HStack {
-                Button {
-                    exportForFlashTool()
-                } label: {
-                    Label("Für \(selectedPreset.name) exportieren …", systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(.borderedProminent)
+            Button {
+                exportForFlashTool()
+            } label: {
+                Label("Exportieren & Read-Back prüfen …", systemImage: "square.and.arrow.up")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
 
-                if let exportStatus {
-                    Text(exportStatus).font(.caption).foregroundStyle(.green)
-                }
+            if let exportStatus {
+                Text(exportStatus).font(.caption2).foregroundStyle(.green)
             }
         }
-        .card(padding: 14)
+        .card(padding: 13)
     }
 
     private var binaryUtilitiesCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("BIN-Werkzeuge (Byte-Swap, Slice, Inject, Padding)", systemImage: "wrench.and.screwdriver").font(.headline)
-            Text("Erzeugt neue Workspace-Tabs oder injiziert Kalibrierungs-Segmente (rückgängig machbar) — z. B. für Byte-Swapped EPROMs oder OBD ↔ Bench-Dumps.")
-                .font(.caption).foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                Button("16-Bit Byte-Swap") {
-                    let swapped = BinaryFormatCodec.byteSwap16(model.bin)
-                    model.addInMemoryBin(name: "\(model.binName)_swap16.bin", bytes: swapped)
-                    utilStatus = "16-Bit Byte-Swap als neuer Tab geöffnet."
+        VStack(alignment: .leading, spacing: 10) {
+            Label("BIN-Werkzeuge", systemImage: "wrench.and.screwdriver").font(.subheadline.weight(.semibold))
+            HStack(spacing: 6) {
+                Button("16-Bit Swap") {
+                    model.addInMemoryBin(name: "\(model.binName)_swap16.bin", bytes: BinaryFormatCodec.byteSwap16(model.bin))
+                    utilStatus = "16-Bit Byte-Swap geöffnet."
                 }
-                Button("32-Bit Byte-Swap") {
-                    let swapped = BinaryFormatCodec.byteSwap32(model.bin)
-                    model.addInMemoryBin(name: "\(model.binName)_swap32.bin", bytes: swapped)
-                    utilStatus = "32-Bit Byte-Swap als neuer Tab geöffnet."
+                Button("32-Bit Swap") {
+                    model.addInMemoryBin(name: "\(model.binName)_swap32.bin", bytes: BinaryFormatCodec.byteSwap32(model.bin))
+                    utilStatus = "32-Bit Byte-Swap geöffnet."
                 }
-                Menu("Auf Flash-Größe auffüllen (0xFF)") {
+                Menu("Padding") {
                     ForEach([(524_288, "512 KB"), (1_048_576, "1 MB"), (2_097_152, "2 MB"), (4_194_304, "4 MB")], id: \.0) { size, label in
                         Button("Auf \(label) auffüllen") {
-                            let padded = BinaryFormatCodec.padToSize(model.bin, targetSize: size, padByte: 0xFF)
-                            model.addInMemoryBin(name: "\(model.binName)_\(label.replacingOccurrences(of: " ", with: "")).bin", bytes: padded)
+                            model.addInMemoryBin(name: "\(model.binName)_\(label.replacingOccurrences(of: " ", with: "")).bin",
+                                                 bytes: BinaryFormatCodec.padToSize(model.bin, targetSize: size, padByte: 0xFF))
                             utilStatus = "Auf \(label) aufgefüllt."
                         }
                         .disabled(model.bin.count >= size)
@@ -391,40 +404,41 @@ struct ChecksumAndFlashView: View {
             }
             .controlSize(.small)
 
-            Divider()
+            Divider().opacity(0.4)
 
-            HStack(spacing: 8) {
-                Text("Ausschnitt extrahieren:").font(.caption).foregroundStyle(.secondary)
-                TextField("Start 0x…", text: $sliceStartHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 90)
-                Text("–").foregroundStyle(.secondary)
-                TextField("Ende 0x…", text: $sliceEndHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 90)
-                Button("Extrahieren") {
-                    guard let s = XDFParser.int(sliceStartHex), let e = XDFParser.int(sliceEndHex), s < e else { return }
-                    let slice = BinaryFormatCodec.extractSlice(model.bin, range: s..<e)
-                    guard !slice.isEmpty else { return }
-                    model.addInMemoryBin(name: String(format: "%@_0x%X-0x%X.bin", model.binName, s, e), bytes: slice)
-                    utilStatus = "\(slice.count) Bytes extrahiert."
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Ausschnitt extrahieren").font(.caption2).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    TextField("Start", text: $sliceStartHex).textFieldStyle(.roundedBorder).font(.caption.monospaced())
+                    Text("–").foregroundStyle(.secondary)
+                    TextField("Ende", text: $sliceEndHex).textFieldStyle(.roundedBorder).font(.caption.monospaced())
+                    Button("Extrahieren") {
+                        guard let s = XDFParser.int(sliceStartHex), let e = XDFParser.int(sliceEndHex), s < e else { return }
+                        let slice = BinaryFormatCodec.extractSlice(model.bin, range: s..<e)
+                        guard !slice.isEmpty else { return }
+                        model.addInMemoryBin(name: String(format: "%@_0x%X-0x%X.bin", model.binName, s, e), bytes: slice)
+                        utilStatus = "\(slice.count) B extrahiert."
+                    }
                 }
-                Spacer()
-                Text("Segment injizieren ab:").font(.caption).foregroundStyle(.secondary)
-                TextField("Offset 0x…", text: $injectOffsetHex).textFieldStyle(.roundedBorder).font(.caption.monospaced()).frame(width: 90)
-                Button("Datei wählen …") {
-                    guard let off = XDFParser.int(injectOffsetHex),
-                          let url = model.chooseFile("Segment-Datei wählen", types: BinaryFormatCodec.binaryExtensions),
-                          let loaded = try? BinaryFormatCodec.load(url: url) else { return }
-                    let patches = BinaryFormatCodec.injectSlice(into: model.bin, slice: loaded.bytes, at: off)
-                    guard !patches.isEmpty else { utilStatus = "Bereich außerhalb der BIN oder identisch."; return }
-                    model.applyRawPatches(patches, label: String(format: "Segment injiziert (%d B @ 0x%05X)", loaded.bytes.count, off))
-                    utilStatus = String(format: "%d Bytes ab 0x%05X injiziert.", loaded.bytes.count, off)
+                Text("Segment injizieren ab").font(.caption2).foregroundStyle(.secondary).padding(.top, 2)
+                HStack(spacing: 6) {
+                    TextField("Offset", text: $injectOffsetHex).textFieldStyle(.roundedBorder).font(.caption.monospaced())
+                    Button("Datei wählen …") {
+                        guard let off = XDFParser.int(injectOffsetHex),
+                              let url = model.chooseFile("Segment-Datei wählen", types: BinaryFormatCodec.binaryExtensions),
+                              let loaded = try? BinaryFormatCodec.load(url: url) else { return }
+                        let patches = BinaryFormatCodec.injectSlice(into: model.bin, slice: loaded.bytes, at: off)
+                        guard !patches.isEmpty else { utilStatus = "Ungültig oder identisch."; return }
+                        model.applyRawPatches(patches, label: String(format: "Segment injiziert (%d B @ 0x%05X)", loaded.bytes.count, off))
+                        utilStatus = String(format: "%d B @ 0x%05X injiziert.", loaded.bytes.count, off)
+                    }
                 }
             }
             .controlSize(.small)
 
-            if let utilStatus {
-                Text(utilStatus).font(.caption).foregroundStyle(.green)
-            }
+            if let utilStatus { Text(utilStatus).font(.caption2).foregroundStyle(.green) }
         }
-        .card(padding: 14)
+        .card(padding: 13)
     }
 
     private func exportForFlashTool() {
@@ -447,10 +461,8 @@ struct ChecksumAndFlashView: View {
                 let txtURL = url.deletingPathExtension().appendingPathExtension("txt")
                 try? report.write(to: txtURL, atomically: true, encoding: .utf8)
             }
-            if revealInFinder {
-                NSWorkspace.shared.activateFileViewerSelecting([url])
-            }
-            exportStatus = "Exportiert & Read-Back geprüft: \(url.lastPathComponent) (\(bytes.count / 1024) KB)"
+            if revealInFinder { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            exportStatus = "Exportiert & Read-Back OK: \(url.lastPathComponent)"
         } catch {
             model.alert = String(localized: "Export fehlgeschlagen:\n\(error.localizedDescription)")
         }

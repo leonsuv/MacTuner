@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "Студия (5 разделов)";
 "Erkennung & DTCs" = "Поиск и DTC";
 "Speicher-Map" = "Карта памяти";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "2D-кривые";
+"Hex-Editor" = "Hex-редактор";
+"Tabelle" = "Таблица";
+"Live-Vorschau" = "Предпросмотр";
+"Skalierung & Einheit" = "Масштаб и единица";
+"Dekodierte Zellen (Auszug)" = "Декодированные ячейки";
+"Achsen-Vorschau" = "Предпросмотр осей";
+"Prüfsummen-Blöcke" = "Блоки контрольных сумм";
+"Erkannte DTCs" = "Обнаруженные DTC";
+"Schalter-Tabelle" = "Таблица переключателей";
+"Geprüfte Maps" = "Проверенные карты";
+"Schnell-Snapshot" = "Быстрый снимок";
+"Ersten Snapshot anlegen" = "Создать первый снимок";
+"Gespeicherte Snapshots" = "Сохранённые снимки";
+"Protokollierte Edits" = "Записанные правки";
+"Geänderte Bytes" = "Изменённые байты";
+"Aktiv & Fehlerfrei" = "Активные без ошибок";
+"Plugin-Ordner öffnen" = "Открыть папку плагинов";
+"Tauschen" = "Поменять";
+"Dezimalstellen:" = "Знаков после запятой:";

@@ -62,11 +62,53 @@ struct DatalogView: View {
                     }
                 }
             } else {
-                ContentUnavailableView(
-                    "Kein Datalog geladen",
-                    systemImage: "waveform.path.ecg",
-                    description: Text("Lade ein CSV-Log oder eine TunerPro ADX-Datei, um besuchte Zellen live im Kennfeld zu verfolgen, das Treffer-Overlay anzuzeigen und Korrekturvorschläge zu berechnen.")
-                )
+                VStack(spacing: 18) {
+                    // Rich Interactive Drop-Zone Hero Card
+                    VStack(spacing: 12) {
+                        Image(systemName: "waveform.path.ecg.rectangle")
+                            .font(.system(size: 40))
+                            .foregroundStyle(Color.accentColor)
+                        Text("Datalog laden oder hierher ziehen")
+                            .font(.title3.weight(.bold))
+                        Text("Analysiere Messfahrten direkt auf deinen Kennfeldern — mit Live-Trace, 3D-Messwertwolke, XY-Scatterplot und Virtual Road Dyno.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 520)
+
+                        HStack(spacing: 6) {
+                            ForEach(["CSV", "VCDS", "ME7Logger", "MHD", "BM3", "Cobb", "TunerPro ADX/ADS"], id: \.self) { fmt in
+                                Text(fmt)
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(.quaternary.opacity(0.6), in: Capsule())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Button { model.openDatalogPanel() } label: {
+                            Label("Datalog-Datei auswählen …", systemImage: "folder.badge.plus")
+                                .padding(.horizontal, 10)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                        .padding(.top, 4)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 36)
+                    .card(padding: 20)
+
+                    // 3 Capability Preview Cards
+                    HStack(spacing: 12) {
+                        featureCard(icon: "cube.transparent", color: .cyan, title: "3D-Messwertwolke & Live-Trace",
+                                    desc: "Projiziert gefilterte WOT-Messpunkte direkt über deine 3D-Kennfelder und zeigt Abweichungen als farbige Stems.")
+                        featureCard(icon: "chart.dots.scatter", color: .orange, title: "XY-Scatterplot & STFT×LTFT",
+                                    desc: "MegaLogViewer-Stil Punktwolken, Post-DFCO-Totzeitfilter, bilineare Zellgewichtung und automatische Klopf-/Mager-Alarme.")
+                        featureCard(icon: "gauge.with.needle.fill", color: .green, title: "Virtual Road Dyno",
+                                    desc: "Berechnet Rad-/Motorleistung (PS/kW) und Drehmoment (Nm) aus Drehzahl-, Gang- und Fahrzeugprofilen.")
+                    }
+                    Spacer()
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -526,6 +568,18 @@ struct DatalogView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
+        .card(padding: 14)
+    }
+
+    private func featureCard(icon: String, color: Color, title: String, desc: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(color)
+            Text(title).font(.subheadline.weight(.semibold))
+            Text(desc).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 14)
     }
 }

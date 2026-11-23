@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "Studio (5 sektioner)";
 "Erkennung & DTCs" = "Upptäckt & DTC";
 "Speicher-Map" = "Minneskarta";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "2D-kurvor";
+"Hex-Editor" = "Hex-redigerare";
+"Tabelle" = "Tabell";
+"Live-Vorschau" = "Förhandsgranskning";
+"Skalierung & Einheit" = "Skalning & enhet";
+"Dekodierte Zellen (Auszug)" = "Avkodade celler";
+"Achsen-Vorschau" = "Axelförhandsgranskning";
+"Prüfsummen-Blöcke" = "Kontrollsummeblock";
+"Erkannte DTCs" = "Upptäckta DTC:er";
+"Schalter-Tabelle" = "Brytartabell";
+"Geprüfte Maps" = "Kontrollerade mappar";
+"Schnell-Snapshot" = "Snabb ögonblicksbild";
+"Ersten Snapshot anlegen" = "Skapa första ögonblicksbild";
+"Gespeicherte Snapshots" = "Sparade ögonblicksbilder";
+"Protokollierte Edits" = "Loggade ändringar";
+"Geänderte Bytes" = "Ändrade byte";
+"Aktiv & Fehlerfrei" = "Aktiva & giltiga";
+"Plugin-Ordner öffnen" = "Öppna pluginmapp";
+"Tauschen" = "Byt";
+"Dezimalstellen:" = "Decimaler:";

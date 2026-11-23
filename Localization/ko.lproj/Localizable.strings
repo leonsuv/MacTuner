@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "스튜디오 (5개 섹션)";
 "Erkennung & DTCs" = "탐지 & DTC";
 "Speicher-Map" = "메모리 맵";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "2D 곡선";
+"Hex-Editor" = "Hex 편집기";
+"Tabelle" = "테이블";
+"Live-Vorschau" = "실시간 미리보기";
+"Skalierung & Einheit" = "스케일링 및 단위";
+"Dekodierte Zellen (Auszug)" = "디코딩된 셀 (샘플)";
+"Achsen-Vorschau" = "축 미리보기";
+"Prüfsummen-Blöcke" = "체크섬 블록";
+"Erkannte DTCs" = "감지된 DTC";
+"Schalter-Tabelle" = "스위치 테이블";
+"Geprüfte Maps" = "검사된 맵";
+"Schnell-Snapshot" = "빠른 스냅샷";
+"Ersten Snapshot anlegen" = "첫 번째 스냅샷 만들기";
+"Gespeicherte Snapshots" = "저장된 스냅샷";
+"Protokollierte Edits" = "기록된 편집";
+"Geänderte Bytes" = "수정된 바이트";
+"Aktiv & Fehlerfrei" = "활성 및 정상";
+"Plugin-Ordner öffnen" = "플러그인 폴더 열기";
+"Tauschen" = "교체";
+"Dezimalstellen:" = "소수 자릿수:";

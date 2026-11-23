@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "スタジオ (5セクション)";
 "Erkennung & DTCs" = "検出 & DTC";
 "Speicher-Map" = "メモリマップ";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "2Dカーブ";
+"Hex-Editor" = "Hexエディタ";
+"Tabelle" = "テーブル";
+"Live-Vorschau" = "ライブプレビュー";
+"Skalierung & Einheit" = "スケーリングと単位";
+"Dekodierte Zellen (Auszug)" = "デコード値（抜粋）";
+"Achsen-Vorschau" = "軸プレビュー";
+"Prüfsummen-Blöcke" = "チェックサムブロック";
+"Erkannte DTCs" = "検出されたDTC";
+"Schalter-Tabelle" = "スイッチテーブル";
+"Geprüfte Maps" = "検査済みマップ";
+"Schnell-Snapshot" = "クイックスナップショット";
+"Ersten Snapshot anlegen" = "最初のスナップショットを作成";
+"Gespeicherte Snapshots" = "保存済みスナップショット";
+"Protokollierte Edits" = "記録された編集";
+"Geänderte Bytes" = "変更バイト数";
+"Aktiv & Fehlerfrei" = "有効（エラーなし）";
+"Plugin-Ordner öffnen" = "プラグインフォルダを開く";
+"Tauschen" = "入替";
+"Dezimalstellen:" = "小数桁数:";

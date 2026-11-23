@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "Studio (5 secțiuni)";
 "Erkennung & DTCs" = "Detecție și DTC";
 "Speicher-Map" = "Hartă memorie";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "Curbe 2D";
+"Hex-Editor" = "Editor Hex";
+"Tabelle" = "Tabel";
+"Live-Vorschau" = "Previzualizare live";
+"Skalierung & Einheit" = "Scalare și unitate";
+"Dekodierte Zellen (Auszug)" = "Celule decodificate";
+"Achsen-Vorschau" = "Previzualizare axe";
+"Prüfsummen-Blöcke" = "Blocuri checksum";
+"Erkannte DTCs" = "DTC detectate";
+"Schalter-Tabelle" = "Tabel comutatoare";
+"Geprüfte Maps" = "Hărți verificate";
+"Schnell-Snapshot" = "Snapshot rapid";
+"Ersten Snapshot anlegen" = "Creează primul snapshot";
+"Gespeicherte Snapshots" = "Snapshot-uri salvate";
+"Protokollierte Edits" = "Editări înregistrate";
+"Geänderte Bytes" = "Octeți modificați";
+"Aktiv & Fehlerfrei" = "Activ și valid";
+"Plugin-Ordner öffnen" = "Deschide folderul de pluginuri";
+"Tauschen" = "Schimbă";
+"Dezimalstellen:" = "Zecimale:";

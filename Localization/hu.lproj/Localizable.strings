@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "Stúdió (5 szekció)";
 "Erkennung & DTCs" = "Felismerés és DTC";
 "Speicher-Map" = "Memóriatérkép";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "2D görbék";
+"Hex-Editor" = "Hex szerkesztő";
+"Tabelle" = "Táblázat";
+"Live-Vorschau" = "Élő előnézet";
+"Skalierung & Einheit" = "Skálázás és egység";
+"Dekodierte Zellen (Auszug)" = "Dekódolt cellák";
+"Achsen-Vorschau" = "Tengely előnézet";
+"Prüfsummen-Blöcke" = "Ellenőrzőösszeg-blokkok";
+"Erkannte DTCs" = "Észlelt DTC-k";
+"Schalter-Tabelle" = "Kapcsolótábla";
+"Geprüfte Maps" = "Ellenőrzött térképek";
+"Schnell-Snapshot" = "Gyors pillanatkép";
+"Ersten Snapshot anlegen" = "Első pillanatkép létrehozása";
+"Gespeicherte Snapshots" = "Mentett pillanatképek";
+"Protokollierte Edits" = "Naplózott módosítások";
+"Geänderte Bytes" = "Módosított bájtok";
+"Aktiv & Fehlerfrei" = "Aktív és érvényes";
+"Plugin-Ordner öffnen" = "Bővítménymappa megnyitása";
+"Tauschen" = "Csere";
+"Dezimalstellen:" = "Tizedesjegyek:";

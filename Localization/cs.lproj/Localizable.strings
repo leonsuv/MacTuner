@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "Studio (5 sekcí)";
 "Erkennung & DTCs" = "Detekce a DTC";
 "Speicher-Map" = "Mapa paměti";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "2D křivky";
+"Hex-Editor" = "Hex editor";
+"Tabelle" = "Tabulka";
+"Live-Vorschau" = "Živý náhled";
+"Skalierung & Einheit" = "Škálování a jednotka";
+"Dekodierte Zellen (Auszug)" = "Dekódované buňky";
+"Achsen-Vorschau" = "Náhled os";
+"Prüfsummen-Blöcke" = "Bloky kontrolního součtu";
+"Erkannte DTCs" = "Zjištěné DTC";
+"Schalter-Tabelle" = "Tabulka přepínačů";
+"Geprüfte Maps" = "Zkontrolované mapy";
+"Schnell-Snapshot" = "Rychlý snímek";
+"Ersten Snapshot anlegen" = "Vytvořit první snímek";
+"Gespeicherte Snapshots" = "Uložené snímky";
+"Protokollierte Edits" = "Zaznamenané úpravy";
+"Geänderte Bytes" = "Změněné bajty";
+"Aktiv & Fehlerfrei" = "Aktivní a platné";
+"Plugin-Ordner öffnen" = "Otevřít složku pluginů";
+"Tauschen" = "Prohodit";
+"Dezimalstellen:" = "Desetinná místa:";

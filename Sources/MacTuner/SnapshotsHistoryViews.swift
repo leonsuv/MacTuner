@@ -11,18 +11,43 @@ struct SnapshotsView: View {
     @State private var compareB: UUID?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
                 Text("Snapshots").font(.system(size: 22, weight: .bold))
                 Chip(text: "\(model.snapshots.count)", icon: "camera")
                 Spacer()
+                if model.hasBin {
+                    Button {
+                        model.createSnapshot(name: defaultSnapshotName, note: "")
+                    } label: {
+                        Label("Schnell-Snapshot", systemImage: "camera.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
             }
 
             if !model.hasBin {
-                ContentUnavailableView("Keine BIN geladen", systemImage: "camera",
-                                       description: Text("Öffne zuerst eine BIN-Datei, um Snapshots anzulegen."))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 12) {
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 36, weight: .light))
+                        .foregroundStyle(Color.accentColor)
+                    Text("Keine BIN geladen").font(.title3.weight(.semibold))
+                    Text("Öffne zuerst eine BIN-Datei, um benannte Zwischenstände deiner Kalibrierung zu sichern.")
+                        .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .card(padding: 28)
             } else {
+                // KPI Row
+                HStack(spacing: 10) {
+                    let editedBytes = model.activeBin.map { b in zip(b.bytes, b.openedSnapshot).reduce(0) { $0 + ($1.0 != $1.1 ? 1 : 0) } } ?? 0
+                    snapshotKPI(title: "Gespeicherte Snapshots", value: "\(model.snapshots.count)", icon: "camera.fill", tint: .accentColor)
+                    snapshotKPI(title: "Aktive BIN", value: "\(model.bin.count / 1024) KB", icon: "memorychip", tint: .secondary)
+                    snapshotKPI(title: "Ungespeicherte Edits", value: "\(editedBytes) B", icon: "pencil.line", tint: editedBytes > 0 ? .orange : .green)
+                    snapshotKPI(title: "Letzter Snapshot", value: model.snapshots.first.map { $0.createdAt.formatted(date: .omitted, time: .shortened) } ?? "—", icon: "clock", tint: .secondary)
+                }
+
                 createCard
                 if model.snapshots.count >= 2 {
                     compareTwoBar
@@ -35,6 +60,18 @@ struct SnapshotsView: View {
         .padding(.top, 14)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func snapshotKPI(title: LocalizedStringKey, value: String, icon: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.caption).foregroundStyle(tint)
+                Text(title).font(.caption).foregroundStyle(.secondary)
+            }
+            Text(value).font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 12)
     }
 
     private var createCard: some View {
@@ -99,8 +136,22 @@ struct SnapshotsView: View {
     private var snapshotList: some View {
         Group {
             if model.snapshots.isEmpty {
-                ContentUnavailableView("Noch keine Snapshots", systemImage: "camera",
-                                       description: Text("Sichere benannte Zwischenstände deiner BIN, um sie jederzeit wiederherzustellen oder zu vergleichen."))
+                VStack(spacing: 14) {
+                    Image(systemName: "camera.on.rectangle")
+                        .font(.system(size: 34, weight: .light))
+                        .foregroundStyle(Color.accentColor)
+                    Text("Noch keine Snapshots").font(.title3.weight(.semibold))
+                    Text("Sichere benannte Zwischenstände vor größeren Änderungen (z. B. Stage 1, Launch Control, AGR-Off), um sie jederzeit per Klick wiederherzustellen oder im Hex-Diff zu vergleichen.")
+                        .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 460)
+                    Button {
+                        model.createSnapshot(name: "Basis-Stand", note: "Erster Sicherungspunkt")
+                    } label: {
+                        Label("Ersten Snapshot anlegen", systemImage: "camera.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .card(padding: 28)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
@@ -175,10 +226,26 @@ struct HistoryView: View {
                     .disabled(entries.isEmpty)
             }
 
+            // KPI Row
+            let editedBytes = model.activeBin.map { b in zip(b.bytes, b.openedSnapshot).reduce(0) { $0 + ($1.0 != $1.1 ? 1 : 0) } } ?? 0
+            HStack(spacing: 10) {
+                historyKPI(title: "Protokollierte Edits", value: "\(model.history.count)", icon: "clock.arrow.circlepath", tint: .accentColor)
+                historyKPI(title: "Geänderte Kennfelder", value: "\(Set(model.history.map(\.itemTitle)).count)", icon: "tablecells", tint: .orange)
+                historyKPI(title: "Geänderte Bytes", value: "\(editedBytes) B", icon: "memorychip", tint: editedBytes > 0 ? .orange : .green)
+                historyKPI(title: "Letzte Änderung", value: model.history.first.map { $0.timestamp.formatted(date: .omitted, time: .shortened) } ?? "—", icon: "clock", tint: .secondary)
+            }
+
             if entries.isEmpty {
-                ContentUnavailableView("Kein Verlauf vorhanden", systemImage: "clock",
-                                       description: Text("Jede Bearbeitung eines Kennfelds wird automatisch mit Zeitstempel, Wertänderung und optionaler Notiz protokolliert."))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 12) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 34, weight: .light))
+                        .foregroundStyle(Color.accentColor)
+                    Text("Kein Verlauf vorhanden").font(.title3.weight(.semibold))
+                    Text("Jede Bearbeitung eines Kennfelds wird automatisch mit Zeitstempel, Wertänderung und optionaler Notiz protokolliert und lässt sich als CSV exportieren.")
+                        .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 460)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .card(padding: 28)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
@@ -194,6 +261,18 @@ struct HistoryView: View {
         .padding(.top, 14)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func historyKPI(title: LocalizedStringKey, value: String, icon: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.caption).foregroundStyle(tint)
+                Text(title).font(.caption).foregroundStyle(.secondary)
+            }
+            Text(value).font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 12)
     }
 }
 

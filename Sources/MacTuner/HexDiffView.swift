@@ -2054,8 +2054,11 @@ struct HexDiffView: View {
         let cmp = model.compare ?? []
         let coralColor = Color(red: 0.92, green: 0.34, blue: 0.28)
         let cyanColor = Color(red: 0.20, green: 0.62, blue: 0.96)
-        let estW: CGFloat = info.isXDFColumn ? 270 : 280
-        let estH: CGFloat = info.isXDFColumn ? CGFloat(28 + info.spans.count * 22) : 76
+        let estW: CGFloat = info.isXDFColumn ? 270 : 300
+        let hoveredXDFItem: XDFItem? = info.spans.first.flatMap { sp in
+            model.definition?.items.first { $0.id == sp.itemID && $0.isTable && $0.data.byteRange.upperBound <= bin.count }
+        }
+        let estH: CGFloat = info.isXDFColumn ? CGFloat(28 + info.spans.count * 22) : (hoveredXDFItem != nil ? 156 : 76)
         let placeLeft = info.isXDFColumn || (info.point.x + estW + 20 > bounds.width)
         let x = placeLeft
             ? max(8, info.point.x - estW - 14)
@@ -2172,6 +2175,48 @@ struct HexDiffView: View {
                         Text("U16 \(lsbFirst ? "LoHi" : "HiLo"): \(u16Bin)")
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundStyle(.secondary)
+                    }
+                }
+
+                // Live Mini-Heatmap + Stats for Defined XDF Maps (never loses preview after adding to XDF!)
+                if let xdfMap = hoveredXDFItem {
+                    let ml = xdfMap.data, ms = xdfMap.scaling
+                    let vals: [[Double]] = (0..<ml.rows).map { r in
+                        (0..<ml.cols).map { c in
+                            BinCodec.raw(ml, Cell(r: r, c: c), in: bin).map(ms.value(raw:)) ?? 0
+                        }
+                    }
+                    let flat = vals.flatMap { $0 }
+                    let lo = flat.min() ?? 0, hi = flat.max() ?? 1
+                    let mean = flat.isEmpty ? 0 : flat.reduce(0, +) / Double(flat.count)
+                    let span = hi > lo ? hi - lo : 1.0
+                    let pal = model.heatmapPalette
+
+                    Divider().opacity(0.35)
+                    HStack(alignment: .top, spacing: 10) {
+                        Canvas { ctx, sz in
+                            let cw = sz.width / CGFloat(max(1, ml.cols))
+                            let ch = sz.height / CGFloat(max(1, ml.rows))
+                            for r in 0..<ml.rows {
+                                for c in 0..<ml.cols {
+                                    let t = (vals[r][c] - lo) / span
+                                    let col = Theme.heat(t, palette: pal).bg
+                                    ctx.fill(Path(CGRect(x: CGFloat(c) * cw, y: CGFloat(r) * ch, width: cw + 0.5, height: ch + 0.5)), with: .color(col))
+                                }
+                            }
+                        }
+                        .frame(width: 108, height: 62)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(activeTheme.accentColor.opacity(0.55), lineWidth: 0.8))
+
+                        VStack(alignment: .leading, spacing: 2.5) {
+                            Text("\(ml.rows)×\(ml.cols) · \(ml.bits)-Bit \(ml.lsbFirst ? "LoHi" : "HiLo")")
+                                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(activeTheme.accentColor)
+                            Text("Min: \(ms.format(lo))").font(.system(size: 9.5, design: .monospaced)).foregroundStyle(.secondary)
+                            Text("Max: \(ms.format(hi))").font(.system(size: 9.5, design: .monospaced)).foregroundStyle(.secondary)
+                            Text("Ø: \(ms.format(mean)) \(ms.units)").font(.system(size: 9.5, design: .monospaced)).foregroundStyle(.secondary)
+                        }
                     }
                 }
             }

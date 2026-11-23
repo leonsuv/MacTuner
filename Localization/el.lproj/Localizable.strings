@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "Studio (5 ενότητες)";
 "Erkennung & DTCs" = "Ανίχνευση & DTC";
 "Speicher-Map" = "Χάρτης μνήμης";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "Καμπύλες 2D";
+"Hex-Editor" = "Επεξεργαστής Hex";
+"Tabelle" = "Πίνακας";
+"Live-Vorschau" = "Ζωντανή προεπισκόπηση";
+"Skalierung & Einheit" = "Κλιμάκωση & Μονάδα";
+"Dekodierte Zellen (Auszug)" = "Αποκωδικοποιημένα κελιά";
+"Achsen-Vorschau" = "Προεπισκόπηση αξόνων";
+"Prüfsummen-Blöcke" = "Μπλοκ Checksum";
+"Erkannte DTCs" = "Ανιχνευθέντα DTC";
+"Schalter-Tabelle" = "Πίνακας διακοπτών";
+"Geprüfte Maps" = "Ελεγμένοι χάρτες";
+"Schnell-Snapshot" = "Γρήγορο στιγμιότυπο";
+"Ersten Snapshot anlegen" = "Δημιουργία πρώτου στιγμιότυπου";
+"Gespeicherte Snapshots" = "Αποθηκευμένα στιγμιότυπα";
+"Protokollierte Edits" = "Καταγεγραμμένες αλλαγές";
+"Geänderte Bytes" = "Τροποποιημένα bytes";
+"Aktiv & Fehlerfrei" = "Ενεργά & Έγκυρα";
+"Plugin-Ordner öffnen" = "Άνοιγμα φακέλου πρόσθετων";
+"Tauschen" = "Εναλλαγή";
+"Dezimalstellen:" = "Δεκαδικά:";

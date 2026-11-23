@@ -230,6 +230,14 @@ struct PluginsView: View {
             }
             .controlSize(.small)
 
+            // KPI Row
+            HStack(spacing: 10) {
+                pluginKPI(title: "JS-Dateien", value: "\(plugins.count)", icon: "doc.text", tint: .accentColor)
+                pluginKPI(title: "Aktiv & Fehlerfrei", value: "\(plugins.filter { $0.error == nil }.count)", icon: "checkmark.circle.fill", tint: .green)
+                pluginKPI(title: "Werkzeuge", value: "\(tools.count)", icon: "wrench.and.screwdriver", tint: .orange)
+                pluginKPI(title: "Runtime", value: "JavaScriptCore", icon: "cpu", tint: .secondary)
+            }
+
             if let lastOutput {
                 Text(lastOutput)
                     .font(.callout.monospaced())
@@ -239,11 +247,34 @@ struct PluginsView: View {
             }
 
             if plugins.isEmpty {
-                ContentUnavailableView(
-                    "Keine JS-Plugins installiert",
-                    systemImage: "puzzlepiece.extension",
-                    description: Text("Lege .js-Dateien in ~/Library/Application Support/MacTuner/Plugins/ ab oder erstelle ein Beispiel-Plugin für eigene Prüfsummen und Werkzeuge.")
-                )
+                VStack(spacing: 14) {
+                    Image(systemName: "puzzlepiece.extension")
+                        .font(.system(size: 36, weight: .light))
+                        .foregroundStyle(Color.accentColor)
+                    Text("Keine JS-Plugins installiert").font(.title3.weight(.semibold))
+                    Text("Erweitere MacTuner mit eigenen JavaScript-Prüfsummen, automatischen Patch-Skripten oder Analyse-Werkzeugen.")
+                        .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 460)
+                    HStack(spacing: 10) {
+                        Button {
+                            _ = PluginEngine.shared.createSamplePlugin()
+                            refresh()
+                        } label: {
+                            Label("Beispiel-Plugin erstellen", systemImage: "plus.circle.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button {
+                            NSWorkspace.shared.open(PluginEngine.shared.pluginsDirectory)
+                        } label: {
+                            Label("Plugin-Ordner öffnen", systemImage: "folder")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    Text("~/Library/Application Support/MacTuner/Plugins/")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .card(padding: 28)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Geladene Plugins").font(.headline)
@@ -293,6 +324,18 @@ struct PluginsView: View {
             PluginEngine.shared.reloadAll()
             refresh()
         }
+    }
+
+    private func pluginKPI(title: LocalizedStringKey, value: String, icon: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.caption).foregroundStyle(tint)
+                Text(title).font(.caption).foregroundStyle(.secondary)
+            }
+            Text(value).font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit()).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 12)
     }
 
     private func refresh() {

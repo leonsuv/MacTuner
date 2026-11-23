@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "Studio (5 Bereiche)";
 "Erkennung & DTCs" = "Erkennung & DTCs";
 "Speicher-Map" = "Speicher-Map";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "2D-Kurven";
+"Hex-Editor" = "Hex-Editor";
+"Tabelle" = "Tabelle";
+"Live-Vorschau" = "Live-Vorschau";
+"Skalierung & Einheit" = "Skalierung & Einheit";
+"Dekodierte Zellen (Auszug)" = "Dekodierte Zellen (Auszug)";
+"Achsen-Vorschau" = "Achsen-Vorschau";
+"Prüfsummen-Blöcke" = "Prüfsummen-Blöcke";
+"Erkannte DTCs" = "Erkannte DTCs";
+"Schalter-Tabelle" = "Schalter-Tabelle";
+"Geprüfte Maps" = "Geprüfte Maps";
+"Schnell-Snapshot" = "Schnell-Snapshot";
+"Ersten Snapshot anlegen" = "Ersten Snapshot anlegen";
+"Gespeicherte Snapshots" = "Gespeicherte Snapshots";
+"Protokollierte Edits" = "Protokollierte Edits";
+"Geänderte Bytes" = "Geänderte Bytes";
+"Aktiv & Fehlerfrei" = "Aktiv & Fehlerfrei";
+"Plugin-Ordner öffnen" = "Plugin-Ordner öffnen";
+"Tauschen" = "Tauschen";
+"Dezimalstellen:" = "Dezimalstellen:";

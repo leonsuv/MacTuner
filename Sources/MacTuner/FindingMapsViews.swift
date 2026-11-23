@@ -431,15 +431,21 @@ struct DiagnosticsView: View {
     var body: some View {
         let findings = model.diagnosticFindings
         let fixableCount = findings.filter { $0.safeFix != nil && ($0.confidence == .high || $0.confidence == .medium) }.count
+        let errCount = findings.filter { $0.severity == .error }.count
+        let warnCount = findings.count - errCount
+        let pf = model.flashPreflightReport
 
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                Text("Kennfeld-Diagnose").font(.system(size: 22, weight: .bold))
-                Chip(text: "\(findings.count) Hinweise", icon: "stethoscope")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Diagnose & Definition-Lint").font(.system(size: 20, weight: .bold))
+                    Text("Prüft Achsen-Monotonie, Ausreißer, Sättigung, xdfkit-Offsets und Firmware-Invarianten.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
                 if let fixNotice {
                     Text(fixNotice).font(.caption).foregroundStyle(.green)
                 }
-                Spacer()
                 if fixableCount > 0 {
                     Button {
                         let applied = model.applyDiagnosticsAutoFix()
@@ -452,40 +458,77 @@ struct DiagnosticsView: View {
                 }
             }
 
-            if !model.hasBin || model.definition == nil {
-                ContentUnavailableView("XDF und BIN benötigt", systemImage: "stethoscope")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if findings.isEmpty {
-                ContentUnavailableView("Keine Auffälligkeiten", systemImage: "checkmark.seal.fill",
-                                       description: Text("Alle Achsen sind monoton, keine Ausreißer, keine abgeschnittenen Kurven und keine Adressfehler gefunden."))
+            if !model.hasBin {
+                ContentUnavailableView("Keine BIN geladen", systemImage: "stethoscope",
+                                       description: Text("Öffne eine BIN-Datei für Struktur- und Definitionsdiagnose."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                Table(findings) {
-                    TableColumn("Typ") { f in
-                        Label(f.kind.rawValue, systemImage: f.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(f.severity == .error ? .red : .orange)
-                    }
-                    .width(min: 180, ideal: 220)
-                    TableColumn("Kennfeld") { f in
-                        Button(f.itemTitle) { model.selection = f.itemID }
-                            .buttonStyle(.link)
-                    }
-                    TableColumn("Auto-Fix") { f in
-                        Text(f.safeFix != nil ? f.confidence.rawValue : "—")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(f.safeFix != nil ? .green : .secondary)
-                    }
-                    .width(70)
-                    TableColumn("Details") { f in
-                        Text(f.detail).font(.caption).foregroundStyle(.secondary)
-                    }
+                // 4 KPI Cards (always informative, even without XDF!)
+                HStack(spacing: 10) {
+                    diagKPI("Geprüfte Maps", value: "\(model.definition?.items.count ?? 0)",
+                            sub: model.definition == nil ? "Nur BIN geladen" : "XDF/A2L aktiv", color: .accentColor)
+                    diagKPI("Fehler", value: "\(errCount)", sub: "Kritische Befunde", color: errCount > 0 ? .red : .green)
+                    diagKPI("Warnungen", value: "\(warnCount)", sub: "\(fixableCount) Auto-Fix verfügbar", color: warnCount > 0 ? .orange : .secondary)
+                    diagKPI("BIN-Status", value: pf.overallStatus == .ready ? "OK" : (pf.overallStatus == .caution ? "Prüfen" : "Blocker"),
+                            sub: "\(pf.checksumTriage.totalChangedBytes) geänderte Bytes",
+                            color: pf.overallStatus == .ready ? .green : (pf.overallStatus == .caution ? .orange : .red))
                 }
-                .card(padding: 6)
+
+                if model.definition == nil {
+                    VStack(spacing: 12) {
+                        Image(systemName: "doc.badge.gearshape").font(.system(size: 32)).foregroundStyle(Color.accentColor)
+                        Text("Keine XDF/A2L-Definition geladen").font(.headline)
+                        Text("Für das Kennfeld-Linting (Achsen-Monotonie, xdfkit-Offsets, Ausreißer & Sättigung) lade eine XDF/A2L/KP-Definition — oder nutze die Speicher-Map & Prüfsummen für reine BIN-Prüfungen.")
+                            .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 480)
+                        HStack(spacing: 10) {
+                            Button("XDF öffnen …") { model.openXDFPanel() }.buttonStyle(.borderedProminent)
+                            Button("Preflight & Prüfsummen") { model.selection = AppModel.checksumSelection }
+                        }
+                        .controlSize(.small)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .card(padding: 20)
+                } else if findings.isEmpty {
+                    ContentUnavailableView("Keine Auffälligkeiten", systemImage: "checkmark.seal.fill",
+                                           description: Text("Alle Achsen sind monoton, keine Ausreißer, keine abgeschnittenen Kurven und keine Adressfehler gefunden."))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .card(padding: 20)
+                } else {
+                    Table(findings) {
+                        TableColumn("Typ") { f in
+                            Label(f.kind.rawValue, systemImage: f.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(f.severity == .error ? .red : .orange)
+                        }
+                        .width(min: 180, ideal: 220)
+                        TableColumn("Kennfeld") { f in
+                            Button(f.itemTitle) { model.selection = f.itemID }
+                                .buttonStyle(.link)
+                        }
+                        TableColumn("Auto-Fix") { f in
+                            Text(f.safeFix != nil ? f.confidence.rawValue : "—")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(f.safeFix != nil ? .green : .secondary)
+                        }
+                        .width(70)
+                        TableColumn("Details") { f in
+                            Text(f.detail).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .card(padding: 6)
+                }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
+        .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func diagKPI(_ title: String, value: String, sub: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased()).font(.system(size: 9.5, weight: .bold)).foregroundStyle(.secondary).tracking(0.5)
+            Text(value).font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit()).foregroundStyle(color)
+            Text(sub).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 11)
     }
 }

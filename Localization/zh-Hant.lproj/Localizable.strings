@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "工作室（5 分區）";
 "Erkennung & DTCs" = "辨識與故障碼";
 "Speicher-Map" = "記憶體分區圖";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "2D 曲線";
+"Hex-Editor" = "Hex 編輯器";
+"Tabelle" = "表格";
+"Live-Vorschau" = "即時預覽";
+"Skalierung & Einheit" = "縮放與單位";
+"Dekodierte Zellen (Auszug)" = "解碼儲存格（範例）";
+"Achsen-Vorschau" = "座標軸預覽";
+"Prüfsummen-Blöcke" = "校驗和區塊";
+"Erkannte DTCs" = "偵測到的 DTC";
+"Schalter-Tabelle" = "開關表";
+"Geprüfte Maps" = "已檢查的圖譜";
+"Schnell-Snapshot" = "快速快照";
+"Ersten Snapshot anlegen" = "建立第一個快照";
+"Gespeicherte Snapshots" = "已儲存快照";
+"Protokollierte Edits" = "已記錄編輯";
+"Geänderte Bytes" = "已修改位元組";
+"Aktiv & Fehlerfrei" = "有效且無錯誤";
+"Plugin-Ordner öffnen" = "開啟外掛資料夾";
+"Tauschen" = "交換";
+"Dezimalstellen:" = "小數位：";

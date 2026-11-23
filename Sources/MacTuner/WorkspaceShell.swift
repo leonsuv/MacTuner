@@ -57,7 +57,7 @@ enum StudioMode: String, CaseIterable, Identifiable {
 
     static func from(selection: Int?) -> StudioMode {
         switch selection {
-        case AppModel.mapFinderSelection, AppModel.dtcSelection:
+        case AppModel.mapFinderSelection, AppModel.dtcSelection, AppModel.versionPortSelection:
             return .discovery
         case AppModel.memoryAtlasSelection:
             return .memoryMap
@@ -152,6 +152,7 @@ struct StudioSubBar: View {
                                 .frame(height: 2)
                                 .clipShape(Capsule())
                         }
+                        .fixedSize()
                     }
                     .buttonStyle(.plain)
                     .disabled(item.disabled)

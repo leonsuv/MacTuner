@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "工作室（5 分区）";
 "Erkennung & DTCs" = "识别与故障码";
 "Speicher-Map" = "内存分区图";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "2D 曲线";
+"Hex-Editor" = "Hex 编辑器";
+"Tabelle" = "表格";
+"Live-Vorschau" = "实时预览";
+"Skalierung & Einheit" = "缩放与单位";
+"Dekodierte Zellen (Auszug)" = "解码单元格（示例）";
+"Achsen-Vorschau" = "坐标轴预览";
+"Prüfsummen-Blöcke" = "校验和块";
+"Erkannte DTCs" = "检测到的 DTC";
+"Schalter-Tabelle" = "开关表";
+"Geprüfte Maps" = "已检查的图谱";
+"Schnell-Snapshot" = "快速快照";
+"Ersten Snapshot anlegen" = "创建第一个快照";
+"Gespeicherte Snapshots" = "已保存快照";
+"Protokollierte Edits" = "已记录编辑";
+"Geänderte Bytes" = "已修改字节";
+"Aktiv & Fehlerfrei" = "有效且无错误";
+"Plugin-Ordner öffnen" = "打开插件文件夹";
+"Tauschen" = "交换";
+"Dezimalstellen:" = "小数位：";

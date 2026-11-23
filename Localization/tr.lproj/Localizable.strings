@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "Stüdyo (5 Bölüm)";
 "Erkennung & DTCs" = "Keşif ve DTC'ler";
 "Speicher-Map" = "Bellek Haritası";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "2D Eğriler";
+"Hex-Editor" = "Hex Düzenleyici";
+"Tabelle" = "Tablo";
+"Live-Vorschau" = "Canlı Önizleme";
+"Skalierung & Einheit" = "Ölçekleme ve Birim";
+"Dekodierte Zellen (Auszug)" = "Çözümlenen Hücreler";
+"Achsen-Vorschau" = "Eksen Önizlemesi";
+"Prüfsummen-Blöcke" = "Checksum Blokları";
+"Erkannte DTCs" = "Algılanan DTC'ler";
+"Schalter-Tabelle" = "Anahtar Tablosu";
+"Geprüfte Maps" = "Kontrol Edilen Haritalar";
+"Schnell-Snapshot" = "Hızlı Anlık Görüntü";
+"Ersten Snapshot anlegen" = "İlk Anlık Görüntüyü Oluştur";
+"Gespeicherte Snapshots" = "Kayıtlı Anlık Görüntüler";
+"Protokollierte Edits" = "Kaydedilen Düzenlemeler";
+"Geänderte Bytes" = "Değiştirilen Baytlar";
+"Aktiv & Fehlerfrei" = "Aktif ve Geçerli";
+"Plugin-Ordner öffnen" = "Eklenti Klasörünü Aç";
+"Tauschen" = "Değiştir";
+"Dezimalstellen:" = "Ondalık:";

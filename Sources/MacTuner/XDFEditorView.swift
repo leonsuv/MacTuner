@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Built-in XDF item & category editor: add/edit tables, constants, flags, patches, axes, formulas and categories.
+/// Built-in XDF item & category editor: spacious 2-column layout with real-time decoded preview.
 struct XDFItemEditorSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -54,10 +54,19 @@ struct XDFItemEditorSheet: View {
     @State private var baseHexText = ""
 
     enum ItemType: String, CaseIterable {
-        case table = "Kennfeld (Table)"
-        case constant = "Konstante (Constant)"
-        case flag = "Schalter (Flag)"
+        case table = "Kennfeld"
+        case constant = "Konstante"
+        case flag = "Schalter"
         case patch = "Patch"
+
+        var icon: String {
+            switch self {
+            case .table: return "tablecells"
+            case .constant: return "number.square"
+            case .flag: return "switch.2"
+            case .patch: return "bandage"
+            }
+        }
     }
 
     init(existingItem: XDFItem? = nil, presetRange: Range<Int>? = nil, presetCandidate: MapFinder.Candidate? = nil) {
@@ -154,166 +163,785 @@ struct XDFItemEditorSheet: View {
         }
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(existingID == nil ? "Neues XDF-Element" as LocalizedStringKey : "XDF-Element bearbeiten")
-                    .font(.title3.bold())
-                Spacer()
-                if existingID != nil {
-                    Button("Löschen", role: .destructive) {
-                        if let id = existingID { model.deleteXDFItem(id: id) }
-                        dismiss()
-                    }
-                }
-            }
+    private var parsedAddress: Int? { XDFParser.int(addressText) }
 
-            Form {
-                Section("Allgemein") {
-                    Picker("Typ", selection: $itemType) {
-                        ForEach(ItemType.allCases, id: \.self) { t in Text(t.rawValue).tag(t) }
-                    }
-                    .pickerStyle(.segmented)
-                    TextField("Titel", text: $title)
-                    TextField("Beschreibung", text: $description)
-                    HStack {
-                        Picker("Kategorie", selection: $categoryID) {
-                            Text("Ohne Kategorie").tag(-1)
-                            if let cats = model.definition?.categories {
-                                ForEach(cats.keys.sorted(), id: \.self) { k in
-                                    Text(cats[k] ?? "").tag(k)
-                                }
-                            }
-                        }
-                        TextField("Neue Kategorie …", text: $newCategoryName)
-                            .frame(width: 140)
-                        Button("+") {
-                            let clean = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !clean.isEmpty else { return }
-                            categoryID = model.addXDFCategory(clean)
-                            newCategoryName = ""
-                        }
-                        .disabled(newCategoryName.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                }
-
-                Section("Daten-Layout") {
-                    HStack(spacing: 6) {
-                        TextField("Adresse (Hex)", text: $addressText)
-                        ControlGroup {
-                            Button("-2") { nudgeAddress(-2) }
-                            Button("-1") { nudgeAddress(-1) }
-                            Button("+1") { nudgeAddress(1) }
-                            Button("+2") { nudgeAddress(2) }
-                        }
-                        .fixedSize()
-                        .controlSize(.small)
-                        .help("Startadresse in Bytes verschieben (Live-Vorschau unten)")
-                        if itemType != .patch {
-                            Picker("Bits", selection: $bits) {
-                                Text("8").tag(8)
-                                Text("16").tag(16)
-                                Text("32").tag(32)
-                            }
-                            .frame(width: 90)
-                        }
-                    }
-                    if model.hasBin, itemType != .patch, let preview = livePreviewValues {
-                        HStack(spacing: 6) {
-                            Text("Vorschau:").font(.caption2).foregroundStyle(.secondary)
-                            Text(preview).font(.caption2.monospaced()).foregroundStyle(Color.accentColor).lineLimit(1)
-                        }
-                    }
-                    if itemType == .table {
-                        HStack {
-                            Stepper("Zeilen: \(rows)", value: $rows, in: 1...256)
-                            Stepper("Spalten: \(cols)", value: $cols, in: 1...256)
-                        }
-                    }
-                    if itemType != .patch {
-                        HStack(spacing: 14) {
-                            Toggle("Signed", isOn: $signed)
-                            Toggle("LSB First (LE)", isOn: $lsbFirst)
-                            if itemType == .table { Toggle("Column-Major", isOn: $columnMajor) }
-                            Toggle("Float", isOn: $isFloat)
-                        }
-                    }
-                }
-
-                if itemType == .table || itemType == .constant {
-                    Section("Skalierung") {
-                        HStack {
-                            TextField("Formel (z. B. X * 0.1 - 40)", text: $equation)
-                            TextField("Einheit", text: $units).frame(width: 90)
-                        }
-                        HStack {
-                            Stepper("Nachkommastellen: \(decimals)", value: $decimals, in: 0...6)
-                            Picker("Ausgabe", selection: $outputType) {
-                                Text("Float").tag(OutputType.float)
-                                Text("Integer").tag(OutputType.integer)
-                                Text("Hex").tag(OutputType.hex)
-                            }
-                            .frame(width: 150)
-                        }
-                    }
-                }
-
-                if itemType == .table {
-                    Section("Achsen (optional, leer = Index)") {
-                        HStack(spacing: 6) {
-                            Text("X:").frame(width: 18)
-                            TextField("Adresse 0x…", text: $xAddrText).frame(width: 88)
-                            Picker("", selection: $xBits) { Text("8b").tag(8); Text("16b").tag(16); Text("32b").tag(32) }.frame(width: 64)
-                            Toggle("±", isOn: $xSigned).toggleStyle(.button).controlSize(.mini).help("X-Achse vorzeichenbehaftet (Signed)")
-                            Toggle("F", isOn: $xIsFloat).toggleStyle(.button).controlSize(.mini).help("X-Achse 32-Bit Float")
-                            TextField("Formel", text: $xEq)
-                            TextField("Einheit", text: $xUnits).frame(width: 64)
-                        }
-                        HStack(spacing: 6) {
-                            Text("Y:").frame(width: 18)
-                            TextField("Adresse 0x…", text: $yAddrText).frame(width: 88)
-                            Picker("", selection: $yBits) { Text("8b").tag(8); Text("16b").tag(16); Text("32b").tag(32) }.frame(width: 64)
-                            Toggle("±", isOn: $ySigned).toggleStyle(.button).controlSize(.mini).help("Y-Achse vorzeichenbehaftet (Signed)")
-                            Toggle("F", isOn: $yIsFloat).toggleStyle(.button).controlSize(.mini).help("Y-Achse 32-Bit Float")
-                            TextField("Formel", text: $yEq)
-                            TextField("Einheit", text: $yUnits).frame(width: 64)
-                        }
-                    }
-                }
-
-                if itemType == .flag {
-                    Section("Bitmaske") {
-                        TextField("Maske (z. B. 0x01, 0x04)", text: $flagMaskText)
-                        Toggle("Invertiert (0 = Ein)", isOn: $flagInvert)
-                    }
-                }
-
-                if itemType == .patch {
-                    Section("Patch-Daten (Hex)") {
-                        TextField("Patch-Bytes (z. B. 90 90)", text: $patchHexText)
-                        TextField("Original-Bytes (optional)", text: $baseHexText)
-                    }
-                }
-            }
-            .formStyle(.grouped)
-
-            HStack {
-                Spacer()
-                Button("Abbrechen") { dismiss() }
-                Button("Speichern", action: save)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || XDFParser.int(addressText) == nil)
-            }
+    private var activeLayout: DataLayout? {
+        guard let addr = parsedAddress, addr >= 0 else { return nil }
+        switch itemType {
+        case .table:
+            return DataLayout(address: addr, bits: bits, signed: signed, lsbFirst: lsbFirst,
+                              columnMajor: columnMajor, isFloat: isFloat, rows: rows, cols: cols)
+        case .constant:
+            return DataLayout(address: addr, bits: bits, signed: signed, lsbFirst: lsbFirst,
+                              columnMajor: false, isFloat: isFloat, rows: 1, cols: 1)
+        case .flag:
+            return DataLayout(address: addr, bits: bits, signed: false, lsbFirst: lsbFirst,
+                              columnMajor: false, isFloat: false, rows: 1, cols: 1)
+        case .patch:
+            let pBytes = XDFParser.parseHexBytes(patchHexText)
+            return DataLayout(address: addr, bits: 8, signed: false, lsbFirst: false,
+                              columnMajor: false, isFloat: false, rows: 1, cols: max(1, pBytes.count))
         }
-        .padding(16)
-        .frame(width: 560, height: 600)
     }
 
-    private func save() {
-        guard let addr = XDFParser.int(addressText) else { return }
-        let cats = categoryID >= 0 ? [categoryID] : []
+    private var activeScaling: Scaling {
         let eq = equation.trimmingCharacters(in: .whitespaces).isEmpty ? "X" : equation
-        let sc = Scaling(equation: eq, expr: Expr.parse(eq) ?? .x, units: units, decimals: decimals, output: outputType)
+        return Scaling(equation: eq, expr: Expr.parse(eq) ?? .x, units: units, decimals: decimals, output: outputType)
+    }
+
+    private var byteCount: Int {
+        guard let dl = activeLayout else { return 0 }
+        return dl.rows * dl.cols * max(1, dl.bits / 8)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            sheetHeader
+            Divider()
+            HStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        generalCard
+                        dataLayoutCard
+                        if itemType == .table || itemType == .constant {
+                            scalingCard
+                        }
+                        if itemType == .table {
+                            axesCard
+                        }
+                        if itemType == .flag {
+                            flagCard
+                        }
+                        if itemType == .patch {
+                            patchCard
+                        }
+                    }
+                    .padding(16)
+                }
+                .frame(minWidth: 520, maxWidth: .infinity)
+
+                Divider()
+
+                livePreviewColumn
+                    .frame(width: 310)
+                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
+            }
+            Divider()
+            sheetFooter
+        }
+        .frame(width: 860, height: 620)
+    }
+
+    // MARK: - Header & Footer
+
+    private var sheetHeader: some View {
+        HStack(spacing: 12) {
+            Image(systemName: itemType.icon)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 30, height: 30)
+                .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(existingID == nil ? "Neues XDF-Element" as LocalizedStringKey : "XDF-Element bearbeiten")
+                    .font(.headline)
+                if let addr = parsedAddress, byteCount > 0 {
+                    Text(String(format: "0x%X – 0x%X · %d Bytes", addr, addr + byteCount - 1, byteCount))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            Picker("", selection: $itemType) {
+                ForEach(ItemType.allCases, id: \.self) { t in
+                    Text(t.rawValue).tag(t)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 310)
+
+            if existingID != nil {
+                Button(role: .destructive) {
+                    if let id = existingID { model.deleteXDFItem(id: id) }
+                    dismiss()
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.bordered)
+                .help("Element aus XDF löschen")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var sheetFooter: some View {
+        HStack(spacing: 10) {
+            if title.trimmingCharacters(in: .whitespaces).isEmpty {
+                Label("Bitte einen Titel eingeben", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if parsedAddress == nil {
+                Label("Ungültige Hex-Adresse", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if let dl = activeLayout, model.hasBin, dl.address + byteCount > model.bin.count {
+                Label("Bereich überschreitet BIN-Größe", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else {
+                Text("Änderungen werden sofort in die aktive XDF-Definition übernommen.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button("Abbrechen") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+
+            Button("Speichern", action: save)
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || parsedAddress == nil)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    // MARK: - Left Column Cards
+
+    private var generalCard: some View {
+        editorCard(title: "Allgemein", icon: "tag") {
+            editorRow("Titel") {
+                TextField("z. B. Einspritzmenge Volllast", text: $title)
+                    .textFieldStyle(.roundedBorder)
+            }
+            editorRow("Beschreibung") {
+                TextField("Optionale Notiz zur Funktion oder Einheit", text: $description)
+                    .textFieldStyle(.roundedBorder)
+            }
+            editorRow("Kategorie") {
+                HStack(spacing: 8) {
+                    Picker("", selection: $categoryID) {
+                        Text("Ohne Kategorie").tag(-1)
+                        if let cats = model.definition?.categories {
+                            ForEach(cats.keys.sorted(), id: \.self) { k in
+                                Text(cats[k] ?? "").tag(k)
+                            }
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(minWidth: 150)
+
+                    TextField("Neue Kategorie …", text: $newCategoryName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 140)
+
+                    Button {
+                        let clean = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !clean.isEmpty else { return }
+                        categoryID = model.addXDFCategory(clean)
+                        newCategoryName = ""
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(newCategoryName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .help("Neue Kategorie anlegen")
+                }
+            }
+        }
+    }
+
+    private var dataLayoutCard: some View {
+        editorCard(title: "Daten-Layout", icon: "memorychip") {
+            editorRow("Adresse") {
+                HStack(spacing: 8) {
+                    TextField("0x00000", text: $addressText)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.body.monospaced())
+                        .frame(width: 118)
+
+                    ControlGroup {
+                        Button("-2") { nudgeAddress(-2) }
+                        Button("-1") { nudgeAddress(-1) }
+                        Button("+1") { nudgeAddress(1) }
+                        Button("+2") { nudgeAddress(2) }
+                    }
+                    .fixedSize()
+                    .controlSize(.small)
+                    .help("Startadresse in Bytes verschieben (Live-Vorschau rechts)")
+
+                    Spacer()
+
+                    if itemType != .patch {
+                        Text("Bits")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: $bits) {
+                            Text("8").tag(8)
+                            Text("16").tag(16)
+                            Text("32").tag(32)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 112)
+                    }
+                }
+            }
+
+            if itemType == .table {
+                editorRow("Größe") {
+                    HStack(spacing: 10) {
+                        HStack(spacing: 4) {
+                            Text("Zeilen:")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("", value: $rows, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.body.monospacedDigit())
+                                .frame(width: 50)
+                            Stepper("", value: $rows, in: 1...256)
+                                .labelsHidden()
+                        }
+
+                        Text("×")
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 4) {
+                            Text("Spalten:")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("", value: $cols, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.body.monospacedDigit())
+                                .frame(width: 50)
+                            Stepper("", value: $cols, in: 1...256)
+                                .labelsHidden()
+                        }
+
+                        Spacer()
+
+                        Button {
+                            swap(&rows, &cols)
+                        } label: {
+                            Label("Tauschen", systemImage: "arrow.left.arrow.right")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+            }
+
+            if itemType != .patch {
+                editorRow("Format") {
+                    HStack(spacing: 8) {
+                        formatTogglePill("Signed (±)", isOn: $signed)
+                        formatTogglePill("LSB First (LE)", isOn: $lsbFirst)
+                        if itemType == .table {
+                            formatTogglePill("Column-Major", isOn: $columnMajor)
+                        }
+                        formatTogglePill("Float", isOn: $isFloat)
+                        Spacer()
+                    }
+                }
+            }
+        }
+    }
+
+    private var scalingCard: some View {
+        editorCard(title: "Skalierung & Einheit", icon: "function") {
+            editorRow("Formel") {
+                HStack(spacing: 8) {
+                    TextField("X * 0.1 - 40", text: $equation)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.body.monospaced())
+
+                    Text("Einheit")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+
+                    TextField("z. B. °C, Nm", text: $units)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 100)
+                }
+            }
+
+            editorRow("Ausgabe") {
+                HStack(spacing: 12) {
+                    Picker("", selection: $outputType) {
+                        Text("Float").tag(OutputType.float)
+                        Text("Integer").tag(OutputType.integer)
+                        Text("Hex").tag(OutputType.hex)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 190)
+
+                    Spacer()
+
+                    Text("Dezimalstellen:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                    Text("\(decimals)")
+                        .font(.body.monospacedDigit().weight(.medium))
+                        .frame(width: 16, alignment: .trailing)
+                    Stepper("", value: $decimals, in: 0...6)
+                        .labelsHidden()
+                }
+            }
+        }
+    }
+
+    private var axesCard: some View {
+        editorCard(title: "Achsen (optional, leer = Index)", icon: "arrow.up.left.and.arrow.down.right") {
+            axisSubCard(
+                label: "X-Achse (Spalten · \(cols))",
+                addr: $xAddrText, bits: $xBits, signed: $xSigned,
+                isFloat: $xIsFloat, eq: $xEq, units: $xUnits
+            )
+            axisSubCard(
+                label: "Y-Achse (Zeilen · \(rows))",
+                addr: $yAddrText, bits: $yBits, signed: $ySigned,
+                isFloat: $yIsFloat, eq: $yEq, units: $yUnits
+            )
+        }
+    }
+
+    private func axisSubCard(
+        label: String,
+        addr: Binding<String>,
+        bits: Binding<Int>,
+        signed: Binding<Bool>,
+        isFloat: Binding<Bool>,
+        eq: Binding<String>,
+        units: Binding<String>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Text("Adresse")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 52, alignment: .leading)
+                TextField("0x… (leer = Index)", text: addr)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.callout.monospaced())
+                    .frame(width: 130)
+
+                Picker("", selection: bits) {
+                    Text("8-Bit").tag(8)
+                    Text("16-Bit").tag(16)
+                    Text("32-Bit").tag(32)
+                }
+                .labelsHidden()
+                .frame(width: 78)
+
+                formatTogglePill("Signed", isOn: signed)
+                formatTogglePill("Float", isOn: isFloat)
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                Text("Formel")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 52, alignment: .leading)
+                TextField("X", text: eq)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.callout.monospaced())
+
+                Text("Einheit")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+                TextField("rpm, %", text: units)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 90)
+            }
+        }
+        .padding(10)
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.07)))
+    }
+
+    private var flagCard: some View {
+        editorCard(title: "Bitmaske", icon: "switch.2") {
+            editorRow("Maske") {
+                HStack(spacing: 8) {
+                    TextField("0x01", text: $flagMaskText)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.body.monospaced())
+                        .frame(width: 110)
+
+                    if bits == 8 {
+                        let maskVal = XDFParser.uint64(flagMaskText) ?? 0
+                        HStack(spacing: 3) {
+                            ForEach((0..<8).reversed(), id: \.self) { bit in
+                                let isSet = (maskVal & (1 << bit)) != 0
+                                Button("\(bit)") {
+                                    let next = maskVal ^ (1 << bit)
+                                    flagMaskText = String(format: "0x%02X", next == 0 ? (1 << bit) : next)
+                                }
+                                .buttonStyle(.plain)
+                                .font(.caption2.monospaced().bold())
+                                .frame(width: 22, height: 22)
+                                .background(
+                                    isSet ? Color.accentColor : Color.primary.opacity(0.08),
+                                    in: RoundedRectangle(cornerRadius: 5)
+                                )
+                                .foregroundStyle(isSet ? .white : .secondary)
+                            }
+                        }
+                    }
+                    Spacer()
+                }
+            }
+            editorRow("Logik") {
+                Toggle("Invertiert (0 = Aktiv, 1 = Inaktiv)", isOn: $flagInvert)
+                    .toggleStyle(.checkbox)
+            }
+        }
+    }
+
+    private var patchCard: some View {
+        editorCard(title: "Patch-Daten (Hex)", icon: "bandage") {
+            editorRow("Patch-Bytes") {
+                TextField("z. B. 90 90 00 FF", text: $patchHexText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.body.monospaced())
+            }
+            editorRow("Original") {
+                TextField("Original-Bytes (optional zur Prüfung)", text: $baseHexText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.body.monospaced())
+            }
+        }
+    }
+
+    // MARK: - Right Column: Real-Time Decoded Preview
+
+    private var livePreviewColumn: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Label("Live-Vorschau", systemImage: "eye")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    if let dl = activeLayout {
+                        Text("\(dl.bits)b \(dl.lsbFirst ? "LE" : "BE")")
+                            .font(.caption2.monospaced().weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.14), in: Capsule())
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
+
+                if !model.hasBin {
+                    previewEmptyState(icon: "doc.questionmark", text: "Keine BIN-Datei geladen.\nÖffne eine BIN, um Live-Werte zu sehen.")
+                } else if let dl = activeLayout, dl.address < model.bin.count {
+                    switch itemType {
+                    case .table:
+                        tablePreview(layout: dl)
+                    case .constant:
+                        constantPreview(layout: dl)
+                    case .flag:
+                        flagPreview(layout: dl)
+                    case .patch:
+                        patchPreview(address: dl.address)
+                    }
+                } else {
+                    previewEmptyState(icon: "exclamationmark.triangle", text: "Ungültige Adresse oder außerhalb der BIN-Datei.")
+                }
+            }
+            .padding(14)
+        }
+    }
+
+    @ViewBuilder
+    private func tablePreview(layout dl: DataLayout) -> some View {
+        let sc = activeScaling
+        let maxR = min(dl.rows, 24)
+        let maxC = min(dl.cols, 24)
+        let matrix: [[Double]] = (0..<maxR).map { r in
+            (0..<maxC).map { c in
+                guard let raw = BinCodec.raw(dl, Cell(r: r, c: c), in: model.bin) else { return 0 }
+                return sc.value(raw: raw)
+            }
+        }
+        let flat = matrix.flatMap { $0 }
+        let mn = flat.min() ?? 0
+        let mx = flat.max() ?? 0
+        let avg = flat.isEmpty ? 0 : flat.reduce(0, +) / Double(flat.count)
+        let span = max(mx - mn, 1e-9)
+
+        // 1. Visual Mini-Heatmap or 1D Curve
+        VStack(alignment: .leading, spacing: 6) {
+            Text(dl.rows == 1 || dl.cols == 1 ? "1D-Kennlinie (\(dl.rows)×\(dl.cols))" : "2D-Heatmap (\(dl.rows)×\(dl.cols))")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            if dl.rows == 1 || dl.cols == 1 {
+                let series = flat
+                Canvas { ctx, size in
+                    guard series.count > 1 else { return }
+                    var path = Path()
+                    for (i, v) in series.enumerated() {
+                        let x = CGFloat(i) / CGFloat(series.count - 1) * size.width
+                        let y = size.height - CGFloat((v - mn) / span) * (size.height - 8) - 4
+                        if i == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
+                    }
+                    ctx.stroke(path, with: .color(.accentColor), lineWidth: 2)
+                }
+                .frame(height: 110)
+                .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+            } else {
+                Canvas { ctx, size in
+                    let cw = size.width / CGFloat(max(1, maxC))
+                    let ch = size.height / CGFloat(max(1, maxR))
+                    for r in 0..<maxR {
+                        for c in 0..<maxC {
+                            let t = (matrix[r][c] - mn) / span
+                            let col = Theme.heat(t).bg
+                            ctx.fill(Path(CGRect(x: CGFloat(c) * cw, y: CGFloat(r) * ch, width: cw + 0.5, height: ch + 0.5)), with: .color(col))
+                        }
+                    }
+                }
+                .frame(height: 120)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.12)))
+            }
+        }
+
+        // 2. Min / Max / Avg KPI strip
+        HStack(spacing: 6) {
+            previewStatTile("Min", formatScaled(mn, sc))
+            previewStatTile("Ø", formatScaled(avg, sc))
+            previewStatTile("Max", formatScaled(mx, sc))
+        }
+
+        // 3. Decoded Sample Values (top-left 4×4)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Dekodierte Zellen (Auszug)")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            let sampleR = min(4, dl.rows)
+            let sampleC = min(4, dl.cols)
+            VStack(spacing: 2) {
+                ForEach(0..<sampleR, id: \.self) { r in
+                    HStack(spacing: 2) {
+                        ForEach(0..<sampleC, id: \.self) { c in
+                            let text = BinCodec.raw(dl, Cell(r: r, c: c), in: model.bin)
+                                .map { sc.display(raw: $0, layout: dl) } ?? "—"
+                            Text(text)
+                                .font(.system(size: 10, design: .monospaced))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 2)
+                                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 4))
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Axis Preview
+        if !xAddrText.isEmpty || !yAddrText.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Achsen-Vorschau")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                if let xSummary = axisPreviewLine(addrText: xAddrText, bits: xBits, signed: xSigned, isFloat: xIsFloat, eq: xEq, units: xUnits, count: cols) {
+                    Text("X: \(xSummary)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.primary)
+                }
+                if let ySummary = axisPreviewLine(addrText: yAddrText, bits: yBits, signed: ySigned, isFloat: yIsFloat, eq: yEq, units: yUnits, count: rows) {
+                    Text("Y: \(ySummary)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.primary)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    @ViewBuilder
+    private func constantPreview(layout dl: DataLayout) -> some View {
+        let sc = activeScaling
+        if let raw = BinCodec.raw(dl, Cell(r: 0, c: 0), in: model.bin) {
+            let formatted = sc.display(raw: raw, layout: dl)
+            VStack(spacing: 8) {
+                Text(units.isEmpty ? formatted : "\(formatted) \(units)")
+                    .font(.system(size: 28, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.accentColor)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                Text(String(format: "Rohwert: %.0f  (0x%X)", raw, Int(raw)))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 24)
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
+        } else {
+            previewEmptyState(icon: "exclamationmark.triangle", text: "Wert konnte an dieser Adresse nicht gelesen werden.")
+        }
+    }
+
+    @ViewBuilder
+    private func flagPreview(layout dl: DataLayout) -> some View {
+        let mask = XDFParser.uint64(flagMaskText) ?? 1
+        if let raw = BinCodec.raw(dl, Cell(r: 0, c: 0), in: model.bin) {
+            let uval = UInt64(max(0, Int64(raw)))
+            let masked = (uval & mask) != 0
+            let active = flagInvert ? !masked : masked
+
+            VStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(active ? Color.green : Color.secondary.opacity(0.4))
+                        .frame(width: 10, height: 10)
+                    Text(active ? "AKTIV (EIN)" : "INAKTIV (AUS)")
+                        .font(.headline)
+                        .foregroundStyle(active ? .green : .secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background((active ? Color.green : Color.secondary).opacity(0.12), in: Capsule())
+
+                Text(String(format: "Byte: 0x%02X · Maske: 0x%X", uval, mask))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 24)
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    @ViewBuilder
+    private func patchPreview(address: Int) -> some View {
+        let pBytes = XDFParser.parseHexBytes(patchHexText)
+        let current = (0..<max(1, pBytes.count)).compactMap { i -> UInt8? in
+            let idx = address + i
+            return idx < model.bin.count ? model.bin[idx] : nil
+        }
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Aktuell in BIN:")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(current.map { String(format: "%02X", $0) }.joined(separator: " "))
+                .font(.caption.monospaced())
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+
+            Text("Patch-Bytes (\(pBytes.count) B):")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(pBytes.isEmpty ? "—" : pBytes.map { String(format: "%02X", $0) }.joined(separator: " "))
+                .font(.caption.monospaced())
+                .foregroundStyle(Color.accentColor)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    private func previewStatTile(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.monospaced().weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func previewEmptyState(icon: String, text: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 36)
+        .padding(.horizontal, 12)
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: - Reusable Layout Helpers
+
+    private func editorCard<Content: View>(title: LocalizedStringKey, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+            }
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
+    }
+
+    private func editorRow<Content: View>(_ label: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(label)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(width: 92, alignment: .leading)
+                .lineLimit(1)
+            content()
+        }
+    }
+
+    private func formatTogglePill(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(title, isOn: isOn)
+            .toggleStyle(.button)
+            .controlSize(.small)
+            .fixedSize()
+    }
+
+    // MARK: - Actions & Math Helpers
+
+    private func save() {
+        guard let addr = parsedAddress else { return }
+        let cats = categoryID >= 0 ? [categoryID] : []
+        let sc = activeScaling
 
         let dl: DataLayout
         let kind: XDFItem.Kind
@@ -360,22 +988,27 @@ struct XDFItemEditorSheet: View {
         return Axis(source: .none, count: count, scaling: sc)
     }
 
-    private func nudgeAddress(_ delta: Int) {
-        let cur = XDFParser.int(addressText) ?? 0
-        let next = max(0, cur + delta)
-        addressText = String(format: "0x%X", next)
+    private func axisPreviewLine(addrText: String, bits: Int, signed: Bool, isFloat: Bool, eq: String, units: String, count: Int) -> String? {
+        guard let a = XDFParser.int(addrText), count > 0 else { return nil }
+        let cleanEq = eq.trimmingCharacters(in: .whitespaces).isEmpty ? "X" : eq
+        let sc = Scaling(equation: cleanEq, expr: Expr.parse(cleanEq) ?? .x, units: units, decimals: 1, output: .float)
+        let l = DataLayout(address: a, bits: bits, signed: signed, lsbFirst: lsbFirst,
+                           columnMajor: false, isFloat: isFloat, rows: 1, cols: count)
+        guard let first = BinCodec.raw(l, Cell(r: 0, c: 0), in: model.bin),
+              let last = BinCodec.raw(l, Cell(r: 0, c: count - 1), in: model.bin) else { return nil }
+        let u = units.isEmpty ? "" : " \(units)"
+        return "\(sc.display(raw: first, layout: l)) … \(sc.display(raw: last, layout: l))\(u)"
     }
 
-    private var livePreviewValues: String? {
-        guard let addr = XDFParser.int(addressText), addr >= 0 else { return nil }
-        let dl = DataLayout(address: addr, bits: bits, signed: signed, lsbFirst: lsbFirst,
-                            columnMajor: columnMajor, isFloat: isFloat, rows: 1, cols: min(8, max(1, cols)))
-        let eq = equation.trimmingCharacters(in: .whitespaces).isEmpty ? "X" : equation
-        let sc = Scaling(equation: eq, expr: Expr.parse(eq) ?? .x, units: units, decimals: decimals, output: outputType)
-        let vals = (0..<dl.cols).compactMap { c -> String? in
-            BinCodec.raw(dl, Cell(r: 0, c: c), in: model.bin).map { sc.display(raw: $0, layout: dl) }
-        }
-        return vals.isEmpty ? nil : vals.joined(separator: " · ")
+    private func formatScaled(_ v: Double, _ sc: Scaling) -> String {
+        let str = String(format: "%.\(sc.decimals)f", v)
+        return sc.units.isEmpty ? str : "\(str) \(sc.units)"
+    }
+
+    private func nudgeAddress(_ delta: Int) {
+        let cur = parsedAddress ?? 0
+        let next = max(0, cur + delta)
+        addressText = String(format: "0x%X", next)
     }
 
     private static func guessDimensions(_ count: Int) -> (Int, Int) {

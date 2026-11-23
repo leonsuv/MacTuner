@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "Studio (5 sekcji)";
 "Erkennung & DTCs" = "Wykrywanie i DTC";
 "Speicher-Map" = "Mapa pamięci";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "Krzywe 2D";
+"Hex-Editor" = "Edytor Hex";
+"Tabelle" = "Tabela";
+"Live-Vorschau" = "Podgląd na żywo";
+"Skalierung & Einheit" = "Skalowanie i jednostka";
+"Dekodierte Zellen (Auszug)" = "Zdekodowane komórki";
+"Achsen-Vorschau" = "Podgląd osi";
+"Prüfsummen-Blöcke" = "Bloki sum kontrolnych";
+"Erkannte DTCs" = "Wykryte kody DTC";
+"Schalter-Tabelle" = "Tabela przełączników";
+"Geprüfte Maps" = "Sprawdzone mapy";
+"Schnell-Snapshot" = "Szybka migawka";
+"Ersten Snapshot anlegen" = "Utwórz pierwszą migawkę";
+"Gespeicherte Snapshots" = "Zapisane migawki";
+"Protokollierte Edits" = "Zarejestrowane zmiany";
+"Geänderte Bytes" = "Zmodyfikowane bajty";
+"Aktiv & Fehlerfrei" = "Aktywne i poprawne";
+"Plugin-Ordner öffnen" = "Otwórz folder wtyczek";
+"Tauschen" = "Zamień";
+"Dezimalstellen:" = "Miejsca dziesiętne:";

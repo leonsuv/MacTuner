@@ -1,18 +1,22 @@
 import SwiftUI
 
-/// OEM DTC Table Finder & 1-Click P-Code Switcher view.
+/// Redesigned OEM DTC Table Finder & 1-Click P-Code Switcher matching MacTuner v3.0 visual system.
 struct DTCView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
     @State private var scanResult: DTCEngine.ScanResult?
     @State private var isScanning = false
     @State private var search = ""
-    @State private var onlyDisabled = false
+    @State private var filterMode = 0 // 0 = Alle, 1 = Aktiv, 2 = Deaktiviert
+
+    private var theme: AppTheme { AppTheme(rawValue: appThemeRaw) ?? .liquidGlass }
 
     private var filteredEntries: [DTCEntry] {
         guard let res = scanResult else { return [] }
         let q = search.trimmingCharacters(in: .whitespaces).uppercased()
         return res.entries.filter { e in
-            if onlyDisabled && !e.isDisabled { return false }
+            if filterMode == 1 && e.isDisabled { return false }
+            if filterMode == 2 && !e.isDisabled { return false }
             if q.isEmpty { return true }
             let hex = String(format: "%04X", e.rawCode)
             return e.pCode.contains(q) || hex.contains(q) ||
@@ -22,21 +26,21 @@ struct DTCView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Text("DTC-Tabellen & Fehlercodes").font(.system(size: 22, weight: .bold))
-                if let res = scanResult {
-                    Chip(text: "\(res.entries.count) DTCs · \(res.familyHint)", icon: "exclamationmark.octagon")
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("DTC-Tabellen & Fehlercodes").font(.system(size: 20, weight: .bold))
+                    if let res = scanResult {
+                        Text("\(res.familyHint) · P0607- & OBD-II-Fehlermatrix").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
-                Button {
-                    runScan()
-                } label: {
+                Button { runScan() } label: {
                     Label(scanResult == nil ? "DTC-Tabellen suchen" : "Neu scannen", systemImage: "magnifyingglass")
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.small)
                 .disabled(!model.hasBin || isScanning)
             }
-            .controlSize(.small)
 
             if !model.hasBin {
                 ContentUnavailableView("Keine BIN geladen", systemImage: "exclamationmark.octagon",
@@ -49,30 +53,58 @@ struct DTCView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let res = scanResult {
+                let disabledCount = res.entries.filter(\.isDisabled).count
+                let activeCount = res.entries.count - disabledCount
+
+                // 1. 4 Precision KPI Cards
                 HStack(spacing: 10) {
-                    TextField("P-Code suchen (z. B. P0420, 0401, 0x…)", text: $search)
+                    kpiTile("Erkannte DTCs", value: "\(res.entries.count)", sub: res.familyHint, color: theme.accentColor)
+                    kpiTile("Aktiv", value: "\(activeCount)", sub: "Fehlerpfad scharf", color: .green)
+                    kpiTile("Deaktiviert", value: "\(disabledCount)", sub: "Switch = 0x00", color: disabledCount > 0 ? theme.changedColor : .secondary)
+                    Button {
+                        model.hexJumpTarget = res.switchTableAddress..<(res.switchTableAddress + max(16, res.entries.count))
+                        model.selection = AppModel.hexDiffSelection
+                    } label: {
+                        kpiTile("Schalter-Tabelle",
+                                value: String(format: "0x%05X", res.switchTableAddress),
+                                sub: String(format: "Codes @ 0x%05X → Hex", res.codeTableAddress),
+                                color: .primary)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                // 2. Clean Search + Filter Segmented Control
+                HStack(spacing: 10) {
+                    TextField("P-Code suchen (z. B. P0420, P0401, P2002 …)", text: $search)
                         .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 280)
-                    Toggle("Nur deaktivierte", isOn: $onlyDisabled)
-                        .toggleStyle(.checkbox)
+                        .frame(maxWidth: 300)
+                    Picker("Filter", selection: $filterMode) {
+                        Text("Alle (\(res.entries.count))").tag(0)
+                        Text("Aktiv (\(activeCount))").tag(1)
+                        Text("Deaktiviert (\(disabledCount))").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
                     Spacer()
-                    Text(String(format: "Code-Tabelle: 0x%05X · Schalter-Tabelle: 0x%05X", res.codeTableAddress, res.switchTableAddress))
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
                 }
                 .controlSize(.small)
 
+                // 3. Clean Table with Inline Toggle Switches
                 let rows = filteredEntries
                 Table(rows) {
                     TableColumn("P-Code") { e in
-                        Text(e.pCode).font(.body.monospaced().weight(.semibold))
+                        HStack(spacing: 6) {
+                            Circle().fill(e.isDisabled ? theme.changedColor : .green).frame(width: 7, height: 7)
+                            Text(e.pCode).font(.system(size: 12, weight: .bold, design: .monospaced))
+                        }
                     }
-                    .width(min: 75, ideal: 90)
+                    .width(min: 85, ideal: 100)
 
                     TableColumn("Hex") { e in
                         Text(String(format: "0x%04X", e.rawCode)).font(.caption.monospaced()).foregroundStyle(.secondary)
                     }
-                    .width(min: 65, ideal: 75)
+                    .width(min: 65, ideal: 80)
 
                     TableColumn("Schalter-Adresse") { e in
                         Button(String(format: "0x%05X", e.switchAddress)) {
@@ -82,42 +114,39 @@ struct DTCView: View {
                         .buttonStyle(.link)
                         .font(.caption.monospaced())
                     }
-                    .width(min: 100, ideal: 115)
+                    .width(min: 105, ideal: 125)
 
-                    TableColumn("Klasse / Wert") { e in
+                    TableColumn("Fehlerklasse") { e in
                         Text(String(format: "%d (0x%02X)", e.currentValue, e.currentValue))
                             .font(.caption.monospacedDigit())
-                            .foregroundStyle(e.isDisabled ? Color.orange : Color.primary)
+                            .foregroundStyle(e.isDisabled ? theme.changedColor : .secondary)
                     }
-                    .width(min: 85, ideal: 100)
+                    .width(min: 85, ideal: 105)
 
-                    TableColumn("Status") { e in
-                        Text(e.isDisabled ? "Deaktiviert" : "Aktiv")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background((e.isDisabled ? Color.orange : Color.green).opacity(0.16), in: Capsule())
-                            .foregroundStyle(e.isDisabled ? Color.orange : Color.green)
+                    TableColumn("Aktiv") { e in
+                        Toggle("", isOn: Binding(
+                            get: { !e.isDisabled },
+                            set: { _ in toggleDTC(e) }
+                        ))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .controlSize(.mini)
                     }
-                    .width(min: 90, ideal: 105)
+                    .width(56)
 
-                    TableColumn("Aktion") { e in
-                        HStack(spacing: 6) {
-                            Button(e.isDisabled ? "Aktivieren" : "Deaktivieren") {
-                                toggleDTC(e)
-                            }
-                            .controlSize(.mini)
-                            .buttonStyle(.bordered)
-                            Button {
-                                saveAsXDFSwitch(e)
-                            } label: {
-                                Image(systemName: "plus.rectangle.on.rectangle")
-                            }
-                            .controlSize(.mini)
-                            .help("Als XDF-Schalter speichern")
+                    TableColumn("XDF") { e in
+                        Button {
+                            saveAsXDFSwitch(e)
+                        } label: {
+                            Image(systemName: "plus.circle")
+                                .foregroundStyle(.secondary)
                         }
+                        .buttonStyle(.plain)
+                        .help("Als XDF-Schalter speichern")
                     }
-                    .width(min: 130, ideal: 150)
+                    .width(42)
                 }
+                .card(padding: 4)
                 .overlay {
                     if rows.isEmpty {
                         ContentUnavailableView("Keine passenden DTCs", systemImage: "magnifyingglass")
@@ -132,9 +161,8 @@ struct DTCView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
+        .padding(20)
+        .background(theme.canvasBackground)
         .onAppear {
             if scanResult == nil && model.hasBin { runScan() }
         }
@@ -142,6 +170,19 @@ struct DTCView: View {
             scanResult = nil
             if model.hasBin { runScan() }
         }
+    }
+
+    private func kpiTile(_ title: String, value: String, sub: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 9.5, weight: .bold)).foregroundStyle(.secondary).tracking(0.5)
+            Text(value)
+                .font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(color)
+            Text(sub).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 11)
     }
 
     private func runScan() {

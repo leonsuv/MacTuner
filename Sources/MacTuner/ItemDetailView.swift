@@ -581,11 +581,12 @@ struct TableChart: View {
     var dashedIsBin = false
     let units: String
     let xUnits: String
+    var slicesMode: Binding<Bool>? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Verlauf").font(.headline)
+            HStack(spacing: 8) {
+                Text("2D-Kurven").font(.headline)
                 if !xUnits.isEmpty { Text("über \(xUnits)").font(.caption).foregroundStyle(.secondary) }
                 Spacer()
                 if points.contains(where: \.original) {
@@ -597,6 +598,16 @@ struct TableChart: View {
                         }
                     }
                     .font(.caption).foregroundStyle(.secondary)
+                }
+                if let slicesBinding = slicesMode {
+                    Picker("2D-Modus", selection: slicesBinding) {
+                        Text("Kurven").tag(false)
+                        Text("Slices").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .fixedSize()
                 }
             }
             Chart(points) { p in

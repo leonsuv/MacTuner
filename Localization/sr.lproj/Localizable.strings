@@ -804,3 +804,25 @@
 "Studio (5 Bereiche)" = "Студио (5 секција)";
 "Erkennung & DTCs" = "Откривање и DTC";
 "Speicher-Map" = "Мапа меморије";
+
+/* v3.0 UI Polish */
+"2D-Kurven" = "2D Curves";
+"Hex-Editor" = "Hex Editor";
+"Tabelle" = "Table";
+"Live-Vorschau" = "Live Preview";
+"Skalierung & Einheit" = "Scaling & Unit";
+"Dekodierte Zellen (Auszug)" = "Decoded Cells (Sample)";
+"Achsen-Vorschau" = "Axis Preview";
+"Prüfsummen-Blöcke" = "Checksum Blocks";
+"Erkannte DTCs" = "Detected DTCs";
+"Schalter-Tabelle" = "Switch Table";
+"Geprüfte Maps" = "Checked Maps";
+"Schnell-Snapshot" = "Quick Snapshot";
+"Ersten Snapshot anlegen" = "Create First Snapshot";
+"Gespeicherte Snapshots" = "Saved Snapshots";
+"Protokollierte Edits" = "Logged Edits";
+"Geänderte Bytes" = "Modified Bytes";
+"Aktiv & Fehlerfrei" = "Active & Valid";
+"Plugin-Ordner öffnen" = "Open Plugins Folder";
+"Tauschen" = "Swap";
+"Dezimalstellen:" = "Decimals:";
