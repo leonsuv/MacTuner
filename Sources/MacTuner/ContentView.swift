@@ -81,6 +81,10 @@ struct ContentView: View {
             XDFItemEditorSheet(existingItem: req.existingItem, presetRange: req.presetRange, presetCandidate: req.presetCandidate)
                 .environment(model)
         }
+        .sheet(isPresented: Binding(get: { model.showContentPortingSheet }, set: { model.showContentPortingSheet = $0 })) {
+            ContentPortingSheet()
+                .environment(model)
+        }
     }
 
     @ViewBuilder private var autoAlignBanner: some View {
@@ -150,6 +154,8 @@ struct ContentView: View {
             DiagnosticsView()
         } else if model.selection == AppModel.dtcSelection, model.hasBin {
             DTCView()
+        } else if model.selection == AppModel.memoryAtlasSelection, model.hasBin {
+            MemoryAtlasView()
         } else if model.selection == AppModel.checksumSelection, model.hasBin {
             ChecksumAndFlashView()
         } else if model.selection == AppModel.datalogSelection {

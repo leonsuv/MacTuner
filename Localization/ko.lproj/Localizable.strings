@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "인식된 맵 없음";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "“다시 스캔”을 클릭하여 Bosch/Siemens 맵, 1D 곡선 및 Float32 구조를 검색하세요.";
 "Zurück zu Hex" = "Hex로 돌아가기";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "플래시 프리플라이트 안전 게이트";
+"Bereit zum Flashen" = "플래시 준비 완료";
+"Prüfen empfohlen" = "검토 권장";
+"Warnung — Blocker gefunden" = "경고 — 차단 요소 발견";
+"Auf Zwilling kopieren" = "트윈 맵으로 복사";
+"CompTest-CVN wiederherstellen (GF(2))" = "CompTest CVN 복원 (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "수동 범위 패처 (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "메모리 아틀라스 & 공유 축 풀";
+"Speicheratlas" = "메모리 아틀라스";
+"2. Definition laden …" = "2번째 정의 불러오기 …";
+"3D-Messpunkte" = "3D 측정 점군";
+"Tune portieren …" = "튠 포팅 …";
+"Sync-Block" = "동기화 블록";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "XY 산점도 (MegaLogViewer 스타일)";
+"Als RomRaider XML (.xml) exportieren …" = "RomRaider XML (.xml)로 내보내기 …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "정의 스마트 병합 (주소 가져오기) …";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "A2L / WinOLS .kp / RomRaider .xml 가져오기 …";
+"Slices (WinOLS)" = "슬라이스 (WinOLS)";

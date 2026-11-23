@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "Keine erkannten Kennfelder";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen.";
 "Zurück zu Hex" = "Zurück zu Hex";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "Flash-Preflight Sicherheits-Gate";
+"Bereit zum Flashen" = "Bereit zum Flashen";
+"Prüfen empfohlen" = "Prüfen empfohlen";
+"Warnung — Blocker gefunden" = "Warnung — Blocker gefunden";
+"Auf Zwilling kopieren" = "Auf Zwilling kopieren";
+"CompTest-CVN wiederherstellen (GF(2))" = "CompTest-CVN wiederherstellen (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "Speicheratlas & Shared-Axis-Pool";
+"Speicheratlas" = "Speicheratlas";
+"2. Definition laden …" = "2. Definition laden …";
+"3D-Messpunkte" = "3D-Messpunkte";
+"Tune portieren …" = "Tune portieren …";
+"Sync-Block" = "Sync-Block";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "XY-Scatterplot (MegaLogViewer-Stil)";
+"Als RomRaider XML (.xml) exportieren …" = "Als RomRaider XML (.xml) exportieren …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "Definition Smart-Merge (Adressen übernehmen) …";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "A2L / WinOLS .kp / RomRaider .xml importieren …";
+"Slices (WinOLS)" = "Slices (WinOLS)";

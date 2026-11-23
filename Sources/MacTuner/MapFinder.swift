@@ -6,12 +6,21 @@ import Foundation
 /// and WinOLS-style row-pitch autocorrelated headerless 2D maps).
 enum MapFinder {
     enum MapPatternKind: String, Codable, Sendable, CaseIterable {
+        case triCorePointer    // TriCore 32-bit PFLASH pointer descriptor [xPtr, yPtr, zPtr] (0x80000000/0xA0000000)
         case bosch2DHeader     // [rows, cols, yAxis, xAxis, data] OR interleaved [rows, yAxis, cols, xAxis, data]
         case bosch1DCurve      // [len, xAxis, data] (16-bit or 8-bit, incl. chained 2..3-pt & flat curves)
         case splitAxis2D       // Smooth 2D surface immediately contiguous with monotonic X/Y axes
         case float32Surface    // IEEE-754 Float32 2D surface or 1D curve (MG1/MD1/Simos18/ZF8HP)
         case smooth2DSurface   // Headerless 2D surface with strong row-pitch autocorrelation
         case smooth1DCurve     // Headerless monotonic/smooth 1D curve
+    }
+
+    /// 3-tier hard detection evidence (ECU-Studio-AI methodology — no opaque guessed percentages).
+    enum DetectionEvidence: String, Codable, Sendable, CaseIterable {
+        case pointerDescriptor = "Pointer-Beleg"     // Green: TriCore 32-bit pointer descriptor
+        case boschHeader       = "Struktur-Beleg"    // Amber/Emerald: Strict Bosch 8/16-bit header
+        case axisAnchored      = "Achsen-Beleg"      // Teal: Contiguous monotonic axis + 2D surface
+        case dataPattern       = "Datenmuster"       // Muted/Red: Headerless smoothness / Float32 raster
     }
 
     struct Candidate: Identifiable, Hashable, Sendable {
@@ -88,8 +97,18 @@ enum MapFinder {
             return lo ..< hi
         }
 
+        var evidence: DetectionEvidence {
+            switch pattern {
+            case .triCorePointer: return .pointerDescriptor
+            case .bosch2DHeader, .bosch1DCurve: return .boschHeader
+            case .splitAxis2D: return .axisAnchored
+            case .float32Surface, .smooth2DSurface, .smooth1DCurve: return .dataPattern
+            }
+        }
+
         var shortBadge: String {
             switch pattern {
+            case .triCorePointer:  return "TriCore Ptr \(rows)×\(cols)"
             case .bosch2DHeader:   return "Bosch \(rows)×\(cols) + Achsen"
             case .bosch1DCurve:    return "1D-Kurve (\(cols)) + Achse"
             case .splitAxis2D:     return "\(rows)×\(cols) + Achsen"
@@ -155,6 +174,16 @@ enum MapFinder {
             // Pass 1D: Bosch 16-bit 1D Curve Chains [len, ax, data] (with SST & embedded-header guard!)
             scanBosch16Curves1D(buf: buf, calMask: calMask, lsb: primaryLSB,
                                 occupied: &occupied, scratch: &scratch, out: &candidates)
+
+            // Pass 1D-bis: TriCore 32-bit Pointer-Descriptor Scanner ([A4]+0x00 X, +0x04 Y, +0x08 Z)
+            let isTriCore = count >= 1_048_576 || {
+                let fam = ecu?.ecuFamily?.uppercased() ?? ""
+                return fam.contains("MED17") || fam.contains("EDC17") || fam.contains("MG1") || fam.contains("MD1") || fam.contains("SIMOS") || fam.contains("MSD8")
+            }()
+            if isTriCore {
+                scanTriCorePointerDescriptors(buf: buf, calMask: calMask, lsb: primaryLSB,
+                                              occupied: &occupied, scratch: &scratch, out: &candidates)
+            }
 
             // HEURISTIC PASSES SECOND (only over strictly unoccupied ranges):
             // Pass 1E: Strictly Contiguous Axis-Anchored 2D Surfaces (e.g. 0x292EEE -> 0x292F00)
@@ -1495,5 +1524,118 @@ enum MapFinder {
             return "Drehzahl-Achse erkannt"
         }
         return nil
+    }
+
+    // MARK: - Pass 1D-bis: TriCore 32-Bit Pointer-Descriptor Scanner ([A4]+0x00/+0x04/+0x08)
+
+    /// Scans 4-byte-aligned calibration/descriptor regions for 3 consecutive virtual PFLASH pointers
+    /// (`0x80xxxxxx` / `0xA0xxxxxx`) pointing to `[xAxisPtr, yAxisPtr, zDataPtr]` (or `[zDataPtr, xAxisPtr, yAxisPtr]`).
+    private static func scanTriCorePointerDescriptors(
+        buf: UnsafeBufferPointer<UInt8>,
+        calMask: [Bool],
+        lsb: Bool,
+        occupied: inout WordBitset,
+        scratch: inout [Double],
+        out: inout [Candidate]
+    ) {
+        let n = buf.count
+        guard n >= 262_144 else { return }
+
+        @inline(__always)
+        func readU32(_ off: Int) -> UInt32 {
+            if lsb {
+                return UInt32(buf[off]) | (UInt32(buf[off + 1]) << 8) | (UInt32(buf[off + 2]) << 16) | (UInt32(buf[off + 3]) << 24)
+            } else {
+                return (UInt32(buf[off]) << 24) | (UInt32(buf[off + 1]) << 16) | (UInt32(buf[off + 2]) << 8) | UInt32(buf[off + 3])
+            }
+        }
+
+        @inline(__always)
+        func resolvePtr(_ p: UInt32) -> (seg: UInt8, off: Int)? {
+            let hi = UInt8(p >> 24)
+            guard hi == 0x80 || hi == 0xA0 else { return nil }
+            let off = Int(p & 0x00FFFFFF)
+            guard off >= 0x100 && off + 8 < n && (off & 1) == 0 else { return nil }
+            return (hi, off)
+        }
+
+        var found = 0
+        var off = 0
+        while off + 12 <= n && found < 400 {
+            if !calMask[off >> 10] { off += 1024; continue }
+            let p0 = readU32(off)
+            guard let r0 = resolvePtr(p0) else { off += 4; continue }
+            let p1 = readU32(off + 4)
+            guard let r1 = resolvePtr(p1), r1.seg == r0.seg else { off += 4; continue }
+            let p2 = readU32(off + 8)
+            guard let r2 = resolvePtr(p2), r2.seg == r0.seg else { off += 4; continue }
+            // Must point to 3 distinct targets
+            guard r0.off != r1.off && r1.off != r2.off && r0.off != r2.off else { off += 4; continue }
+
+            // Test [xAxis, yAxis, zData] and [zData, xAxis, yAxis]
+            let combos: [(xOff: Int, yOff: Int, zOff: Int)] = [
+                (r0.off, r1.off, r2.off),
+                (r1.off, r2.off, r0.off)
+            ]
+
+            var matched = false
+            for (xRaw, yRaw, zOff) in combos {
+                guard !occupied.overlaps(byteRange: zOff ..< min(n, zOff + 16)) else { continue }
+                let nx = Int(readU16(buf, xRaw, lsb: lsb))
+                let ny = Int(readU16(buf, yRaw, lsb: lsb))
+                guard (4...32).contains(nx), (4...32).contains(ny) else { continue }
+                let xDataOff = xRaw + 2
+                let yDataOff = yRaw + 2
+                let zBytes = nx * ny * 2
+                guard xDataOff + nx * 2 <= n, yDataOff + ny * 2 <= n, zOff + zBytes <= n else { continue }
+                guard !occupied.overlaps(byteRange: zOff ..< (zOff + zBytes)) else { continue }
+
+                let xv = validateAxis16(buf, xDataOff, count: nx, lsb: lsb)
+                guard xv.valid else { continue }
+                let yv = validateAxis16(buf, yDataOff, count: ny, lsb: lsb)
+                guard yv.valid else { continue }
+
+                // Evaluate 2D Z surface smoothness (try unsigned first, then signed)
+                let evalU = surfaceSmoothness(buf: buf, offset: zOff, rows: ny, cols: nx, bits: 16, signed: false, isFloat: false, lsb: lsb, allowSparse: true, scratch: &scratch)
+                let evalS = surfaceSmoothness(buf: buf, offset: zOff, rows: ny, cols: nx, bits: 16, signed: true, isFloat: false, lsb: lsb, allowSparse: true, scratch: &scratch)
+                let best = (evalS.score > evalU.score + 0.05) ? (evalS, true) : (evalU, false)
+                guard best.0.score >= 0.45 else { continue }
+
+                let conf = min(0.98, 0.91 + best.0.score * 0.07)
+                let hint = inferDomainHint(buf: buf, xAxisOff: xDataOff, xCount: nx, yAxisOff: yDataOff, yCount: ny, lsb: lsb, signed: best.1)
+                let sig = String(format: "tcptr_%X_%dx%d", zOff, ny, nx)
+                out.append(Candidate(
+                    signatureKey: sig,
+                    pattern: .triCorePointer,
+                    headerAddress: off,
+                    secondHeaderAddress: nil,
+                    address: zOff,
+                    rows: ny,
+                    cols: nx,
+                    bits: 16,
+                    signed: best.1,
+                    isFloat: false,
+                    lsbFirst: lsb,
+                    columnMajor: false,
+                    xAxisAddress: xDataOff,
+                    yAxisAddress: yDataOff,
+                    xAxisSigned: xv.signed,
+                    yAxisSigned: yv.signed,
+                    axisBits: 16,
+                    axisInferred: false,
+                    confidence: conf,
+                    minVal: best.0.minVal,
+                    maxVal: best.0.maxVal,
+                    meanVal: best.0.meanVal,
+                    domainHint: hint,
+                    reason: String(format: "TriCore Pointer-Deskriptor @ 0x%05X ([X]=0x%05X, [Y]=0x%05X, [Z]=0x%05X)", off, xDataOff, yDataOff, zOff)
+                ))
+                occupied.mark(byteRange: zOff ..< (zOff + zBytes))
+                found += 1
+                matched = true
+                break
+            }
+            off += matched ? 12 : 4
+        }
     }
 }

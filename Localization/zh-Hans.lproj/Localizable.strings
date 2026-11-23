@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "未识别到脉谱";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "点击“重新扫描”以搜索 Bosch/Siemens 脉谱、1D 曲线和 Float32 结构。";
 "Zurück zu Hex" = "返回 Hex";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "刷写前安全预检门控";
+"Bereit zum Flashen" = "可安全刷写";
+"Prüfen empfohlen" = "建议检查";
+"Warnung — Blocker gefunden" = "警告 — 发现阻断问题";
+"Auf Zwilling kopieren" = "复制到双胞胎图谱";
+"CompTest-CVN wiederherstellen (GF(2))" = "恢复 CompTest CVN (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "手动区间校验修补 (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "内存图谱与共享轴池";
+"Speicheratlas" = "内存图谱";
+"2. Definition laden …" = "加载第 2 个定义 …";
+"3D-Messpunkte" = "3D 实测点云";
+"Tune portieren …" = "移植调校 …";
+"Sync-Block" = "同步块";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "XY 散点图（MegaLogViewer 风格）";
+"Als RomRaider XML (.xml) exportieren …" = "导出为 RomRaider XML (.xml) …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "定义智能合并（仅更新地址）…";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "导入 A2L / WinOLS .kp / RomRaider .xml …";
+"Slices (WinOLS)" = "切片视图 (WinOLS)";

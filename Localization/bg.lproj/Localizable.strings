@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "Няма разпознати карти";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Кликнете „Сканирай отново“, за да потърсите Bosch/Siemens карти, 1D криви и Float32 структури.";
 "Zurück zu Hex" = "Обратно към Hex";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "Предфлаш проверка за сигурност";
+"Bereit zum Flashen" = "Готово за флашване";
+"Prüfen empfohlen" = "Препоръчителна проверка";
+"Warnung — Blocker gefunden" = "Предупреждение — Открит блокер";
+"Auf Zwilling kopieren" = "Копирай в близнака";
+"CompTest-CVN wiederherstellen (GF(2))" = "Възстанови CompTest CVN (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "Ръчен пачър на диапазон (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "Атлас на паметта и споделени оси";
+"Speicheratlas" = "Атлас на паметта";
+"2. Definition laden …" = "Зареди 2-ра дефиниция …";
+"3D-Messpunkte" = "3D облак";
+"Tune portieren …" = "Портирай тюн …";
+"Sync-Block" = "Синхр. блок";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "XY точкова диаграма (MegaLogViewer)";
+"Als RomRaider XML (.xml) exportieren …" = "Експортирай като RomRaider XML (.xml) …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "Интелигентно сливане на дефиниция (адреси) …";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "Импортирай A2L / WinOLS .kp / RomRaider .xml …";
+"Slices (WinOLS)" = "Срезове (WinOLS)";

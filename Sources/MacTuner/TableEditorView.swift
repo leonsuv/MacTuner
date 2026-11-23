@@ -35,6 +35,7 @@ struct TableEditorView: View {
     @State private var rescaleEndText = ""
     @State private var rescaleSharedCascade = true
     @State private var rescaleExtrapolate = false
+    @State private var slicesMode = false
     @AppStorage("valueMode") private var valueMode: ValueMode = .values
     @FocusState private var gridFocused: Bool
 
@@ -311,8 +312,24 @@ struct TableEditorView: View {
                             Surface3DView(item: item, x: x, y: y, readOnly: isCompareView)
                         }
                         if showChart {
-                            TableChart(points: chartPoints(values: shown, ys: ys), seriesCount: l.rows, dashedIsBin: isCompareView,
-                                       units: model.displayUnit(s.units), xUnits: mode == .wrapped || x.scaling.units.isEmpty ? "" : model.displayUnit(x.scaling.units))
+                            VStack(alignment: .leading, spacing: 4) {
+                                if l.rows > 1 {
+                                    HStack(spacing: 6) {
+                                        Spacer()
+                                        Picker("2D-Modus", selection: $slicesMode) {
+                                            Text("Kurven").tag(false)
+                                            Text("Slices (WinOLS)").tag(true)
+                                        }
+                                        .pickerStyle(.segmented)
+                                        .labelsHidden()
+                                        .controlSize(.mini)
+                                        .fixedSize()
+                                    }
+                                }
+                                TableChart(points: chartPoints(values: shown, ys: ys), seriesCount: l.rows, dashedIsBin: isCompareView,
+                                           units: slicesMode ? "Slices" : model.displayUnit(s.units),
+                                           xUnits: mode == .wrapped || x.scaling.units.isEmpty ? "" : model.displayUnit(x.scaling.units))
+                            }
                         }
                     }
                     .padding(.top, 8)
@@ -1125,6 +1142,25 @@ struct TableEditorView: View {
 
     private func chartPoints(values: [[Double?]], ys: [String]) -> [TableChart.Point] {
         let xv = model.axisValues(x, count: l.cols)
+        // WinOLS Slices mode: align all rows on equal evenly-spaced baseline height for instant smoothness comparison
+        if slicesMode && l.rows > 1 {
+            let flat = values.flatMap { $0 }.compactMap { $0 }
+            let globalSpan = max(1e-6, (flat.max() ?? 1) - (flat.min() ?? 0))
+            var pts: [TableChart.Point] = []
+            for r in 0..<l.rows {
+                let rowVals = values[r].compactMap { $0 }
+                let rowMin = rowVals.min() ?? 0
+                let name = String(localized: "Slice \(ys[r])")
+                for c in 0..<l.cols {
+                    if let v = values[r][c] {
+                        let normalized = (v - rowMin) / globalSpan
+                        let stackedY = Double(r) + normalized * 0.85
+                        pts.append(.init(id: pts.count, series: name, x: xv[c], y: stackedY, original: false))
+                    }
+                }
+            }
+            return pts
+        }
         // Active-Slice isolation: on large 2D maps (>4 rows), show selected row(s) cleanly instead of 32 overlapping lines
         let activeRows: [Int]
         if l.rows > 4 && !selection.isEmpty {

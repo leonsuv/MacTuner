@@ -159,9 +159,31 @@ struct SidebarView: View {
                     ContentUnavailableView("Keine erkannten Kennfelder", systemImage: "sparkles",
                                            description: Text("Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen."))
                 } else {
+                    // ECU Family Completeness Badge (Pointer / 2D / 1D breakdown)
+                    let ptrCount = potentialMaps.filter { $0.pattern == .triCorePointer }.count
+                    let map2DCount = potentialMaps.filter { $0.is2D }.count
+                    let curve1DCount = potentialMaps.count - map2DCount
+                    let famLabel = model.activeBin?.ecuIdentity.ecuFamily ?? "ECU"
+                    HStack(spacing: 5) {
+                        Image(systemName: "cpu").font(.caption2).foregroundStyle(.secondary)
+                        Text(famLabel).font(.caption2.weight(.semibold)).lineLimit(1)
+                        Spacer(minLength: 2)
+                        Text("\(map2DCount) 2D · \(curve1DCount) 1D" + (ptrCount > 0 ? " · \(ptrCount) Ptr" : ""))
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Color.accentColor.opacity(0.08))
+
                     List {
                         ForEach(filteredPotential) { cand in
                             let hasDiff = model.diffOverlaps(cand.dataRange)
+                            let evColor: Color = switch cand.evidence {
+                            case .pointerDescriptor: .green
+                            case .boschHeader: PotentialMapIndex.amberData
+                            case .axisAnchored: PotentialMapIndex.mintAxis
+                            case .dataPattern: .secondary
+                            }
                             HStack(spacing: 6) {
                                 Button {
                                     model.showCandidateInHex(cand)
@@ -176,9 +198,11 @@ struct SidebarView: View {
                                                 .background(PotentialMapIndex.amberData.opacity(0.18), in: Capsule())
                                                 .foregroundStyle(PotentialMapIndex.amberData)
                                             Spacer(minLength: 2)
-                                            Text("\(Int((cand.confidence * 100).rounded()))%")
-                                                .font(.system(size: 9.5, weight: .bold).monospacedDigit())
-                                                .foregroundStyle(cand.confidence >= 0.85 ? .green : PotentialMapIndex.amberData)
+                                            Text(cand.evidence.rawValue)
+                                                .font(.system(size: 8.5, weight: .bold))
+                                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                                .background(evColor.opacity(0.16), in: Capsule())
+                                                .foregroundStyle(evColor)
                                         }
                                         HStack(spacing: 5) {
                                             Text(cand.shortBadge)

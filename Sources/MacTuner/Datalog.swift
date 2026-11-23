@@ -80,8 +80,116 @@ struct Datalog {
     struct FilterConfig: Equatable {
         var wotOnly = false          // TPS/Pedal >= 85% and RPM rising
         var steadyStateOnly = false  // |dRPM| < 150 and |dTPS| < 5
-        var rejectDFCO = false       // reject Lambda > 1.30 / AFR > 19.0
-        var warmEngineOnly = false   // ECT >= 75°C
+        var rejectDFCO = false       // reject Lambda >= 1.20 / AFR >= 19.0 / IPW <= 0.2 ms
+        var warmEngineOnly = false   // ECT >= 80°C
+        var postDFCODeadTimeMs: Double = 700.0  // Tail-kill timer after DFCO (500–1000 ms exhaust transport delay)
+        var wotStabilizeMs: Double = 300.0      // WOT stabilization timer (>= 300 ms steady TPS)
+        var minCellWeight: Double = 2.0         // W_threshold for bilinear cell weighting
+    }
+
+    enum HistogramMetric: String, CaseIterable, Identifiable {
+        case weightedMean = "Ø Gewichtet"
+        case min = "Min"
+        case max = "Max"
+        case hitCount = "Treffer"
+        case stdDev = "StdAbw"
+        var id: String { rawValue }
+    }
+
+    struct AnomalyAlert: Identifiable {
+        let id = UUID()
+        let title: String
+        let detail: String
+        let frameIndex: Int
+        let severity: MapDiagnostics.Severity
+    }
+
+    /// Scans the datalog for MxT / Bosch WOT anomalies: Torque Intervention, Boost Target Not Reached, Lean-Under-Boost, Knock.
+    func scanAnomalyAlerts() -> [AnomalyAlert] {
+        guard frameCount >= 5 else { return [] }
+        var alerts: [AnomalyAlert] = []
+        let tpsCh = channelIndex(matching: ["tps", "throttle", "pedal", "drossel", "app"])
+        let reqLoadCh = channelIndex(matching: ["rlsol", "target load", "soll last", "req load"])
+        let actLoadCh = channelIndex(matching: ["rl_w", "actual load", "ist last", "act load"])
+        let reqBoostCh = channelIndex(matching: ["pssol", "target boost", "soll lade", "boost req", "pdes"])
+        let actBoostCh = channelIndex(matching: ["pvdks", "actual boost", "ist lade", "boost act", "map"])
+        let lamCh = channelIndex(matching: ["lambda", "lamsbg", "wb_lam"])
+        let knockCh = channelIndex(matching: ["knock", "klopf", "wkrm", "dwkrz", "kr"])
+
+        var torqueIntFrames = 0, firstTorqueFrame = 0
+        var boostMissFrames = 0, firstBoostFrame = 0, worstBoostDeficit = 0.0
+        var leanBoostFrames = 0, firstLeanFrame = 0, worstLambda = 0.0
+        var knockFrames = 0, firstKnockFrame = 0, worstKnock = 0.0
+
+        for f in 0..<frameCount {
+            let isWOT: Bool = {
+                guard let tc = tpsCh, let v = value(frame: f, channel: tc) else { return true }
+                return v >= 85.0
+            }()
+            guard isWOT else { continue }
+
+            if let rlReq = reqLoadCh.flatMap({ value(frame: f, channel: $0) }),
+               let rlAct = actLoadCh.flatMap({ value(frame: f, channel: $0) }),
+               rlReq > 50, rlAct < rlReq * 0.95 {
+                if torqueIntFrames == 0 { firstTorqueFrame = f }
+                torqueIntFrames += 1
+            }
+            if let bReq = reqBoostCh.flatMap({ value(frame: f, channel: $0) }),
+               let bAct = actBoostCh.flatMap({ value(frame: f, channel: $0) }),
+               bReq > 1200, bAct < bReq - 50 {
+                if boostMissFrames == 0 { firstBoostFrame = f }
+                boostMissFrames += 1
+                worstBoostDeficit = max(worstBoostDeficit, bReq - bAct)
+            }
+            if let lam = lamCh.flatMap({ value(frame: f, channel: $0) }),
+               lam > 1.00 && lam < 1.8 {
+                if let bAct = actBoostCh.flatMap({ value(frame: f, channel: $0) }), bAct > 1300 {
+                    if leanBoostFrames == 0 { firstLeanFrame = f }
+                    leanBoostFrames += 1
+                    worstLambda = max(worstLambda, lam)
+                }
+            }
+            if let kr = knockCh.flatMap({ value(frame: f, channel: $0) }), abs(kr) >= 3.0 && abs(kr) < 30.0 {
+                if knockFrames == 0 { firstKnockFrame = f }
+                knockFrames += 1
+                worstKnock = max(worstKnock, abs(kr))
+            }
+        }
+
+        if torqueIntFrames >= 3 {
+            alerts.append(AnomalyAlert(
+                title: "Drehmoment-Eingriff (Torque Intervention)",
+                detail: "\(torqueIntFrames) WOT-Frames mit Ist-Last < 95 % Soll-Last (ab Frame #\(firstTorqueFrame))",
+                frameIndex: firstTorqueFrame, severity: .warning
+            ))
+        }
+        if boostMissFrames >= 3 {
+            alerts.append(AnomalyAlert(
+                title: "Ladedruck-Soll nicht erreicht",
+                detail: String(format: "%d WOT-Frames > 50 mbar unter Soll (max. −%.0f mbar ab Frame #%d)", boostMissFrames, worstBoostDeficit, firstBoostFrame),
+                frameIndex: firstBoostFrame, severity: .warning
+            ))
+        }
+        if leanBoostFrames >= 2 {
+            alerts.append(AnomalyAlert(
+                title: "Mager unter Ladedruck (λ > 1,0)",
+                detail: String(format: "%d WOT-Frames zu mager unter Boost (max. λ = %.2f ab Frame #%d)", leanBoostFrames, worstLambda, firstLeanFrame),
+                frameIndex: firstLeanFrame, severity: .error
+            ))
+        }
+        if knockFrames >= 2 {
+            alerts.append(AnomalyAlert(
+                title: "Zündungsrücknahme / Klopfen (≥ 3°)",
+                detail: String(format: "%d WOT-Frames mit starker Klopfregelung (max. %.1f° ab Frame #%d)", knockFrames, worstKnock, firstKnockFrame),
+                frameIndex: firstKnockFrame, severity: .error
+            ))
+        }
+        return alerts
+    }
+
+    /// Multiplicative Closed-Loop Fuel Trim error: ((1 + STFT/100) * (1 + LTFT/100) - 1) * 100
+    static func multiplicativeFuelTrimPct(stft: Double, ltft: Double) -> Double {
+        ((1.0 + stft / 100.0) * (1.0 + ltft / 100.0) - 1.0) * 100.0
     }
 
     func channelIndex(matching keywords: [String]) -> Int? {
@@ -116,13 +224,40 @@ struct Datalog {
             }
         }
         if config.rejectDFCO {
-            if let lamCh = channelIndex(matching: ["lambda", "lamfa", "lamsbg"]),
-               let lam = value(frame: f, channel: lamCh), lam > 1.30 && lam < 5.0 {
+            let lamCh = channelIndex(matching: ["lambda", "lamfa", "lamsbg"])
+            let afrCh = channelIndex(matching: ["afr"])
+            let ipwCh = channelIndex(matching: ["ipw", "inj_pw", "ti_b1", "einspritzzeit"])
+            let timeCh = channelIndex(matching: ["time", "zeit", "timestamp"])
+
+            func isDFCOFrame(_ idx: Int) -> Bool {
+                if let lc = lamCh, let lam = value(frame: idx, channel: lc), lam >= 1.20 && lam < 5.0 { return true }
+                if let ac = afrCh, let afr = value(frame: idx, channel: ac), afr >= 18.5 { return true }
+                if let ic = ipwCh, let pw = value(frame: idx, channel: ic), pw <= 0.2 { return true }
                 return false
             }
-            if let afrCh = channelIndex(matching: ["afr"]),
-               let afr = value(frame: f, channel: afrCh), afr > 19.0 {
-                return false
+            if isDFCOFrame(f) { return false }
+            // Post-DFCO exhaust transport dead-time tail-kill window (default 700 ms)
+            if config.postDFCODeadTimeMs > 0, f > 0 {
+                let deadSec = config.postDFCODeadTimeMs / 1000.0
+                if let tc = timeCh, let tNow = value(frame: f, channel: tc) {
+                    var back = f - 1
+                    while back >= max(0, f - 40) {
+                        if let tPrev = value(frame: back, channel: tc) {
+                            let dt = abs(tNow - tPrev)
+                            // Handle both seconds and milliseconds timestamps
+                            let dtSec = dt > 50.0 ? (dt / 1000.0) : dt
+                            if dtSec > deadSec { break }
+                        }
+                        if isDFCOFrame(back) { return false }
+                        back -= 1
+                    }
+                } else {
+                    // Fallback ~10 Hz sample rate if no explicit time channel
+                    let lookback = max(1, Int((deadSec * 10.0).rounded()))
+                    for back in max(0, f - lookback)..<f {
+                        if isDFCOFrame(back) { return false }
+                    }
+                }
             }
         }
         if config.warmEngineOnly {

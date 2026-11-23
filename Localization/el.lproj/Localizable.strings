@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "Δεν αναγνωρίστηκαν χάρτες";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Κάντε κλικ στο «Επανασάρωση» για αναζήτηση χαρτών Bosch/Siemens, καμπυλών 1D και δομών Float32.";
 "Zurück zu Hex" = "Επιστροφή σε Hex";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "Πύλη ασφαλείας Flash Preflight";
+"Bereit zum Flashen" = "Έτοιμο για φλασάρισμα";
+"Prüfen empfohlen" = "Συνιστάται έλεγχος";
+"Warnung — Blocker gefunden" = "Προειδοποίηση — Βρέθηκε εμπόδιο";
+"Auf Zwilling kopieren" = "Αντιγραφή στο δίδυμο";
+"CompTest-CVN wiederherstellen (GF(2))" = "Επαναφορά CompTest CVN (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "Χειροκίνητος διορθωτής εύρους (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "Άτλας μνήμης & Κοινοί άξονες";
+"Speicheratlas" = "Άτλας μνήμης";
+"2. Definition laden …" = "Φόρτωση 2ου ορισμού …";
+"3D-Messpunkte" = "3D σημεία";
+"Tune portieren …" = "Μεταφορά tune …";
+"Sync-Block" = "Μπλοκ Sync";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "Διάγραμμα διασποράς XY (MegaLogViewer)";
+"Als RomRaider XML (.xml) exportieren …" = "Εξαγωγή ως RomRaider XML (.xml) …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "Έξυπνη συγχώνευση ορισμού (διευθύνσεις) …";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "Εισαγωγή A2L / WinOLS .kp / RomRaider .xml …";
+"Slices (WinOLS)" = "Φέτες (WinOLS)";

@@ -25,6 +25,10 @@ struct DatalogView: View {
     // Virtual Dyno
     @State private var dynoProfile = VirtualDyno.VehicleProfile.presets[0]
     @State private var dynoResult: VirtualDyno.DynoResult?
+    // Multi-Channel XY Scatterplot
+    @State private var scatterX = 0
+    @State private var scatterY = 1
+    @State private var scatterColor = 2
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -48,8 +52,10 @@ struct DatalogView: View {
             if let log = model.datalog {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        anomalyAlertsCard(log)
                         playbackCard(log)
                         timeSeriesCard(log)
+                        scatterplotCard(log)
                         suggestionsCard(log)
                         mathChannelCard(log)
                         virtualDynoCard(log)
@@ -73,6 +79,115 @@ struct DatalogView: View {
                 selectedMapID = model.selectedItem?.id ?? model.definition?.items.first(where: \.isTable)?.id
             }
         }
+    }
+
+    @ViewBuilder
+    private func anomalyAlertsCard(_ log: Datalog) -> some View {
+        let alerts = log.scanAnomalyAlerts()
+        if !alerts.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Automatische Log-Anomalien (\(alerts.count))", systemImage: "exclamationmark.triangle.fill")
+                    .font(.headline).foregroundStyle(.orange)
+                ForEach(alerts) { a in
+                    HStack(spacing: 8) {
+                        Image(systemName: a.severity == .error ? "xmark.octagon.fill" : "exclamationmark.circle.fill")
+                            .foregroundStyle(a.severity == .error ? .red : .orange)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(a.title).font(.caption.weight(.semibold))
+                            Text(a.detail).font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Frame #\(a.frameIndex)") {
+                            model.logFrame = a.frameIndex
+                        }
+                        .controlSize(.mini)
+                    }
+                }
+            }
+            .card(padding: 12)
+        }
+    }
+
+    private func scatterplotCard(_ log: Datalog) -> some View {
+        let chCount = max(1, log.channels.count)
+        let xIdx = min(scatterX, chCount - 1)
+        let yIdx = min(scatterY, chCount - 1)
+        let cIdx = min(scatterColor, chCount - 1)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label("XY-Scatterplot (MegaLogViewer-Stil)", systemImage: "chart.dots.scatter").font(.headline)
+                Spacer()
+                Picker("X", selection: $scatterX) {
+                    ForEach(Array(log.channels.enumerated()), id: \.offset) { i, ch in Text("X: \(ch)").tag(i) }
+                }.frame(maxWidth: 165)
+                Picker("Y", selection: $scatterY) {
+                    ForEach(Array(log.channels.enumerated()), id: \.offset) { i, ch in Text("Y: \(ch)").tag(i) }
+                }.frame(maxWidth: 165)
+                Picker("Farbe", selection: $scatterColor) {
+                    ForEach(Array(log.channels.enumerated()), id: \.offset) { i, ch in Text("Z: \(ch)").tag(i) }
+                }.frame(maxWidth: 165)
+            }
+            .controlSize(.small)
+
+            Canvas { ctx, size in
+                let padL: CGFloat = 46, padB: CGFloat = 24, padT: CGFloat = 10, padR: CGFloat = 14
+                let plotW = max(1, size.width - padL - padR)
+                let plotH = max(1, size.height - padT - padB)
+
+                var pts: [(x: Double, y: Double, z: Double)] = []
+                pts.reserveCapacity(min(log.frameCount, 4000))
+                let strideStep = max(1, log.frameCount / 4000)
+                var f = 0
+                while f < log.frameCount {
+                    if log.passesFilter(frame: f, config: filterConfig),
+                       let xv = log.value(frame: f, channel: xIdx),
+                       let yv = log.value(frame: f, channel: yIdx) {
+                        let zv = log.value(frame: f, channel: cIdx) ?? yv
+                        pts.append((xv, yv, zv))
+                    }
+                    f += strideStep
+                }
+                guard !pts.isEmpty else { return }
+
+                let xMin = pts.map(\.x).min() ?? 0, xMax = pts.map(\.x).max() ?? 1
+                let yMin = pts.map(\.y).min() ?? 0, yMax = pts.map(\.y).max() ?? 1
+                let zMin = pts.map(\.z).min() ?? 0, zMax = pts.map(\.z).max() ?? 1
+                let xSpan = xMax > xMin ? xMax - xMin : 1
+                let ySpan = yMax > yMin ? yMax - yMin : 1
+                let zSpan = zMax > zMin ? zMax - zMin : 1
+
+                // Grid lines
+                var grid = Path()
+                for g in 0...4 {
+                    let t = CGFloat(g) / 4.0
+                    let gx = padL + t * plotW
+                    let gy = padT + t * plotH
+                    grid.move(to: CGPoint(x: gx, y: padT)); grid.addLine(to: CGPoint(x: gx, y: padT + plotH))
+                    grid.move(to: CGPoint(x: padL, y: gy)); grid.addLine(to: CGPoint(x: padL + plotW, y: gy))
+                }
+                ctx.stroke(grid, with: .color(.secondary.opacity(0.18)), lineWidth: 0.7)
+
+                let palette = model.heatmapPalette
+                for p in pts {
+                    let px = padL + CGFloat((p.x - xMin) / xSpan) * plotW
+                    let py = padT + (1.0 - CGFloat((p.y - yMin) / ySpan)) * plotH
+                    let zNorm = (p.z - zMin) / zSpan
+                    let col = Theme.heat(zNorm, palette: palette).bg
+                    ctx.fill(Path(ellipseIn: CGRect(x: px - 2.3, y: py - 2.3, width: 4.6, height: 4.6)), with: .color(col.opacity(0.82)))
+                }
+
+                // Axis min/max labels
+                let lblFont = Font.system(size: 9, design: .monospaced)
+                ctx.draw(Text(String(format: "%.1f", xMin)).font(lblFont).foregroundStyle(.secondary), at: CGPoint(x: padL + 16, y: size.height - 10))
+                ctx.draw(Text(String(format: "%.1f", xMax)).font(lblFont).foregroundStyle(.secondary), at: CGPoint(x: padL + plotW - 16, y: size.height - 10))
+                ctx.draw(Text(String(format: "%.1f", yMax)).font(lblFont).foregroundStyle(.secondary), at: CGPoint(x: 22, y: padT + 6))
+                ctx.draw(Text(String(format: "%.1f", yMin)).font(lblFont).foregroundStyle(.secondary), at: CGPoint(x: 22, y: padT + plotH - 6))
+            }
+            .frame(height: 210)
+            .background(Color(nsColor: .underPageBackgroundColor).opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .card(padding: 14)
     }
 
     private func playbackCard(_ log: Datalog) -> some View {
@@ -279,6 +394,12 @@ struct DatalogView: View {
                 Toggle("DFCO / Schubabschaltung aus", isOn: $filterConfig.rejectDFCO).toggleStyle(.checkbox)
                 Toggle("Warm (≥75 °C)", isOn: $filterConfig.warmEngineOnly).toggleStyle(.checkbox)
                 Toggle("Bilinear (4 Zellen)", isOn: $useBilinear).toggleStyle(.checkbox)
+                if filterConfig.rejectDFCO {
+                    HStack(spacing: 4) {
+                        Text("Post-DFCO: \(Int(filterConfig.postDFCODeadTimeMs)) ms").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                        Slider(value: $filterConfig.postDFCODeadTimeMs, in: 0...1500, step: 100).frame(width: 75)
+                    }
+                }
                 Spacer()
             }
             .controlSize(.small)
@@ -333,6 +454,7 @@ struct DatalogView: View {
                 Spacer()
                 Menu("Vorlagen") {
                     Button("Ladedruck-Abweichung (A - B)") { mathName = "Boost Error"; mathUnit = "mbar"; mathFormula = "A - B" }
+                    Button("Closed-Loop STFT × LTFT (%)") { mathName = "Total Trim %"; mathUnit = "%"; mathFormula = "((1 + A/100) * (1 + B/100) - 1) * 100" }
                     Button("Lambda / AFR Fehler % ((A-B)/B*100)") { mathName = "Lambda Err %"; mathUnit = "%"; mathFormula = "(A - B) / B * 100" }
                     Button("Düsenauslastung IDC % (A*B/1200)") { mathName = "IDC %"; mathUnit = "%"; mathFormula = "A * B / 1200" }
                 }

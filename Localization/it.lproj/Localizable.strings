@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "Nessuna mappa riconosciuta";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Fai clic su «Ripeti scansione» per cercare mappe Bosch/Siemens, curve 1D e strutture Float32.";
 "Zurück zu Hex" = "Torna a Hex";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "Controllo sicurezza Flash Preflight";
+"Bereit zum Flashen" = "Pronto per il flash";
+"Prüfen empfohlen" = "Verifica consigliata";
+"Warnung — Blocker gefunden" = "Avviso — Blocco rilevato";
+"Auf Zwilling kopieren" = "Copia sul gemello";
+"CompTest-CVN wiederherstellen (GF(2))" = "Ripristina CompTest CVN (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "Patcher manuale intervallo (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "Atlante memoria & Pool assi condivisi";
+"Speicheratlas" = "Atlante memoria";
+"2. Definition laden …" = "Carica 2ª definizione …";
+"3D-Messpunkte" = "Nuvola 3D";
+"Tune portieren …" = "Porta tune …";
+"Sync-Block" = "Blocco Sync";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "Grafico a dispersione XY (stile MegaLogViewer)";
+"Als RomRaider XML (.xml) exportieren …" = "Esporta come RomRaider XML (.xml) …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "Unione intelligente definizione (indirizzi) …";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "Importa A2L / WinOLS .kp / RomRaider .xml …";
+"Slices (WinOLS)" = "Fette (WinOLS)";

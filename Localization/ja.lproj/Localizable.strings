@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "認識されたマップなし";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "「再スキャン」をクリックしてBosch/Siemensマップ、1D曲線、Float32構造を検索します。";
 "Zurück zu Hex" = "Hexに戻る";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "フラッシュ前プリフライト安全ゲート";
+"Bereit zum Flashen" = "フラッシュ準備完了";
+"Prüfen empfohlen" = "確認を推奨";
+"Warnung — Blocker gefunden" = "警告 — ブロッカーを検出";
+"Auf Zwilling kopieren" = "ツインマップへコピー";
+"CompTest-CVN wiederherstellen (GF(2))" = "CompTest CVN を復元 (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "手動レンジパッチャー (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "メモリアトラス & 共有軸プール";
+"Speicheratlas" = "メモリアトラス";
+"2. Definition laden …" = "第2定義を読み込む …";
+"3D-Messpunkte" = "3D計測点群";
+"Tune portieren …" = "チューン移植 …";
+"Sync-Block" = "同期ブロック";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "XY散布図 (MegaLogViewerスタイル)";
+"Als RomRaider XML (.xml) exportieren …" = "RomRaider XML (.xml) として書き出す …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "定義スマートマージ（アドレス引き継ぎ）…";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "A2L / WinOLS .kp / RomRaider .xml を読み込む …";
+"Slices (WinOLS)" = "スライス (WinOLS)";

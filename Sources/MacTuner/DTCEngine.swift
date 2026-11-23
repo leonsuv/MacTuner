@@ -30,46 +30,84 @@ enum DTCEngine {
         guard bin.count >= 4096 else { return nil }
         let lsb = detectEndianness(bin)
 
-        // 1. Find the strongest contiguous table of valid SAE P-codes (0x0000..0x3999 BCD-like OBD hex, non-trivial)
+        // 1. Bosch EDC16/EDC17/MED17/MG1/MD1 P0607 Anchor (`0607 0607 0607 0607` BE / `0706 0706 0706 0706` LE)
+        //    Fast-path anchor that locks onto the exact OBD-II P-code mapping table boundary.
         var bestCodeStart = -1
         var bestCodeCount = 0
         var bestStride = 2
 
-        for stride in [2, 4] {
-            var i = 0
-            let limit = bin.count - stride * 24
-            while i < limit {
-                let first = readU16(bin, at: i, lsb: lsb)
-                if isPlausibleOBDPCode(first) {
-                    var count = 0
-                    var nonZero = 0
-                    var unique = Set<UInt16>()
-                    var pos = i
-                    while pos + 2 <= bin.count && count < 1500 {
-                        let v = readU16(bin, at: pos, lsb: lsb)
-                        if v == 0x0000 || isPlausibleOBDPCode(v) {
-                            count += 1
-                            if v != 0 {
-                                nonZero += 1
-                                unique.insert(v)
-                            }
-                            pos += stride
-                        } else {
-                            break
-                        }
-                    }
-                    // Real OEM DTC tables have >= 30 entries and >= 20 distinct non-zero P-codes
-                    if count >= 30 && unique.count >= 20 && Double(nonZero) / Double(count) >= 0.35 {
-                        if unique.count > bestCodeCount {
-                            bestCodeStart = i
-                            bestCodeCount = unique.count
-                            bestStride = stride
-                        }
-                        i = pos
-                        continue
+        let p0607Pattern: [UInt8] = lsb ? [0x07, 0x06, 0x07, 0x06, 0x07, 0x06, 0x07, 0x06]
+                                        : [0x06, 0x07, 0x06, 0x07, 0x06, 0x07, 0x06, 0x07]
+        if let anchorOff = findByteSequence(p0607Pattern, in: bin) {
+            // Walk backwards from P0607 anchor to find the true start of the P-code table
+            for stride in [2, 4] {
+                var start = anchorOff
+                while start - stride >= 0 {
+                    let prev = readU16(bin, at: start - stride, lsb: lsb)
+                    if prev == 0x0000 || isPlausibleOBDPCode(prev) {
+                        start -= stride
+                    } else {
+                        break
                     }
                 }
-                i += 2
+                var pos = start, count = 0, nonZero = 0
+                var unique = Set<UInt16>()
+                while pos + 2 <= bin.count && count < 1500 {
+                    let v = readU16(bin, at: pos, lsb: lsb)
+                    if v == 0x0000 || isPlausibleOBDPCode(v) {
+                        count += 1
+                        if v != 0 { nonZero += 1; unique.insert(v) }
+                        pos += stride
+                    } else {
+                        break
+                    }
+                }
+                if count >= 30 && unique.count >= 20 && Double(nonZero) / Double(count) >= 0.30 && unique.count > bestCodeCount {
+                    bestCodeStart = start
+                    bestCodeCount = unique.count
+                    bestStride = stride
+                }
+            }
+        }
+
+        // 2. Fallback: Find the strongest contiguous table of valid SAE P-codes (0x0000..0x3999 BCD-like OBD hex, non-trivial)
+        if bestCodeStart < 0 {
+            for stride in [2, 4] {
+                var i = 0
+                let limit = bin.count - stride * 24
+                while i < limit {
+                    let first = readU16(bin, at: i, lsb: lsb)
+                    if isPlausibleOBDPCode(first) {
+                        var count = 0
+                        var nonZero = 0
+                        var unique = Set<UInt16>()
+                        var pos = i
+                        while pos + 2 <= bin.count && count < 1500 {
+                            let v = readU16(bin, at: pos, lsb: lsb)
+                            if v == 0x0000 || isPlausibleOBDPCode(v) {
+                                count += 1
+                                if v != 0 {
+                                    nonZero += 1
+                                    unique.insert(v)
+                                }
+                                pos += stride
+                            } else {
+                                break
+                            }
+                        }
+                        // Real OEM DTC tables have >= 30 entries and >= 20 distinct non-zero P-codes
+                        if count >= 30 && unique.count >= 20 && Double(nonZero) / Double(count) >= 0.35 {
+                            if unique.count > bestCodeCount {
+                                bestCodeStart = i
+                                bestCodeCount = unique.count
+                                bestStride = stride
+                            }
+                            i = pos
+                            continue
+                        }
+                    }
+                    i += 2
+                }
             }
         }
 
@@ -211,5 +249,23 @@ enum DTCEngine {
     private static func readU16(_ bin: [UInt8], at off: Int, lsb: Bool) -> UInt16 {
         lsb ? (UInt16(bin[off]) | (UInt16(bin[off + 1]) << 8))
             : ((UInt16(bin[off]) << 8) | UInt16(bin[off + 1]))
+    }
+
+    private static func findByteSequence(_ needle: [UInt8], in haystack: [UInt8]) -> Int? {
+        guard !needle.isEmpty, haystack.count >= needle.count else { return nil }
+        let first = needle[0]
+        let limit = haystack.count - needle.count
+        var i = 0
+        while i <= limit {
+            if haystack[i] == first {
+                var match = true
+                for j in 1..<needle.count where haystack[i + j] != needle[j] {
+                    match = false; break
+                }
+                if match { return i }
+            }
+            i += 1
+        }
+        return nil
     }
 }

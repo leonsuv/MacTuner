@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "Brak rozpoznanych map";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Kliknij „Skanuj ponownie”, aby wyszukać mapy Bosch/Siemens, krzywe 1D i struktury Float32.";
 "Zurück zu Hex" = "Powrót do Hex";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "Bramka bezpieczeństwa Flash Preflight";
+"Bereit zum Flashen" = "Gotowy do flashowania";
+"Prüfen empfohlen" = "Zalecana weryfikacja";
+"Warnung — Blocker gefunden" = "Ostrzeżenie — Wykryto blokadę";
+"Auf Zwilling kopieren" = "Kopiuj na bliźniaka";
+"CompTest-CVN wiederherstellen (GF(2))" = "Przywróć CompTest CVN (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "Ręczny patcher zakresu (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "Atlas pamięci i pula współdzielonych osi";
+"Speicheratlas" = "Atlas pamięci";
+"2. Definition laden …" = "Wczytaj 2. definicję …";
+"3D-Messpunkte" = "Chmura 3D";
+"Tune portieren …" = "Portuj tune …";
+"Sync-Block" = "Blok Sync";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "Wykres punktowy XY (styl MegaLogViewer)";
+"Als RomRaider XML (.xml) exportieren …" = "Eksportuj jako RomRaider XML (.xml) …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "Inteligentne łączenie definicji (adresy) …";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "Importuj A2L / WinOLS .kp / RomRaider .xml …";
+"Slices (WinOLS)" = "Plastry (WinOLS)";

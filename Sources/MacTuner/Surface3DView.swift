@@ -13,6 +13,7 @@ struct Surface3DView: View {
     @State private var pitch: Double = 0.55
     @State private var zoom: Double = 1.0
     @State private var showCompareWireframe = true
+    @State private var showMeasurementCloud = true
     @State private var editMode = false
     @State private var dragStartYaw: Double = -0.68
     @State private var dragStartPitch: Double = 0.55
@@ -57,6 +58,11 @@ struct Surface3DView: View {
                 Toggle("Vergleich", isOn: $showCompareWireframe)
                     .toggleStyle(.checkbox)
                     .fixedSize()
+                if model.datalog != nil {
+                    Toggle("3D-Messpunkte", isOn: $showMeasurementCloud)
+                        .toggleStyle(.checkbox)
+                        .fixedSize()
+                }
                 ControlGroup {
                     Button { zoom = max(0.55, zoom - 0.15) } label: { Image(systemName: "minus.magnifyingglass") }
                     Button { zoom = min(2.0, zoom + 0.15) } label: { Image(systemName: "plus.magnifyingglass") }
@@ -258,6 +264,49 @@ struct Surface3DView: View {
                         let rect = CGRect(x: pt.x - rad, y: pt.y - rad, width: rad * 2, height: rad * 2)
                         ctx.fill(Path(ellipseIn: rect), with: .color(isActive ? Theme.changed : .white))
                         ctx.stroke(Path(ellipseIn: rect), with: .color(.black.opacity(0.6)), lineWidth: 1)
+                    }
+                }
+            }
+
+            // 5. WinOLS 5.94 3D Measurement Cloud Overlay (per-cell thinned datalog (X,Y,Z) points + stems to surface)
+            if showMeasurementCloud, let log = model.datalog, !log.samples.isEmpty {
+                let xVals = model.axisValues(x, count: l.cols)
+                let yVals = model.axisValues(y, count: l.rows)
+                if let xCol = model.logXChannel ?? log.guessChannel(forUnit: x.scaling.units),
+                   let yCol = model.logYChannel ?? log.guessChannel(forUnit: y.scaling.units),
+                   let zCol = log.guessChannel(forUnit: s.units) {
+                    var sumZ = [[Double]](repeating: [Double](repeating: 0, count: l.cols), count: l.rows)
+                    var cntZ = [[Int]](repeating: [Int](repeating: 0, count: l.cols), count: l.rows)
+                    let filter = Datalog.FilterConfig(rejectDFCO: true)
+                    for fi in 0..<log.frameCount {
+                        guard log.passesFilter(frame: fi, config: filter) else { continue }
+                        guard let xv = log.value(frame: fi, channel: xCol),
+                              let yv = log.value(frame: fi, channel: yCol),
+                              let zv = log.value(frame: fi, channel: zCol),
+                              let ci = Datalog.nearestIndex(for: xv, in: xVals),
+                              let riCell = Datalog.nearestIndex(for: yv, in: yVals) else { continue }
+                        sumZ[riCell][ci] += model.toDisplayValue(zv, xdfUnit: s.units)
+                        cntZ[riCell][ci] += 1
+                    }
+                    for r in 0..<l.rows {
+                        for c in 0..<l.cols where cntZ[r][c] > 0 {
+                            let meanZ = sumZ[r][c] / Double(cntZ[r][c])
+                            let surfZ = gridVals[r][c]
+                            let nx = l.cols > 1 ? (-1.0 + 2.0 * Double(c) / Double(l.cols - 1)) : 0
+                            let ny = l.rows > 1 ? (-1.0 + 2.0 * Double(r) / Double(l.rows - 1)) : 0
+                            let nzMeas = min(0.85, max(-0.65, -0.45 + 1.0 * ((meanZ - lo) / span)))
+                            let ptMeas = p3(nx, ny, nzMeas)
+                            let ptSurf = projected[r][c].pt
+                            let above = meanZ >= surfZ
+                            let dotColor: Color = above ? Color(red: 1.0, green: 0.36, blue: 0.28) : Color(red: 0.22, green: 0.85, blue: 0.96)
+                            var stem = Path()
+                            stem.move(to: ptSurf)
+                            stem.addLine(to: ptMeas)
+                            ctx.stroke(stem, with: .color(dotColor.opacity(0.8)), lineWidth: 1.2)
+                            let dotRect = CGRect(x: ptMeas.x - 3.2, y: ptMeas.y - 3.2, width: 6.4, height: 6.4)
+                            ctx.fill(Path(ellipseIn: dotRect), with: .color(dotColor))
+                            ctx.stroke(Path(ellipseIn: dotRect), with: .color(.white.opacity(0.85)), lineWidth: 0.8)
+                        }
                     }
                 }
             }

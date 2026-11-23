@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "Žádné rozpoznané mapy";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Klikněte na „Znovu skenovat“ pro hledání map Bosch/Siemens, 1D křivek a struktur Float32.";
 "Zurück zu Hex" = "Zpět na Hex";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "Bezpečnostní brána Flash Preflight";
+"Bereit zum Flashen" = "Připraveno k flashování";
+"Prüfen empfohlen" = "Doporučena kontrola";
+"Warnung — Blocker gefunden" = "Varování — Nalezen blokátor";
+"Auf Zwilling kopieren" = "Kopírovat na dvojče";
+"CompTest-CVN wiederherstellen (GF(2))" = "Obnovit CompTest CVN (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "Ruční patcher rozsahu (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "Atlas paměti a sdílené osy";
+"Speicheratlas" = "Atlas paměti";
+"2. Definition laden …" = "Načíst 2. definici …";
+"3D-Messpunkte" = "3D body";
+"Tune portieren …" = "Portovat tune …";
+"Sync-Block" = "Sync blok";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "XY bodový graf (styl MegaLogViewer)";
+"Als RomRaider XML (.xml) exportieren …" = "Exportovat jako RomRaider XML (.xml) …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "Chytré sloučení definice (přenést adresy) …";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "Importovat A2L / WinOLS .kp / RomRaider .xml …";
+"Slices (WinOLS)" = "Řezy (WinOLS)";

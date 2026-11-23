@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "Tanınan Harita Yok";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Bosch/Siemens haritaları, 1D eğrileri ve Float32 yapılarını aramak için “Yeniden Tara”ya tıklayın.";
 "Zurück zu Hex" = "Hex'e Dön";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "Flash Ön Uçuş Güvenlik Kapısı";
+"Bereit zum Flashen" = "Flashlamaya Hazır";
+"Prüfen empfohlen" = "İnceleme Önerilir";
+"Warnung — Blocker gefunden" = "Uyarı — Engelleyici Bulundu";
+"Auf Zwilling kopieren" = "İkize Kopyala";
+"CompTest-CVN wiederherstellen (GF(2))" = "CompTest CVN Geri Yükle (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "Manuel Aralık Yamalayıcı (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "Bellek Atlası ve Paylaşılan Eksen Havuzu";
+"Speicheratlas" = "Bellek Atlası";
+"2. Definition laden …" = "2. Tanımı Yükle …";
+"3D-Messpunkte" = "3D Ölçüm Bulutu";
+"Tune portieren …" = "Tune Aktar …";
+"Sync-Block" = "Senk. Bloğu";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "XY Dağılım Grafiği (MegaLogViewer Tarzı)";
+"Als RomRaider XML (.xml) exportieren …" = "RomRaider XML (.xml) olarak dışa aktar …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "Akıllı Tanım Birleştirme (Adresleri Aktar) …";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "A2L / WinOLS .kp / RomRaider .xml içe aktar …";
+"Slices (WinOLS)" = "Dilimler (WinOLS)";

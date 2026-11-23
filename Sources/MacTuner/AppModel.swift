@@ -175,6 +175,7 @@ final class AppModel {
     static let datalogSelection = -11
     static let pluginsSelection = -12
     static let dtcSelection = -13
+    static let memoryAtlasSelection = -14
 
     private(set) var definition: XDFDefinition?
     private(set) var xdfURL: URL?
@@ -266,6 +267,8 @@ final class AppModel {
     var pinnedItemID: Int?
     /// When true, edits applied to the active map mirror atomically to `pinnedItemID` (if compatible shape).
     var mirrorPinnedEdits = false
+    var syncBlocks: [SyncBlock] = []
+    var showContentPortingSheet = false
     /// Byte gap threshold for clustering adjacent diffs into map-sized regions (0 / 16 / 32 / 64 B).
     var diffClusterGap: Int = 32 {
         didSet { diffClusterCache = nil }
@@ -584,6 +587,54 @@ final class AppModel {
         let patches = plugin.correct(bin: bin)
         guard !patches.isEmpty else { return }
         commit(patches)
+    }
+
+    func correctCVNInPlace() -> Bool {
+        guard hasBin, let med17 = ChecksumRegistry.shared.plugin(id: "bosch-med17") as? BoschMED17ChecksumPlugin else { return false }
+        guard let patch = med17.correctCVNInPlace(bin: bin) else { return false }
+        applyRawPatches([patch], label: "CompTest-CVN wiederhergestellt (GF(2))")
+        return true
+    }
+
+    var flashPreflightReport: FlashPreflightReport {
+        _ = revision
+        let ref = compare ?? activeBin?.openedSnapshot
+        let def = definition ?? XDFDefinition(title: "", description: "", categories: [:], items: [])
+        return FlashPreflightEngine.run(
+            bin: bin,
+            referenceBin: ref,
+            definition: def,
+            ecuIdentity: activeBin?.ecuIdentity,
+            checksumReport: checksumReport
+        )
+    }
+
+    func copyTableToTwin(sourceID: Int, twinID: Int) {
+        guard hasBin, let def = definition,
+              let src = def.items.first(where: { $0.id == sourceID }),
+              let dst = def.items.first(where: { $0.id == twinID }),
+              src.data.byteRange.upperBound <= bin.count,
+              dst.data.byteRange.upperBound <= bin.count,
+              src.data.byteRange.count == dst.data.byteRange.count else { return }
+        let newBytes = Array(bin[src.data.byteRange])
+        let oldBytes = Array(bin[dst.data.byteRange])
+        guard newBytes != oldBytes else { return }
+        applyRawPatches([Patch(offset: dst.data.address, old: oldBytes, new: newBytes)],
+                        label: "Zwilling synchronisiert: \(dst.title)")
+    }
+
+    @discardableResult
+    func applyDiagnosticsAutoFix() -> Int {
+        guard hasBin, var def = definition else { return 0 }
+        let findings = MapDiagnostics.analyze(definition: def, bin: bin)
+        let count = MapDiagnostics.applySafeFixes(definition: &def, findings: findings)
+        if count > 0 {
+            definition = def
+            xdfDirty = true
+            diagnosticsCache = nil
+            touch()
+        }
+        return count
     }
 
     // MARK: Datalogging
@@ -906,9 +957,91 @@ final class AppModel {
     }
 
     func openXDFPanel() { if let u = chooseFile(String(localized: "XDF öffnen"), types: ["xdf"]) { loadXDF(u) } }
-    func importDefinitionPanel() { if let u = chooseFile(String(localized: "A2L / WinOLS .kp importieren"), types: ["a2l", "ols", "kp", "csv"]) { importDefinition(u) } }
+    func importDefinitionPanel() { if let u = chooseFile(String(localized: "A2L / WinOLS .kp / RomRaider .xml importieren"), types: ["a2l", "ols", "kp", "csv", "xml"]) { importDefinition(u) } }
     func openBinPanel() { if let u = chooseFile(String(localized: "BIN öffnen"), types: BinaryFormatCodec.binaryExtensions) { openBin(u) } }
     func openComparePanel() { if let u = chooseFile(String(localized: "Vergleichs-BIN öffnen"), types: BinaryFormatCodec.binaryExtensions) { loadCompare(u) } }
+
+    func exportDefinitionRomRaiderXML() {
+        guard let def = definition else { return }
+        let p = NSSavePanel()
+        p.allowedContentTypes = [.xml]
+        p.nameFieldStringValue = "\(def.title).xml"
+        p.directoryURL = xdfURL?.deletingLastPathComponent() ?? binURL?.deletingLastPathComponent()
+        guard p.runModal() == .OK, let url = p.url else { return }
+        do {
+            try DefinitionExporter.exportRomRaiderXML(def).write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            alert = String(localized: "Export fehlgeschlagen:\n\(error.localizedDescription)")
+        }
+    }
+
+    /// Smart Definition Merge: updates ONLY addresses, axis addresses & dimensions from a second definition
+    /// while preserving custom titles, descriptions, categories, notes, units & scaling equations.
+    func smartMergeDefinitionPanel() {
+        guard var current = definition else { return }
+        guard let url = chooseFile(String(localized: "Definition für Smart-Merge wählen"), types: ["xdf", "a2l", "ols", "kp", "csv", "xml"]) else { return }
+        do {
+            let incoming: XDFDefinition
+            if url.pathExtension.lowercased() == "xdf" {
+                incoming = try XDFParser.load(url)
+            } else {
+                incoming = try DefinitionImporter.load(url)
+            }
+            func norm(_ s: String) -> String {
+                s.lowercased().filter { $0.isLetter || $0.isNumber }
+            }
+            var byNorm: [String: XDFItem] = [:]
+            for inc in incoming.items { byNorm[norm(inc.title)] = inc }
+
+            var updatedCount = 0
+            for idx in current.items.indices {
+                let key = norm(current.items[idx].title)
+                guard let match = byNorm[key] else { continue }
+                current.items[idx].data.address = match.data.address
+                current.items[idx].data.rows = match.data.rows
+                current.items[idx].data.cols = match.data.cols
+                if case .table(var cx, var cy) = current.items[idx].kind,
+                   case .table(let mx, let my) = match.kind {
+                    if let mxl = mx.layout {
+                        if var cxl = cx.layout {
+                            cxl.address = mxl.address
+                            cxl.cols = mxl.cols
+                            cx.source = .data(cxl)
+                            cx.count = cxl.cols
+                        } else {
+                            cx.source = .data(mxl)
+                            cx.count = mxl.cols
+                        }
+                    }
+                    if let myl = my.layout {
+                        if var cyl = cy.layout {
+                            cyl.address = myl.address
+                            cyl.cols = myl.cols
+                            cy.source = .data(cyl)
+                            cy.count = cyl.cols
+                        } else {
+                            cy.source = .data(myl)
+                            cy.count = myl.cols
+                        }
+                    }
+                    current.items[idx].kind = .table(x: cx, y: cy)
+                }
+                updatedCount += 1
+            }
+            if updatedCount > 0 {
+                definition = current
+                xdfDirty = true
+                covered = Changes.coverage(current)
+                diagnosticsCache = nil
+                touch()
+                alert = String(localized: "Smart-Merge abgeschlossen: \(updatedCount) von \(current.items.count) Kennfeldern wurden auf die neuen Adressen aktualisiert (Namen & Skalierungen beibehalten).")
+            } else {
+                alert = String(localized: "Smart-Merge: Keine übereinstimmenden Kennfeld-Titel gefunden.")
+            }
+        } catch {
+            alert = String(localized: "Smart-Merge fehlgeschlagen:\n\(error.localizedDescription)")
+        }
+    }
 
     func exportDefinitionCSV() {
         guard let def = definition else { return }
@@ -1568,7 +1701,7 @@ final class AppModel {
         guard let idx = activeBinIndex else { return }
         do {
             let encoded = BinaryFormatCodec.encode(openBins[idx].bytes, to: url, baseAddress: openBins[idx].baseAddress)
-            try encoded.write(to: url, options: .atomic)
+            try ChecksumMath.writeAndVerify(data: encoded, to: url)
             openBins[idx].dirty = false
             openBins[idx].openedSnapshot = openBins[idx].bytes
         } catch {
@@ -2011,16 +2144,60 @@ final class AppModel {
 
         let summary = describeEdit(op, item: item, cells: cells, patchCount: patches.count)
         var allPatches = patches
+        var mirroredIDs = Set<Int>([item.id])
         if mirrorPinnedEdits, let pid = pinnedItemID, pid != item.id, let def = definition,
            pid >= 0, pid < def.items.count {
             let twin = def.items[pid]
             if twin.data.rows == item.data.rows && twin.data.cols == item.data.cols && !isLocked(twin) {
                 let twinPatches = BinCodec.patches(op, item: twin, cells: cells, bin: bin, compare: compare)
                 allPatches.append(contentsOf: twinPatches)
+                mirroredIDs.insert(twin.id)
+            }
+        }
+        // Persistent WinOLS-style Sync-Block mirroring
+        if let def = definition {
+            for block in syncBlocks where block.keepInSync && block.itemIDs.contains(item.id) {
+                for targetID in block.itemIDs where !mirroredIDs.contains(targetID) {
+                    if let twin = def.items.first(where: { $0.id == targetID }),
+                       twin.data.rows == item.data.rows && twin.data.cols == item.data.cols && !isLocked(twin) {
+                        let twinPatches = BinCodec.patches(op, item: twin, cells: cells, bin: bin, compare: compare)
+                        allPatches.append(contentsOf: twinPatches)
+                        mirroredIDs.insert(twin.id)
+                    }
+                }
             }
         }
         commit(allPatches)
         recordHistory(item: item, summary: summary)
+    }
+
+    func syncBlock(for itemID: Int) -> SyncBlock? {
+        syncBlocks.first { $0.itemIDs.contains(itemID) }
+    }
+
+    @discardableResult
+    func createSyncBlockForParallelMaps(item: XDFItem, tolerancePct: Double = 2.0) -> Int {
+        guard hasBin, let def = definition else { return 0 }
+        let parallels = SyncBlockFinder.findParallelMaps(for: item, in: def, bin: bin, tolerancePct: tolerancePct)
+        guard !parallels.isEmpty else {
+            alert = String(localized: "Keine parallelen Zwillingskennfelder für „\(item.title)“ gefunden.")
+            return 0
+        }
+        let ids = [item.id] + parallels.map(\.id)
+        syncBlocks.removeAll { !$0.itemIDs.filter { ids.contains($0) }.isEmpty }
+        syncBlocks.append(SyncBlock(name: "Sync: \(item.title) (\(ids.count)×)", itemIDs: ids, keepInSync: true))
+        return ids.count
+    }
+
+    func removeSyncBlock(id: UUID) {
+        syncBlocks.removeAll { $0.id == id }
+    }
+
+    func jumpToNextSyncBlockMember(from itemID: Int, direction: Int = 1) {
+        guard let block = syncBlock(for: itemID), block.itemIDs.count > 1,
+              let idx = block.itemIDs.firstIndex(of: itemID) else { return }
+        let nextIdx = (idx + direction + block.itemIDs.count) % block.itemIDs.count
+        selection = block.itemIDs[nextIdx]
     }
 
     /// Adds an in-memory binary buffer (e.g. extracted slice, byte-swapped copy, padded BIN) as a new workspace tab.

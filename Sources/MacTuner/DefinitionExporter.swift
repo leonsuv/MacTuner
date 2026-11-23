@@ -187,6 +187,96 @@ enum DefinitionExporter {
         return str
     }
 
+    // MARK: RomRaider XML Export (`<roms><rom><romid>...`)
+
+    static func exportRomRaiderXML(_ def: XDFDefinition) -> String {
+        var lines: [String] = [
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+            "<roms>",
+            "  <rom>",
+            "    <romid>",
+            "      <xmlid>\(xmlEsc(sanitizeIdent(def.title, fallback: "MACTUNER_ROM")))</xmlid>",
+            "      <ecuid>\(xmlEsc(def.title))</ecuid>",
+            "      <make>MacTuner</make>",
+            "      <model>\(xmlEsc(def.title))</model>",
+            "    </romid>"
+        ]
+        for item in def.items {
+            let cat = item.categories.first.flatMap { def.categories[$0] } ?? "Uncategorized"
+            let typeStr: String = {
+                if !item.isTable { return "1D" }
+                return (item.data.rows > 1 && item.data.cols > 1) ? "3D" : "2D"
+            }()
+            let st = rrStorageType(item.data)
+            let endian = item.data.lsbFirst ? "little" : "big"
+            let addr = String(format: "0x%X", item.data.address)
+            let (f, off) = linearFactorOffset(item.scaling)
+            let expr = rrExpression(factor: f, offset: off)
+            let toByte = rrToByte(factor: f, offset: off)
+            let fmt = item.scaling.decimals > 0 ? "0." + String(repeating: "0", count: item.scaling.decimals) : "#"
+            let fine = item.scaling.decimals > 0 ? String(format: "%.\(item.scaling.decimals)f", pow(10.0, -Double(item.scaling.decimals))) : "1"
+            let coarse = item.scaling.decimals > 0 ? String(format: "%.\(max(0, item.scaling.decimals - 1))f", pow(10.0, -Double(max(0, item.scaling.decimals - 1)))) : "5"
+
+            var attrs = "type=\"\(typeStr)\" name=\"\(xmlEsc(item.title))\" category=\"\(xmlEsc(cat))\" storagetype=\"\(st)\" endian=\"\(endian)\" storageaddress=\"\(addr)\""
+            if item.data.cols > 1 { attrs += " sizex=\"\(item.data.cols)\"" }
+            if item.data.rows > 1 { attrs += " sizey=\"\(item.data.rows)\"" }
+            lines.append("    <table \(attrs)>")
+            lines.append("      <scaling units=\"\(xmlEsc(item.scaling.units))\" expression=\"\(xmlEsc(expr))\" to_byte=\"\(xmlEsc(toByte))\" format=\"\(fmt)\" fineincrement=\"\(fine)\" coarseincrement=\"\(coarse)\" />")
+
+            if item.isTable, let xAxis = item.xAxis, let xl = xAxis.layout {
+                let (xf, xoff) = linearFactorOffset(xAxis.scaling)
+                lines.append("      <table type=\"X Axis\" name=\"X\" storagetype=\"\(rrStorageType(xl))\" endian=\"\(xl.lsbFirst ? "little" : "big")\" sizex=\"\(xl.cols)\" storageaddress=\"\(String(format: "0x%X", xl.address))\">")
+                lines.append("        <scaling units=\"\(xmlEsc(xAxis.scaling.units))\" expression=\"\(xmlEsc(rrExpression(factor: xf, offset: xoff)))\" to_byte=\"\(xmlEsc(rrToByte(factor: xf, offset: xoff)))\" format=\"0.00\" fineincrement=\"1\" coarseincrement=\"5\" />")
+                lines.append("      </table>")
+            }
+            if item.isTable, let yAxis = item.yAxis, let yl = yAxis.layout {
+                let (yf, yoff) = linearFactorOffset(yAxis.scaling)
+                lines.append("      <table type=\"Y Axis\" name=\"Y\" storagetype=\"\(rrStorageType(yl))\" endian=\"\(yl.lsbFirst ? "little" : "big")\" sizey=\"\(yl.cols)\" storageaddress=\"\(String(format: "0x%X", yl.address))\">")
+                lines.append("        <scaling units=\"\(xmlEsc(yAxis.scaling.units))\" expression=\"\(xmlEsc(rrExpression(factor: yf, offset: yoff)))\" to_byte=\"\(xmlEsc(rrToByte(factor: yf, offset: yoff)))\" format=\"0.00\" fineincrement=\"1\" coarseincrement=\"5\" />")
+                lines.append("      </table>")
+            }
+            lines.append("    </table>")
+        }
+        lines.append("  </rom>")
+        lines.append("</roms>")
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func rrStorageType(_ l: DataLayout) -> String {
+        if l.isFloat { return "float" }
+        switch (l.bits, l.signed) {
+        case (8, false): return "uint8"
+        case (8, true): return "int8"
+        case (16, false): return "uint16"
+        case (16, true): return "int16"
+        case (32, false): return "uint32"
+        case (32, true): return "int32"
+        default: return "uint16"
+        }
+    }
+
+    private static func rrExpression(factor: Double, offset: Double) -> String {
+        if abs(factor - 1) < 1e-12 && abs(offset) < 1e-12 { return "x" }
+        var s = abs(factor - 1) < 1e-12 ? "x" : "x*\(fmtNum(factor))"
+        if abs(offset) >= 1e-12 { s += offset > 0 ? "+\(fmtNum(offset))" : "-\(fmtNum(abs(offset)))" }
+        return s
+    }
+
+    private static func rrToByte(factor: Double, offset: Double) -> String {
+        if abs(factor - 1) < 1e-12 && abs(offset) < 1e-12 { return "x" }
+        let safeF = abs(factor) < 1e-12 ? 1.0 : factor
+        if abs(offset) < 1e-12 { return "x/\(fmtNum(safeF))" }
+        let inner = offset > 0 ? "(x-\(fmtNum(offset)))" : "(x+\(fmtNum(abs(offset))))"
+        return abs(safeF - 1) < 1e-12 ? inner : "\(inner)/\(fmtNum(safeF))"
+    }
+
+    private static func xmlEsc(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;")
+         .replacingOccurrences(of: "<", with: "&lt;")
+         .replacingOccurrences(of: ">", with: "&gt;")
+         .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
     private static func fmtNum(_ v: Double) -> String {
         if abs(v) < 1e-12 { return "0" }
         return String(format: "%.10g", v)

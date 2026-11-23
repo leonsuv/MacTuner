@@ -169,11 +169,23 @@ struct PotentialMapPreviewCard: View {
                 }
             }
 
-            // Subtitle: encoding + domain hint
+            // Subtitle: encoding + 3-tier detection evidence pill + domain hint
             HStack(spacing: 5) {
+                let evColor: Color = switch candidate.evidence {
+                case .pointerDescriptor: .green
+                case .boschHeader: amber
+                case .axisAnchored: mint
+                case .dataPattern: .secondary
+                }
+                Text(candidate.evidence.rawValue)
+                    .font(.system(size: 9, weight: .bold))
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(evColor.opacity(0.18), in: Capsule())
+                    .foregroundStyle(evColor)
                 Text(candidate.encodingSummary)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 if let hint = candidate.domainHint {
                     Text("· \(hint)")
                         .font(.system(size: 10, weight: .medium))

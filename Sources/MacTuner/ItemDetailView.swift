@@ -154,6 +154,39 @@ struct ItemDetailView: View {
 
                 // Clean labeled secondary action cluster
                 HStack(spacing: 6) {
+                    if item.isTable {
+                        if let sb = model.syncBlock(for: item.id) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "link.circle.fill").foregroundStyle(Color.accentColor)
+                                Text("Sync (\(sb.itemIDs.count)×)").font(.caption2.weight(.semibold))
+                                Button { model.jumpToNextSyncBlockMember(from: item.id, direction: -1) } label: {
+                                    Image(systemName: "chevron.left")
+                                }
+                                .buttonStyle(.plain)
+                                .help("Vorherige Parallel-Map in Sync-Block")
+                                Button { model.jumpToNextSyncBlockMember(from: item.id, direction: 1) } label: {
+                                    Image(systemName: "chevron.right")
+                                }
+                                .buttonStyle(.plain)
+                                .help("Nächste Parallel-Map in Sync-Block")
+                                Button { model.removeSyncBlock(id: sb.id) } label: {
+                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Sync-Block aufheben")
+                            }
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(Color.accentColor.opacity(0.14), in: Capsule())
+                        } else {
+                            Button {
+                                model.createSyncBlockForParallelMaps(item: item)
+                            } label: {
+                                Label("Sync-Block", systemImage: "link.badge.plus")
+                            }
+                            .help("Parallele Zwillingskennfelder in der ECU finden & Änderungen automatisch synchron halten (WinOLS Strg+Alt+P)")
+                        }
+                    }
+
                     Button {
                         model.pinnedItemID = (model.pinnedItemID == item.id) ? nil : item.id
                     } label: {

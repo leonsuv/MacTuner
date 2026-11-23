@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "Nincs felismert jellegmező";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Kattintson az „Újrakeresés” gombra Bosch/Siemens jellegmezők, 1D görbék és Float32 struktúrák kereséséhez.";
 "Zurück zu Hex" = "Vissza a Hexhez";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "Flash Preflight biztonsági kapu";
+"Bereit zum Flashen" = "Kész a flashelésre";
+"Prüfen empfohlen" = "Ellenőrzés javasolt";
+"Warnung — Blocker gefunden" = "Figyelmeztetés — Blokkoló hiba";
+"Auf Zwilling kopieren" = "Másolás ikertáblába";
+"CompTest-CVN wiederherstellen (GF(2))" = "CompTest CVN visszaállítása (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "Kézi tartomány-patcher (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "Memóriaatlasz és megosztott tengelyek";
+"Speicheratlas" = "Memóriaatlasz";
+"2. Definition laden …" = "2. definíció betöltése …";
+"3D-Messpunkte" = "3D mérési pontok";
+"Tune portieren …" = "Tune portolása …";
+"Sync-Block" = "Szinkron-blokk";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "XY szórásdiagram (MegaLogViewer stílus)";
+"Als RomRaider XML (.xml) exportieren …" = "Exportálás RomRaider XML (.xml) formátumban …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "Definíció Smart-Merge (címek átvétele) …";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "A2L / WinOLS .kp / RomRaider .xml importálása …";
+"Slices (WinOLS)" = "Szeletek (WinOLS)";

@@ -18,6 +18,7 @@ struct WorkbenchRail: View {
         case batchTuner
         case diagnostics
         case dtc
+        case memoryAtlas
         case checksums
         case plugins
     }
@@ -35,6 +36,7 @@ struct WorkbenchRail: View {
         case AppModel.batchTunerSelection: return .batchTuner
         case AppModel.diagnosticsSelection: return .diagnostics
         case AppModel.dtcSelection: return .dtc
+        case AppModel.memoryAtlasSelection: return .memoryAtlas
         case AppModel.checksumSelection: return .checksums
         case AppModel.pluginsSelection: return .plugins
         default: return .maps
@@ -112,6 +114,11 @@ struct WorkbenchRail: View {
 
             railButton(.dtc, icon: "exclamationmark.octagon", title: "DTC-Tabellen & Fehlercodes") {
                 model.selection = AppModel.dtcSelection
+            }
+            .disabled(!model.hasBin)
+
+            railButton(.memoryAtlas, icon: "square.grid.3x3.topleft.filled", title: "Speicheratlas & Shared-Axis-Pool") {
+                model.selection = AppModel.memoryAtlasSelection
             }
             .disabled(!model.hasBin)
 

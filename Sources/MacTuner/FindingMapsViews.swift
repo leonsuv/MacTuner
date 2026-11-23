@@ -426,15 +426,30 @@ struct BatchTunerView: View {
 /// Highlights suspicious maps: non-monotonic axes, statistical spikes/outliers, clipped curves, out-of-bounds.
 struct DiagnosticsView: View {
     @Environment(AppModel.self) private var model
+    @State private var fixNotice: String?
 
     var body: some View {
         let findings = model.diagnosticFindings
+        let fixableCount = findings.filter { $0.safeFix != nil && ($0.confidence == .high || $0.confidence == .medium) }.count
 
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Text("Kennfeld-Diagnose").font(.system(size: 22, weight: .bold))
                 Chip(text: "\(findings.count) Hinweise", icon: "stethoscope")
+                if let fixNotice {
+                    Text(fixNotice).font(.caption).foregroundStyle(.green)
+                }
                 Spacer()
+                if fixableCount > 0 {
+                    Button {
+                        let applied = model.applyDiagnosticsAutoFix()
+                        fixNotice = "\(applied) sichere Korrektur(en) angewendet."
+                    } label: {
+                        Label("Auto-Fix (\(fixableCount))", systemImage: "wand.and.stars")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
             }
 
             if !model.hasBin || model.definition == nil {
@@ -450,11 +465,17 @@ struct DiagnosticsView: View {
                         Label(f.kind.rawValue, systemImage: f.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
                             .foregroundStyle(f.severity == .error ? .red : .orange)
                     }
-                    .width(min: 180, ideal: 210)
+                    .width(min: 180, ideal: 220)
                     TableColumn("Kennfeld") { f in
                         Button(f.itemTitle) { model.selection = f.itemID }
                             .buttonStyle(.link)
                     }
+                    TableColumn("Auto-Fix") { f in
+                        Text(f.safeFix != nil ? f.confidence.rawValue : "—")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(f.safeFix != nil ? .green : .secondary)
+                    }
+                    .width(70)
                     TableColumn("Details") { f in
                         Text(f.detail).font(.caption).foregroundStyle(.secondary)
                     }

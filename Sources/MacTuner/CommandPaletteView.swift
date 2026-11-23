@@ -154,6 +154,9 @@ struct CommandPaletteView: View {
             Entry(id: "act.port", title: "Versions-Portierung", subtitle: "Kennfelder in anderer Softwareversion finden & Tune portieren", icon: "arrow.triangle.branch", shortcut: nil) { model.selection = AppModel.versionPortSelection },
             Entry(id: "act.batch", title: "Batch-Tuning", subtitle: "Änderungsliste auf mehrere Dateien anwenden", icon: "square.stack.3d.up", shortcut: nil) { model.selection = AppModel.batchTunerSelection },
             Entry(id: "act.diag", title: "Kennfeld-Diagnose", subtitle: "Nicht-monotone Achsen, Ausreißer & abgeschnittene Kurven", icon: "stethoscope", shortcut: nil) { model.selection = AppModel.diagnosticsSelection },
+            Entry(id: "act.atlas", title: "Speicheratlas & Shared-Axis-Pool", subtitle: "Visuelle Flash-Speicherkarte & geteilte Achsen (COM_AXIS)", icon: "square.grid.3x3.topleft.filled", shortcut: nil) { model.selection = AppModel.memoryAtlasSelection },
+            Entry(id: "act.cport", title: "Inhaltsbasiertes Tune-Porting …", subtitle: "Änderungen bei verschobenen Adressen übertragen (WinOLS Gruppen-Suche)", icon: "arrow.triangle.branch", shortcut: nil) { model.showContentPortingSheet = true },
+            Entry(id: "act.smerge", title: "Definition Smart-Merge …", subtitle: "Adressen aus 2. Definition übernehmen (Namen & Skalierungen behalten)", icon: "doc.badge.gearshape", shortcut: nil) { model.smartMergeDefinitionPanel() },
             Entry(id: "act.chk", title: "Prüfsummen & Flashen", subtitle: "Bosch ME7/MED17/EDC17, Siemens, Temic DQ250 & Flash-Tool-Export", icon: "checkmark.shield", shortcut: nil) { model.selection = AppModel.checksumSelection },
             Entry(id: "act.log", title: "Datalogging", subtitle: "CSV/ADX-Logs laden, Live-Trace, Treffer-Overlay & Korrekturvorschläge", icon: "waveform.path.ecg", shortcut: nil) { model.selection = AppModel.datalogSelection },
             Entry(id: "act.plugins", title: "JavaScript-Plugins", subtitle: "Eigene Prüfsummen und Werkzeuge in JavaScript verwalten", icon: "puzzlepiece.extension", shortcut: nil) { model.selection = AppModel.pluginsSelection },
@@ -201,6 +204,58 @@ struct CommandPaletteView: View {
 
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         if q.isEmpty { return Array(all.prefix(40)) }
+
+        // WinOLS Command-Bar Syntax: `:80000` (jump), `20000..201FF` (select range), `cols=16` / `spalten=16`
+        var commandBarMatches: [Entry] = []
+        if model.hasBin {
+            if q.hasPrefix(":") {
+                let hexStr = String(q.dropFirst()).trimmingCharacters(in: .whitespaces)
+                if let addr = Int(hexStr.replacingOccurrences(of: "0x", with: ""), radix: 16), addr >= 0, addr < model.bin.count {
+                    commandBarMatches.append(Entry(
+                        id: "cmd.jump.\(addr)",
+                        title: String(format: "Zu Adresse 0x%05X springen", addr),
+                        subtitle: "WinOLS Command-Bar (:Adresse) → Hex-Editor",
+                        icon: "arrow.right.to.line",
+                        shortcut: "↵"
+                    ) {
+                        model.hexJumpTarget = addr..<min(model.bin.count, addr + 16)
+                        model.selection = AppModel.hexDiffSelection
+                    })
+                }
+            } else if q.contains("..") {
+                let parts = q.components(separatedBy: "..")
+                if parts.count == 2,
+                   let s = Int(parts[0].trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "0x", with: ""), radix: 16),
+                   let e = Int(parts[1].trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "0x", with: ""), radix: 16),
+                   s >= 0, s < e, e <= model.bin.count {
+                    commandBarMatches.append(Entry(
+                        id: "cmd.range.\(s).\(e)",
+                        title: String(format: "Bereich 0x%05X .. 0x%05X markieren (%d B)", s, e, e - s),
+                        subtitle: "WinOLS Command-Bar (Start..Ende) → Hex-Editor",
+                        icon: "selection.pin.in.out",
+                        shortcut: "↵"
+                    ) {
+                        model.hexJumpTarget = s..<e
+                        model.selection = AppModel.hexDiffSelection
+                    })
+                }
+            } else if q.hasPrefix("cols=") || q.hasPrefix("spalten=") {
+                let valStr = q.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                if let cols = Int(valStr), (4...64).contains(cols) {
+                    commandBarMatches.append(Entry(
+                        id: "cmd.cols.\(cols)",
+                        title: "Hex-Spaltenbreite auf \(cols) setzen",
+                        subtitle: "WinOLS Command-Bar (cols=\(cols))",
+                        icon: "tablecells",
+                        shortcut: "↵"
+                    ) {
+                        UserDefaults.standard.set(cols, forKey: "hexDiffCols")
+                        model.selection = AppModel.hexDiffSelection
+                    })
+                }
+            }
+        }
+
         let terms = q.split(separator: " ").map(String.init)
         let scored: [(Int, Entry)] = all.compactMap { entry in
             let hay = (entry.title + " " + entry.subtitle).lowercased()
@@ -208,6 +263,6 @@ struct CommandPaletteView: View {
             let score = entry.title.lowercased().hasPrefix(q) ? 0 : (entry.title.lowercased().contains(q) ? 1 : 2)
             return (score, entry)
         }
-        return scored.sorted { $0.0 < $1.0 }.prefix(50).map(\.1)
+        return commandBarMatches + scored.sorted { $0.0 < $1.0 }.prefix(50).map(\.1)
     }
 }

@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "Asnjë hartë e njohur";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Klikoni “Skano përsëri” për të kërkuar harta Bosch/Siemens, kurba 1D dhe struktura Float32.";
 "Zurück zu Hex" = "Kthehu te Hex";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "Kontrolli i sigurisë Flash Preflight";
+"Bereit zum Flashen" = "Gati për flashim";
+"Prüfen empfohlen" = "Rekomandohet kontrolli";
+"Warnung — Blocker gefunden" = "Paralajmërim — U gjet bllokues";
+"Auf Zwilling kopieren" = "Kopjo te binjaku";
+"CompTest-CVN wiederherstellen (GF(2))" = "Rikthe CompTest CVN (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "Patcher manual i intervalit (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "Atlasi i memories & Boshtet e përbashkëta";
+"Speicheratlas" = "Atlasi i memories";
+"2. Definition laden …" = "Ngarko definicionin e 2-të …";
+"3D-Messpunkte" = "Pika 3D";
+"Tune portieren …" = "Porto tune …";
+"Sync-Block" = "Bllok Sync";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "Grafiku XY Scatterplot (MegaLogViewer)";
+"Als RomRaider XML (.xml) exportieren …" = "Eksporto si RomRaider XML (.xml) …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "Bashkim inteligjent i definicionit (adresat) …";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "Importo A2L / WinOLS .kp / RomRaider .xml …";
+"Slices (WinOLS)" = "Feta (WinOLS)";

@@ -767,3 +767,23 @@
 "Keine erkannten Kennfelder" = "Inga identifierade mappar";
 "Klicke auf „Neu scannen“, um nach Bosch/Siemens-Kennfeldern, 1D-Kurven und Float32-Strukturen zu suchen." = "Klicka på ”Skanna igen” för att söka efter Bosch/Siemens-mappar, 1D-kurvor och Float32-strukturer.";
 "Zurück zu Hex" = "Tillbaka till Hex";
+
+/* MacTuner v2.6 */
+"Flash-Preflight Sicherheits-Gate" = "Flash Preflight-säkerhetskontroll";
+"Bereit zum Flashen" = "Redo att flasha";
+"Prüfen empfohlen" = "Granskning rekommenderas";
+"Warnung — Blocker gefunden" = "Varning — Blockerare hittad";
+"Auf Zwilling kopieren" = "Kopiera till tvilling";
+"CompTest-CVN wiederherstellen (GF(2))" = "Återställ CompTest CVN (GF(2))";
+"Manueller Bereichs-Patcher (CRC32 GF(2) / ADD32 / ADD16)" = "Manuell områdespatcher (CRC32 GF(2) / ADD32 / ADD16)";
+"Speicheratlas & Shared-Axis-Pool" = "Minnesatlas & delad axelpool";
+"Speicheratlas" = "Minnesatlas";
+"2. Definition laden …" = "Ladda 2:a definition …";
+"3D-Messpunkte" = "3D-mätpunkter";
+"Tune portieren …" = "Portera tune …";
+"Sync-Block" = "Synk-block";
+"XY-Scatterplot (MegaLogViewer-Stil)" = "XY-spridningsdiagram (MegaLogViewer-stil)";
+"Als RomRaider XML (.xml) exportieren …" = "Exportera som RomRaider XML (.xml) …";
+"Definition Smart-Merge (Adressen übernehmen) …" = "Smart definitions-sammanslagning (adresser) …";
+"A2L / WinOLS .kp / RomRaider .xml importieren …" = "Importera A2L / WinOLS .kp / RomRaider .xml …";
+"Slices (WinOLS)" = "Skivor (WinOLS)";

@@ -9,6 +9,8 @@ struct MultiCompareView: View {
     @State private var onlyChanged = true
     @State private var selectedItemID: Int?
     @State private var search = ""
+    @State private var compareDefinition: XDFDefinition?
+    @State private var compareDefinitionName: String?
 
     enum CompareDisplayMode: String, CaseIterable {
         case values = "Werte"
@@ -83,6 +85,12 @@ struct MultiCompareView: View {
                 Button { model.addExtraComparePanel() } label: {
                     Label("BIN hinzufügen …", systemImage: "plus")
                 }
+                if model.definition != nil && model.hasBin {
+                    Button { model.showContentPortingSheet = true } label: {
+                        Label("Tune portieren …", systemImage: "arrow.triangle.branch")
+                    }
+                    .help("Inhaltsbasiertes Tune-Porting bei verschobenen Adressen (WinOLS Strg+Alt+I)")
+                }
                 if !model.snapshots.isEmpty {
                     Menu {
                         ForEach(model.snapshots) { snap in
@@ -117,6 +125,26 @@ struct MultiCompareView: View {
                     .toggleStyle(.checkbox)
 
                 Spacer()
+
+                if let name = compareDefinitionName {
+                    Chip(text: "2. Def: \(name)", icon: "doc.text.magnifyingglass")
+                    Button {
+                        compareDefinition = nil
+                        compareDefinitionName = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("2. Definition entfernen")
+                } else {
+                    Button {
+                        loadCompareDefinition()
+                    } label: {
+                        Label("2. Definition laden …", systemImage: "doc.badge.plus")
+                    }
+                    .controlSize(.small)
+                    .help("Zweite XDF/A2L/KP/XML-Definition für abweichende Softwarestände (Cross-Definition Compare)")
+                }
             }
             .controlSize(.small)
         }
@@ -258,10 +286,18 @@ struct MultiCompareView: View {
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                             ForEach(Array(slots.enumerated()), id: \.offset) { idx, slot in
-                                let raw = BinCodec.raw(l, cell, in: slot.bytes)
-                                let val = raw.map(s.value(raw:))
-                                let diff = idx != baseIdx && Changes.differs(l, cell, slot.bytes, baseBytes)
-                                Text(formatCell(raw: raw, val: val, baseVal: baseVal, layout: l, scaling: s, isBase: idx == baseIdx, diff: diff))
+                                let effItem = effectiveItem(for: item, slotIndex: idx, baseIdx: baseIdx)
+                                let raw = BinCodec.raw(effItem.data, cell, in: slot.bytes)
+                                let val = raw.map(effItem.scaling.value(raw:))
+                                let diff: Bool = {
+                                    guard idx != baseIdx else { return false }
+                                    if effItem.data.address == l.address {
+                                        return Changes.differs(l, cell, slot.bytes, baseBytes)
+                                    }
+                                    if let v = val, let bv = baseVal { return abs(v - bv) > 1e-6 }
+                                    return false
+                                }()
+                                Text(formatCell(raw: raw, val: val, baseVal: baseVal, layout: effItem.data, scaling: effItem.scaling, isBase: idx == baseIdx, diff: diff))
                                     .font(.caption.monospacedDigit().weight(diff ? .bold : .regular))
                                     .foregroundStyle(diff ? Theme.changed : .primary)
                             }
@@ -271,6 +307,36 @@ struct MultiCompareView: View {
             }
         }
         .padding(6)
+    }
+
+    private func loadCompareDefinition() {
+        guard let url = model.chooseFile(String(localized: "2. Definition laden (XDF / A2L / KP / XML)"),
+                                         types: ["xdf", "a2l", "ols", "kp", "csv", "xml"]) else { return }
+        do {
+            if url.pathExtension.lowercased() == "xdf" {
+                compareDefinition = try XDFParser.load(url)
+            } else {
+                compareDefinition = try DefinitionImporter.load(url)
+            }
+            compareDefinitionName = url.lastPathComponent
+        } catch {
+            model.alert = String(localized: "Definition konnte nicht geladen werden:\n\(error.localizedDescription)")
+        }
+    }
+
+    private func effectiveItem(for item: XDFItem, slotIndex: Int, baseIdx: Int) -> XDFItem {
+        guard slotIndex != baseIdx, let cdef = compareDefinition else { return item }
+        let normTarget = item.title.lowercased().filter { $0.isLetter || $0.isNumber }
+        if let exact = cdef.items.first(where: { $0.title.lowercased().filter({ $0.isLetter || $0.isNumber }) == normTarget }) {
+            return exact
+        }
+        if let shape = cdef.items.first(where: {
+            $0.data.rows == item.data.rows && $0.data.cols == item.data.cols &&
+            !$0.scaling.units.isEmpty && $0.scaling.units == item.scaling.units
+        }) {
+            return shape
+        }
+        return item
     }
 
     private func formatCell(raw: Double?, val: Double?, baseVal: Double?, layout: DataLayout, scaling: Scaling,

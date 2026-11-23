@@ -19,9 +19,12 @@ enum DefinitionImporter {
         switch ext {
         case "a2l":
             return try parseA2L(url)
+        case "xml":
+            return try parseRomRaiderXML(url)
         case "ols", "kp", "csv":
             return try parseWinOLSMapPack(url)
         default:
+            if let def = try? parseRomRaiderXML(url), !def.items.isEmpty { return def }
             if let def = try? parseA2L(url), !def.items.isEmpty { return def }
             return try parseWinOLSMapPack(url)
         }
@@ -889,5 +892,296 @@ enum DefinitionImporter {
         if t.hasPrefix("$") { return Int(t.dropFirst(), radix: 16) }
         if t.lowercased().hasSuffix("h") { return Int(t.dropLast(), radix: 16) }
         return Int(t, radix: 16)
+    }
+
+    // MARK: - RomRaider XML Parser (`<roms><rom base="...">` Inheritance + `<scaling>` + `<state>`)
+
+    static func parseRomRaiderXML(_ url: URL) throws -> XDFDefinition {
+        let data = try Data(contentsOf: url)
+        let parser = RomRaiderXMLDelegate()
+        let xml = XMLParser(data: data)
+        xml.delegate = parser
+        guard xml.parse(), !parser.roms.isEmpty else {
+            throw ImportError.empty(url.lastPathComponent)
+        }
+
+        // Index base ROMs by xmlid
+        var byID: [String: RomRaiderXMLDelegate.RomNode] = [:]
+        for r in parser.roms {
+            if !r.xmlid.isEmpty { byID[r.xmlid] = r }
+        }
+        // Pick the last concrete ROM (one that has storageaddress entries, or the last ROM in file)
+        let targetRom = parser.roms.last(where: { r in r.tables.contains(where: { $0.storageAddress != nil }) }) ?? parser.roms.last!
+
+        // Resolve inheritance chain (child overrides parent by table name)
+        var chain: [RomRaiderXMLDelegate.RomNode] = []
+        var cur: RomRaiderXMLDelegate.RomNode? = targetRom
+        var visited = Set<String>()
+        while let r = cur {
+            chain.append(r)
+            if let b = r.baseID, !b.isEmpty, visited.insert(b).inserted, let parent = byID[b] {
+                cur = parent
+            } else {
+                break
+            }
+        }
+        chain.reverse() // base first, child last
+
+        var mergedTables: [String: RomRaiderXMLDelegate.TableNode] = [:]
+        var orderedNames: [String] = []
+        for rom in chain {
+            for t in rom.tables {
+                guard !t.name.isEmpty else { continue }
+                if var existing = mergedTables[t.name] {
+                    if let a = t.storageAddress { existing.storageAddress = a }
+                    if let tpe = t.type { existing.type = tpe }
+                    if let cat = t.category { existing.category = cat }
+                    if let st = t.storageType { existing.storageType = st }
+                    if let en = t.endian { existing.endian = en }
+                    if let sx = t.sizeX { existing.sizeX = sx }
+                    if let sy = t.sizeY { existing.sizeY = sy }
+                    if let sc = t.scaling { existing.scaling = sc }
+                    if let xa = t.xAxis {
+                        if var exX = existing.xAxis {
+                            if let a = xa.storageAddress { exX.storageAddress = a }
+                            if let st = xa.storageType { exX.storageType = st }
+                            if let en = xa.endian { exX.endian = en }
+                            if let sx = xa.sizeX { exX.sizeX = sx }
+                            if let sc = xa.scaling { exX.scaling = sc }
+                            existing.xAxis = exX
+                        } else {
+                            existing.xAxis = xa
+                        }
+                    }
+                    if let ya = t.yAxis {
+                        if var exY = existing.yAxis {
+                            if let a = ya.storageAddress { exY.storageAddress = a }
+                            if let st = ya.storageType { exY.storageType = st }
+                            if let en = ya.endian { exY.endian = en }
+                            if let sy = ya.sizeY ?? ya.sizeX { exY.sizeY = sy }
+                            if let sc = ya.scaling { exY.scaling = sc }
+                            existing.yAxis = exY
+                        } else {
+                            existing.yAxis = ya
+                        }
+                    }
+                    if !t.states.isEmpty { existing.states = t.states }
+                    mergedTables[t.name] = existing
+                } else {
+                    mergedTables[t.name] = t
+                    orderedNames.append(t.name)
+                }
+            }
+        }
+
+        var categories: [Int: String] = [:]
+        var catToID: [String: Int] = [:]
+        var items: [XDFItem] = []
+        var nextID = 1
+
+        func storageSpec(_ st: String?) -> (bits: Int, signed: Bool, isFloat: Bool) {
+            switch (st ?? "uint16").lowercased() {
+            case "uint8": return (8, false, false)
+            case "int8": return (8, true, false)
+            case "uint16": return (16, false, false)
+            case "int16": return (16, true, false)
+            case "uint32": return (32, false, false)
+            case "int32": return (32, true, false)
+            case "float": return (32, true, true)
+            default: return (16, false, false)
+            }
+        }
+
+        func makeScaling(_ sc: RomRaiderXMLDelegate.ScalingNode?) -> Scaling {
+            guard let sc else { return .identity }
+            let eqRaw = sc.expression.isEmpty ? "X" : sc.expression.replacingOccurrences(of: "x", with: "X")
+            let dec: Int = {
+                if let dot = sc.format.firstIndex(of: ".") {
+                    return max(0, min(6, sc.format.distance(from: sc.format.index(after: dot), to: sc.format.endIndex)))
+                }
+                return sc.format.contains("#") ? 0 : 2
+            }()
+            return Scaling(equation: eqRaw, expr: Expr.parse(eqRaw) ?? Scaling.identity.expr, units: sc.units, decimals: dec, output: dec == 0 ? .integer : .float)
+        }
+
+        for name in orderedNames {
+            guard let t = mergedTables[name], let addr = t.storageAddress else { continue }
+            let spec = storageSpec(t.storageType)
+            let lsb = (t.endian ?? "little").lowercased() != "big"
+            let tType = (t.type ?? "3D").uppercased()
+            let cols = max(1, t.sizeX ?? (t.xAxis?.sizeX ?? 1))
+            let rows = max(1, t.sizeY ?? (t.yAxis?.sizeY ?? t.yAxis?.sizeX ?? 1))
+            let catName = t.category ?? "RomRaider"
+            let catID: Int
+            if let existing = catToID[catName] {
+                catID = existing
+            } else {
+                catID = catToID.count + 1
+                catToID[catName] = catID
+                categories[catID] = catName
+            }
+
+            let layout = DataLayout(address: addr, bits: spec.bits, signed: spec.signed,
+                                    lsbFirst: lsb, columnMajor: false, isFloat: spec.isFloat,
+                                    rows: tType == "1D" ? 1 : rows, cols: tType == "1D" ? 1 : cols)
+            let scaling = makeScaling(t.scaling)
+
+            let kind: XDFItem.Kind
+            if tType == "1D" || (rows == 1 && cols == 1) {
+                kind = .constant
+            } else {
+                let xAxis: Axis = {
+                    guard let xa = t.xAxis, let xAddr = xa.storageAddress else {
+                        return Axis(source: .labels((0..<cols).map(String.init)), count: cols, scaling: .identity)
+                    }
+                    let xs = storageSpec(xa.storageType ?? t.storageType)
+                    let xlsb = (xa.endian ?? t.endian ?? "little").lowercased() != "big"
+                    let xl = DataLayout(address: xAddr, bits: xs.bits, signed: xs.signed, lsbFirst: xlsb,
+                                        columnMajor: false, isFloat: xs.isFloat, rows: 1, cols: cols)
+                    return Axis(source: .data(xl), count: cols, scaling: makeScaling(xa.scaling))
+                }()
+                let yAxis: Axis = {
+                    guard rows > 1, let ya = t.yAxis, let yAddr = ya.storageAddress else {
+                        return Axis(source: .labels((0..<rows).map(String.init)), count: rows, scaling: .identity)
+                    }
+                    let ys = storageSpec(ya.storageType ?? t.storageType)
+                    let ylsb = (ya.endian ?? t.endian ?? "little").lowercased() != "big"
+                    let yl = DataLayout(address: yAddr, bits: ys.bits, signed: ys.signed, lsbFirst: ylsb,
+                                        columnMajor: false, isFloat: ys.isFloat, rows: 1, cols: rows)
+                    return Axis(source: .data(yl), count: rows, scaling: makeScaling(ya.scaling))
+                }()
+                kind = .table(x: xAxis, y: yAxis)
+            }
+
+            let desc = t.states.isEmpty ? "" : "States: " + t.states.map { "\($0.name)=\($0.data)" }.joined(separator: ", ")
+            items.append(XDFItem(id: nextID, title: t.name, description: desc, categories: [catID],
+                                 kind: kind, data: layout, scaling: scaling))
+            nextID += 1
+        }
+
+        guard !items.isEmpty else { throw ImportError.empty(url.lastPathComponent) }
+        let title = targetRom.xmlid.isEmpty ? url.deletingPathExtension().lastPathComponent : targetRom.xmlid
+        let desc = [targetRom.ecuid, targetRom.make, targetRom.model].filter { !$0.isEmpty }.joined(separator: " · ")
+        return XDFDefinition(title: title, description: desc, categories: categories, items: items)
+    }
+}
+
+private final class RomRaiderXMLDelegate: NSObject, XMLParserDelegate {
+    struct ScalingNode {
+        var units = ""
+        var expression = "x"
+        var toByte = "x"
+        var format = "0.00"
+    }
+    struct AxisNode {
+        var storageType: String? = nil
+        var endian: String? = nil
+        var sizeX: Int? = nil
+        var sizeY: Int? = nil
+        var storageAddress: Int? = nil
+        var scaling: ScalingNode? = nil
+    }
+    struct TableNode {
+        var name = ""
+        var type: String? = nil
+        var category: String? = nil
+        var storageType: String? = nil
+        var endian: String? = nil
+        var sizeX: Int? = nil
+        var sizeY: Int? = nil
+        var storageAddress: Int? = nil
+        var scaling: ScalingNode? = nil
+        var xAxis: AxisNode? = nil
+        var yAxis: AxisNode? = nil
+        var states: [(name: String, data: String)] = []
+    }
+    struct RomNode {
+        var baseID: String? = nil
+        var xmlid = ""
+        var ecuid = ""
+        var make = ""
+        var model = ""
+        var tables: [TableNode] = []
+    }
+
+    var roms: [RomNode] = []
+    private var currentRom: RomNode? = nil
+    private var tableStack: [TableNode] = []
+    private var currentText = ""
+    private var inRomID = false
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes: [String: String]) {
+        currentText = ""
+        switch elementName.lowercased() {
+        case "rom":
+            currentRom = RomNode(baseID: attributes["base"])
+        case "romid":
+            inRomID = true
+        case "table":
+            let node = TableNode(
+                name: attributes["name"] ?? "",
+                type: attributes["type"],
+                category: attributes["category"],
+                storageType: attributes["storagetype"],
+                endian: attributes["endian"],
+                sizeX: attributes["sizex"].flatMap(Int.init),
+                sizeY: attributes["sizey"].flatMap(Int.init),
+                storageAddress: attributes["storageaddress"].flatMap { XDFParser.int($0) ?? Int($0, radix: 16) }
+            )
+            tableStack.append(node)
+        case "scaling":
+            if !tableStack.isEmpty {
+                let sc = ScalingNode(
+                    units: attributes["units"] ?? "",
+                    expression: attributes["expression"] ?? "x",
+                    toByte: attributes["to_byte"] ?? "x",
+                    format: attributes["format"] ?? "0.00"
+                )
+                tableStack[tableStack.count - 1].scaling = sc
+            }
+        case "state":
+            if !tableStack.isEmpty, let n = attributes["name"], let d = attributes["data"] {
+                tableStack[tableStack.count - 1].states.append((n, d))
+            }
+        default: break
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        currentText += string
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+        let trimmed = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch elementName.lowercased() {
+        case "romid":
+            inRomID = false
+        case "xmlid":
+            if inRomID { currentRom?.xmlid = trimmed }
+        case "ecuid":
+            if inRomID { currentRom?.ecuid = trimmed }
+        case "make":
+            if inRomID { currentRom?.make = trimmed }
+        case "model":
+            if inRomID { currentRom?.model = trimmed }
+        case "table":
+            guard let finished = tableStack.popLast() else { break }
+            if !tableStack.isEmpty {
+                let axis = AxisNode(
+                    storageType: finished.storageType, endian: finished.endian,
+                    sizeX: finished.sizeX, sizeY: finished.sizeY,
+                    storageAddress: finished.storageAddress, scaling: finished.scaling
+                )
+                let t = (finished.type ?? "").lowercased()
+                if t.contains("x") { tableStack[tableStack.count - 1].xAxis = axis }
+                else if t.contains("y") { tableStack[tableStack.count - 1].yAxis = axis }
+            } else {
+                currentRom?.tables.append(finished)
+            }
+        case "rom":
+            if let rom = currentRom { roms.append(rom) }
+            currentRom = nil
+        default: break
+        }
     }
 }

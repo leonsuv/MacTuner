@@ -29,7 +29,9 @@ struct MacTunerApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("XDF öffnen …") { model.openXDFPanel() }
                     .keyboardShortcut("o")
-                Button("A2L / WinOLS .kp importieren …") { model.importDefinitionPanel() }
+                Button("A2L / WinOLS .kp / RomRaider .xml importieren …") { model.importDefinitionPanel() }
+                Button("Definition Smart-Merge (Adressen übernehmen) …") { model.smartMergeDefinitionPanel() }
+                    .disabled(model.definition == nil)
                 Button("BIN öffnen …") { model.openBinPanel() }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
                 Divider()
@@ -74,6 +76,8 @@ struct MacTunerApp: App {
                 Button("Als WinOLS Map-Pack (.csv) exportieren …") { model.exportDefinitionCSV() }
                     .disabled(model.definition == nil)
                 Button("Als ASAP2 (.a2l) exportieren …") { model.exportDefinitionA2L() }
+                    .disabled(model.definition == nil)
+                Button("Als RomRaider XML (.xml) exportieren …") { model.exportDefinitionRomRaiderXML() }
                     .disabled(model.definition == nil)
                 Divider()
                 Button("Änderungsliste exportieren …") { model.exportChangeReport() }
