@@ -920,7 +920,9 @@ enum MapFinder {
                         let yv = validateAxis16(buf, yCand, count: found.rows, lsb: lsb)
                         if yv.valid { yOff = yCand; ySig = yv.signed }
                     }
-                    let conf = min(0.94, 0.56 + found.res.score * 0.36 + (yOff != nil ? 0.04 : 0))
+                    let conf = yOff != nil
+                        ? min(0.92, 0.60 + found.res.score * 0.34)
+                        : min(0.82, 0.56 + found.res.score * 0.30)
                     out.append(Candidate(
                         signatureKey: "\(dataOff):\(found.rows)x\(runLen):16", pattern: .splitAxis2D,
                         headerAddress: nil, secondHeaderAddress: nil,
@@ -980,6 +982,14 @@ enum MapFinder {
             }
             guard chosenRes.score >= 0.56 else { continue }
             if is1DMonotonicOrUnwrappedRamp(scratch: scratch, rows: r, cols: cols) { continue }
+            // Reject C-struct / pointer-table arrays (repeated 0x0000 padding + 0x80xx/0xA0xx/0xC0xx/0xD0xx virtual addresses)
+            var zeroWords = 0, ptrHiWords = 0
+            for wi in 0..<(r * cols) {
+                let w = readU16(buf, dataOff + wi * 2, lsb: lsb)
+                if w == 0 { zeroWords += 1 }
+                else if (w >= 0x8000 && w <= 0x80FF) || (w >= 0xA000 && w <= 0xA0FF) || (w >= 0xC000 && w <= 0xC0FF) || (w >= 0xD000 && w <= 0xD0FF) { ptrHiWords += 1 }
+            }
+            if zeroWords * 100 > r * cols * 40 || ptrHiWords >= r / 2 { continue }
             let wrap = rowWrapContrast(scratch: scratch, rows: r, cols: cols)
             if requireStrongWrap {
                 guard wrap >= 0.15 else { continue }
