@@ -21,6 +21,7 @@ struct MacTunerApp: App {
             WindowRootView()
                 .frame(minWidth: 960, minHeight: 600)
         }
+        .handlesExternalEvents(matching: [])
         .defaultSize(width: 1500, height: 940)
         .commands {
             CommandGroup(after: .appInfo) {

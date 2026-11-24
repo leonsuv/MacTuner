@@ -201,7 +201,10 @@ enum TestSuite {
             let udsBytes = OBDProtocolDecoder.parseHexLine("62 F4 0C 1A F8")
             let udsRPM = OBDProtocolDecoder.decodeUDS62(udsBytes)
             let doip = OBDProtocolDecoder.buildDoIPReadDID(did: 0xF40C)
-            expect(rpm?.value == 1726.0 && udsRPM?.value == 1726.0 && doip.count == 15 && doip[0] == 0x02 && doip[12] == 0x22, "OBD-II Mode 01 / UDS 0x62 / DoIP encoding")
+            let doipResp: [UInt8] = [0x02, 0xFD, 0x80, 0x01, 0x00, 0x00, 0x00, 0x09, 0x00, 0x10, 0x0E, 0x80, 0x62, 0xF4, 0x0C, 0x1A, 0xF8]
+            let decodedDoIP = OBDProtocolDecoder.decodeDoIPDiagnosticResponse(doipResp)
+            expect(rpm?.value == 1726.0 && udsRPM?.value == 1726.0 && decodedDoIP?.value == 1726.0 && doip.count == 15 && doip[0] == 0x02 && doip[12] == 0x22,
+                   "OBD-II Mode 01 / UDS 0x62 / DoIP 0x22+0x8001 encode & decode")
         }
 
         // 13. Self-contained synthetic WinOLS v597 (.ols), WinOLS CSV, and ASAP2 (.a2l) parser tests (always run in CI)

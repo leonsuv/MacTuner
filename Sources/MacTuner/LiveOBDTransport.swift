@@ -91,6 +91,15 @@ enum OBDProtocolDecoder {
         frame.append(contentsOf: udsPayload)
         return frame
     }
+
+    /// Decodes an ISO 13400 DoIP diagnostic message (`0x02 0xFD 0x8001 ...`) containing a UDS `0x62` reply.
+    static func decodeDoIPDiagnosticResponse(_ frame: [UInt8]) -> DecodedPID? {
+        guard frame.count >= 16,
+              frame[0] == 0x02, frame[1] == 0xFD,
+              frame[2] == 0x80, frame[3] == 0x01 else { return nil }
+        let udsPayload = Array(frame[12...])
+        return decodeUDS62(udsPayload)
+    }
 }
 
 /// Live telemetry snapshot streamed at up to 20 Hz.
@@ -341,21 +350,46 @@ final class LiveOBDController: NSObject {
 
     private func pollENET(conn: NWConnection, onSample: @escaping @MainActor (LiveTelemetrySample) -> Void) {
         streamTask = Task.detached { [weak self] in
+            func receiveDoIPFrame() async -> [UInt8]? {
+                await withCheckedContinuation { cont in
+                    conn.receive(minimumIncompleteLength: 8, maximumLength: 256) { data, _, _, _ in
+                        cont.resume(returning: data.map { [UInt8]($0) })
+                    }
+                }
+            }
+
             let start = Date()
-            let rpm = 0.0, load = 0.0, map = 1000.0
+            var rpm = 0.0, load = 0.0, map = 1000.0, lam = 1.0, ign = 12.0, spd = 0.0, clt = 90.0
+            let dids: [UInt16] = [0xF40C, 0xF404, 0xF40B, 0xF444, 0xF40E, 0xF40D, 0xF405]
             while !Task.isCancelled {
-                for did: UInt16 in [0xF40C, 0xF404, 0xF40B] {
+                let t0 = Date()
+                for did in dids {
                     let req = Data(OBDProtocolDecoder.buildDoIPReadDID(did: did))
                     conn.send(content: req, completion: .idempotent)
-                    try? await Task.sleep(nanoseconds: 40_000_000)
+                    if let resp = await receiveDoIPFrame(),
+                       let decoded = OBDProtocolDecoder.decodeDoIPDiagnosticResponse(resp) {
+                        switch decoded.pid {
+                        case 0x0C: rpm = decoded.value
+                        case 0x04: load = decoded.value
+                        case 0x0B: map = decoded.value
+                        case 0x44: lam = decoded.value
+                        case 0x0E: ign = decoded.value
+                        case 0x0D: spd = decoded.value
+                        case 0x05: clt = decoded.value
+                        default: break
+                        }
+                    }
                 }
+                let dt = max(0.05, Date().timeIntervalSince(t0))
+                let hz = min(20.0, 1.0 / dt)
                 let sample = LiveTelemetrySample(
                     timeSec: Date().timeIntervalSince(start),
-                    rpm: rpm, loadPct: load, mapMbar: map, lambda: 1.0,
-                    ignitionDeg: 12.0, speedKmh: 0, coolantC: 90.0
+                    rpm: rpm, loadPct: load, mapMbar: map, lambda: lam,
+                    ignitionDeg: ign, speedKmh: spd, coolantC: clt
                 )
                 await MainActor.run { [weak self] in
                     self?.latestSample = sample
+                    self?.sampleRateHz = hz
                     onSample(sample)
                 }
             }
