@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Filaire de comparaison";
 "Punkte ziehen (Edit-Modus)" = "Glisser les points (mode édition)";
 "Zoom zurücksetzen (100 %)" = "Réinitialiser le zoom (100 %)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Vérifier avant d'enregistrer";
+"Vor Speichern prüfen …" = "Vérifier avant d'enregistrer …";
+"Interaktiven HTML-Bericht exportieren …" = "Exporter le rapport HTML interactif …";
+"Jetzt speichern" = "Enregistrer maintenant";
+"Trotzdem speichern" = "Enregistrer quand même";
+"Änderungsübersicht" = "Résumé des modifications";
+"Geänderte Maps" = "Cartes modifiées";

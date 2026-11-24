@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Karşılaştırma Tel Kafesi";
 "Punkte ziehen (Edit-Modus)" = "Noktaları Sürükle (Düzenleme)";
 "Zoom zurücksetzen (100 %)" = "Yakınlaştırmayı Sıfırla (%100)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Kaydetmeden Önce İncele";
+"Vor Speichern prüfen …" = "Kaydetmeden Önce İncele …";
+"Interaktiven HTML-Bericht exportieren …" = "Etkileşimli HTML Raporu Dışa Aktar …";
+"Jetzt speichern" = "Şimdi Kaydet";
+"Trotzdem speichern" = "Yine de Kaydet";
+"Änderungsübersicht" = "Değişiklik Özeti";
+"Geänderte Maps" = "Değiştirilen Haritalar";

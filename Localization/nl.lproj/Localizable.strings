@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Vergelijkings-wireframe";
 "Punkte ziehen (Edit-Modus)" = "Punten slepen (bewerkmodus)";
 "Zoom zurücksetzen (100 %)" = "Zoom resetten (100%)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Controleren voor opslaan";
+"Vor Speichern prüfen …" = "Controleren voor opslaan …";
+"Interaktiven HTML-Bericht exportieren …" = "Interactief HTML-rapport exporteren …";
+"Jetzt speichern" = "Nu opslaan";
+"Trotzdem speichern" = "Toch opslaan";
+"Änderungsübersicht" = "Overzicht van wijzigingen";
+"Geänderte Maps" = "Gewijzigde maps";

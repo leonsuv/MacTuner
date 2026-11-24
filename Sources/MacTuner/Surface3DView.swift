@@ -8,6 +8,7 @@ struct Surface3DView: View {
     let x: Axis
     let y: Axis
     let readOnly: Bool
+    var hoveredCell: Binding<Cell?>? = nil
 
     @State private var yaw: Double = -0.68
     @State private var pitch: Double = 0.55
@@ -310,7 +311,19 @@ struct Surface3DView: View {
                 ctx.draw(lbl, at: p3(zCornerX * 1.08, zCornerY, zTop + 0.14), anchor: .center)
             }
 
-            // 5. Vertex handles in edit mode
+            // 5. Vertex handles in edit mode + 3-way hoveredCell crosshair sync
+            if let hc = hoveredCell?.wrappedValue, hc.r < l.rows, hc.c < l.cols {
+                let pt = projected[hc.r][hc.c].pt
+                let nx = l.cols > 1 ? (Double(hc.c) / Double(l.cols - 1)) * 2.0 - 1.0 : 0.0
+                let ny = l.rows > 1 ? (Double(hc.r) / Double(l.rows - 1)) * 2.0 - 1.0 : 0.0
+                let floorPt = p3(nx, ny, zBase)
+                var drop = Path()
+                drop.move(to: pt); drop.addLine(to: floorPt)
+                ctx.stroke(drop, with: .color(.cyan.opacity(0.65)), style: StrokeStyle(lineWidth: 1.2, dash: [3, 2]))
+                let ring = Path(ellipseIn: CGRect(x: pt.x - 5.5, y: pt.y - 5.5, width: 11, height: 11))
+                ctx.fill(ring, with: .color(.cyan))
+                ctx.stroke(ring, with: .color(.white), lineWidth: 1.5)
+            }
             if editMode && canEdit {
                 for r in 0..<l.rows {
                     for c in 0..<l.cols {

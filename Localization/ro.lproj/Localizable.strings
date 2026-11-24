@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Wireframe comparație";
 "Punkte ziehen (Edit-Modus)" = "Trage puncte (mod editare)";
 "Zoom zurücksetzen (100 %)" = "Resetează zoom (100%)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Verifică înainte de salvare";
+"Vor Speichern prüfen …" = "Verifică înainte de salvare …";
+"Interaktiven HTML-Bericht exportieren …" = "Exportă raport HTML interactiv …";
+"Jetzt speichern" = "Salvează acum";
+"Trotzdem speichern" = "Salvează oricum";
+"Änderungsübersicht" = "Rezumat modificări";
+"Geänderte Maps" = "Hărți modificate";

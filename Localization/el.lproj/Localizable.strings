@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Πλέγμα σύγκρισης";
 "Punkte ziehen (Edit-Modus)" = "Σύρσιμο σημείων (επεξεργασία)";
 "Zoom zurücksetzen (100 %)" = "Επαναφορά ζουμ (100%)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Έλεγχος πριν την αποθήκευση";
+"Vor Speichern prüfen …" = "Έλεγχος πριν την αποθήκευση …";
+"Interaktiven HTML-Bericht exportieren …" = "Εξαγωγή διαδραστικής αναφοράς HTML …";
+"Jetzt speichern" = "Αποθήκευση τώρα";
+"Trotzdem speichern" = "Αποθήκευση ούτως ή άλλως";
+"Änderungsübersicht" = "Σύνοψη αλλαγών";
+"Geänderte Maps" = "Τροποποιημένοι χάρτες";

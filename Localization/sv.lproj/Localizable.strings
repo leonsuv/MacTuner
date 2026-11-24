@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Jämförelse-wireframe";
 "Punkte ziehen (Edit-Modus)" = "Dra punkter (redigering)";
 "Zoom zurücksetzen (100 %)" = "Återställ zoom (100 %)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Granska före sparning";
+"Vor Speichern prüfen …" = "Granska före sparning …";
+"Interaktiven HTML-Bericht exportieren …" = "Exportera interaktiv HTML-rapport …";
+"Jetzt speichern" = "Spara nu";
+"Trotzdem speichern" = "Spara ändå";
+"Änderungsübersicht" = "Ändringsöversikt";
+"Geänderte Maps" = "Ändrade mappar";

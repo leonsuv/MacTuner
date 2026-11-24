@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Malla de comparación";
 "Punkte ziehen (Edit-Modus)" = "Arrastrar vértices (modo edición)";
 "Zoom zurücksetzen (100 %)" = "Restablecer zoom (100 %)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Revisar antes de guardar";
+"Vor Speichern prüfen …" = "Revisar antes de guardar …";
+"Interaktiven HTML-Bericht exportieren …" = "Exportar informe HTML interactivo …";
+"Jetzt speichern" = "Guardar ahora";
+"Trotzdem speichern" = "Guardar de todos modos";
+"Änderungsübersicht" = "Resumen de cambios";
+"Geänderte Maps" = "Mapas modificados";

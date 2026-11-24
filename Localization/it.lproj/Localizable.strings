@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Wireframe di confronto";
 "Punkte ziehen (Edit-Modus)" = "Trascina vertici (modifica)";
 "Zoom zurücksetzen (100 %)" = "Ripristina zoom (100%)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Verifica prima di salvare";
+"Vor Speichern prüfen …" = "Verifica prima di salvare …";
+"Interaktiven HTML-Bericht exportieren …" = "Esporta report HTML interattivo …";
+"Jetzt speichern" = "Salva ora";
+"Trotzdem speichern" = "Salva comunque";
+"Änderungsübersicht" = "Riepilogo modifiche";
+"Geänderte Maps" = "Mappe modificate";

@@ -304,6 +304,7 @@ final class AppModel {
     private(set) var lastMapSelection: Int?
     var alert: String?
     var showCommandPalette = false
+    var showPreSaveReview = false
     var xdfEditorRequest: XDFEditorRequest?
     var hexJumpTarget: Range<Int>?
     var hexSnapCandidate: MapFinder.Candidate?
@@ -2108,6 +2109,11 @@ final class AppModel {
                                   xdfName: xdfURL?.lastPathComponent ?? "—",
                                   binName: binURL?.lastPathComponent ?? "—",
                                   compareName: compareName)
+    }
+
+    func exportHTMLReport() {
+        guard hasBin else { return }
+        HTMLReportExporter.exportInteractiveHTMLPanel(for: self)
     }
 
     func exportPDFReport() {

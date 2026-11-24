@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Сітка порівняння";
 "Punkte ziehen (Edit-Modus)" = "Перетягування точок (правка)";
 "Zoom zurücksetzen (100 %)" = "Скинути масштаб (100%)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Перевірити перед збереженням";
+"Vor Speichern prüfen …" = "Перевірити перед збереженням …";
+"Interaktiven HTML-Bericht exportieren …" = "Експорт інтерактивного HTML-звіту …";
+"Jetzt speichern" = "Зберегти зараз";
+"Trotzdem speichern" = "Все одно зберегти";
+"Änderungsübersicht" = "Зведення змін";
+"Geänderte Maps" = "Змінені карти";

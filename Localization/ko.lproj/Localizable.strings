@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "비교 와이어프레임";
 "Punkte ziehen (Edit-Modus)" = "정점 드래그 (편집 모드)";
 "Zoom zurücksetzen (100 %)" = "확대/축소 재설정 (100%)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "저장 전 검토";
+"Vor Speichern prüfen …" = "저장 전 검토 …";
+"Interaktiven HTML-Bericht exportieren …" = "대화형 HTML 보고서 내보내기 …";
+"Jetzt speichern" = "지금 저장";
+"Trotzdem speichern" = "그래도 저장";
+"Änderungsübersicht" = "변경 요약";
+"Geänderte Maps" = "수정된 맵";

@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Comparison Wireframe";
 "Punkte ziehen (Edit-Modus)" = "Drag Vertices (Edit Mode)";
 "Zoom zurücksetzen (100 %)" = "Reset Zoom (100%)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Review Before Saving";
+"Vor Speichern prüfen …" = "Review Before Saving …";
+"Interaktiven HTML-Bericht exportieren …" = "Export Interactive HTML Report …";
+"Jetzt speichern" = "Save Now";
+"Trotzdem speichern" = "Save Anyway";
+"Änderungsübersicht" = "Change Summary";
+"Geänderte Maps" = "Modified Maps";

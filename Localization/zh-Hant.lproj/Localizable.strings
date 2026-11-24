@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "對比線框";
 "Punkte ziehen (Edit-Modus)" = "拖曳頂點（編輯模式）";
 "Zoom zurücksetzen (100 %)" = "重設縮放 (100%)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "儲存前檢查";
+"Vor Speichern prüfen …" = "儲存前檢查 …";
+"Interaktiven HTML-Bericht exportieren …" = "匯出互動式 HTML 報告 …";
+"Jetzt speichern" = "立即儲存";
+"Trotzdem speichern" = "仍然儲存";
+"Änderungsübersicht" = "變更摘要";
+"Geänderte Maps" = "已修改圖譜";

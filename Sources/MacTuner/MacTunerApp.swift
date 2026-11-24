@@ -61,6 +61,9 @@ struct MacTunerApp: App {
                 Button("BIN speichern") { model.save() }
                     .keyboardShortcut("s")
                     .disabled(!model.hasBin)
+                Button("Vor Speichern prüfen …") { model.showPreSaveReview = true }
+                    .keyboardShortcut("s", modifiers: [.command, .control])
+                    .disabled(!model.hasBin)
                 Button("BIN speichern unter …") { model.saveAs() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
                     .disabled(!model.hasBin)
@@ -90,6 +93,8 @@ struct MacTunerApp: App {
                 Button("PDF-Bericht exportieren …") { model.exportPDFReport() }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
                     .disabled(!model.hasBin || model.definition == nil)
+                Button("Interaktiven HTML-Bericht exportieren …") { model.exportHTMLReport() }
+                    .disabled(!model.hasBin)
                 Button("Änderungsbericht drucken …") { model.printChangeReport() }
                     .keyboardShortcut("p")
                     .disabled(!model.hasBin || model.definition == nil)

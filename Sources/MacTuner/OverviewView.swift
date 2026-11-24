@@ -349,6 +349,7 @@ struct OverviewView: View {
                     .help("Änderungsliste in die Zwischenablage kopieren (⇧⌘C)")
                 Button("Exportieren …") { model.exportChangeReport() }
                     .help("Änderungsliste als Textdatei sichern (⌘E)")
+                Button("HTML …") { model.exportHTMLReport() }
                 Button("PDF …") { model.exportPDFReport() }
                     .help("Änderungsbericht mit Diagrammen als PDF exportieren")
                 Button("Drucken …") { model.printChangeReport() }

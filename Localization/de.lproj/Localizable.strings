@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Vergleichs-Wireframe";
 "Punkte ziehen (Edit-Modus)" = "Punkte ziehen (Edit-Modus)";
 "Zoom zurücksetzen (100 %)" = "Zoom zurücksetzen (100 %)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Vor dem Speichern prüfen";
+"Vor Speichern prüfen …" = "Vor Speichern prüfen …";
+"Interaktiven HTML-Bericht exportieren …" = "Interaktiven HTML-Bericht exportieren …";
+"Jetzt speichern" = "Jetzt speichern";
+"Trotzdem speichern" = "Trotzdem speichern";
+"Änderungsübersicht" = "Änderungsübersicht";
+"Geänderte Maps" = "Geänderte Maps";

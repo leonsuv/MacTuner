@@ -36,6 +36,7 @@ struct TableEditorView: View {
     @State private var rescaleSharedCascade = true
     @State private var rescaleExtrapolate = false
     @State private var slicesMode = false
+    @State private var hoveredCell: Cell? = nil
     @AppStorage("valueMode") private var valueMode: ValueMode = .values
     @FocusState private var gridFocused: Bool
 
@@ -318,7 +319,7 @@ struct TableEditorView: View {
                 if showVisual {
                     HStack(spacing: 10) {
                         if show3D && l.rows > 1 && l.cols > 1 && s.output != .hex {
-                            Surface3DView(item: item, x: x, y: y, readOnly: isCompareView)
+                            Surface3DView(item: item, x: x, y: y, readOnly: isCompareView, hoveredCell: $hoveredCell)
                         }
                         if showChart {
                             let isFiltered = !selection.isEmpty && Set(selection.map(\.r)).count < l.rows
@@ -326,6 +327,10 @@ struct TableEditorView: View {
                                        units: slicesMode ? "Slices" : model.displayUnit(s.units),
                                        xUnits: mode == .wrapped || x.scaling.units.isEmpty ? "" : model.displayUnit(x.scaling.units),
                                        slicesMode: l.rows > 1 ? $slicesMode : nil,
+                                       hoveredCell: $hoveredCell,
+                                       onDragCellValue: (!isCompareView && !model.isLocked(item) && s.output != .hex) ? { c, newVal in
+                                           applyDisplayOp(.set(newVal), cells: [c])
+                                       } : nil,
                                        onShowAll: isFiltered ? { selection.removeAll(); anchor = nil } : nil,
                                        onSelectAll: { selectAll() },
                                        onSmooth: (!isCompareView && !model.isLocked(item) && selection.count >= 2) ? { smoothSelection() } : nil,
@@ -848,16 +853,21 @@ struct TableEditorView: View {
                 } else if selected {
                     shape.strokeBorder(Color.primary, lineWidth: 2)
                         .shadow(color: .black.opacity(0.35), radius: 2)
+                } else if hoveredCell == c {
+                    shape.strokeBorder(Color.cyan, lineWidth: 2)
                 } else if !isCompareView && model.isOutOfSafeRange(item, cell: c) {
                     shape.strokeBorder(Color.red, lineWidth: 2)
                 }
             }
-            .zIndex((selected || isLogActive) ? 2 : 0)
+            .zIndex((selected || isLogActive || hoveredCell == c) ? 2 : 0)
             .contentShape(shape)
             .help(changed ? (isCompareView ? "BIN: \(model.text(l, s, c))" : String(localized: "Vergleich: \(model.text(l, s, c, original: true))")) : "")
             .accessibilityLabel("Zelle Zeile \(c.r + 1), Spalte \(c.c + 1)")
             .accessibilityValue("\(text) \(model.displayUnit(s.units))" + (changed ? ", geändert" : ""))
             .accessibilityAddTraits(selected ? .isSelected : [])
+            .onHover { inside in
+                if inside { hoveredCell = c } else if hoveredCell == c { hoveredCell = nil }
+            }
             .onTapGesture { click(c) }
             .contextMenu { cellContextMenu(for: c) }
     }
@@ -1240,7 +1250,7 @@ struct TableEditorView: View {
                     if let v = values[r][c] {
                         let normalized = (v - rowMin) / globalSpan
                         let stackedY = Double(r) + normalized * 0.85
-                        pts.append(.init(id: pts.count, series: name, x: xv[c], y: stackedY, original: false))
+                        pts.append(.init(id: pts.count, series: name, x: xv[c], y: stackedY, original: false, cell: Cell(r: r, c: c)))
                     }
                 }
             }
@@ -1259,7 +1269,7 @@ struct TableEditorView: View {
             var changedRow = false
             for c in 0..<l.cols {
                 if let v = values[r][c] {
-                    pts.append(.init(id: pts.count, series: name, x: xv[c], y: v, original: false))
+                    pts.append(.init(id: pts.count, series: name, x: xv[c], y: v, original: false, cell: Cell(r: r, c: c)))
                 }
                 changedRow = changedRow || model.isChanged(l, Cell(r: r, c: c))
             }

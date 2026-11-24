@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Srovnávací drátový model";
 "Punkte ziehen (Edit-Modus)" = "Tažení bodů (úpravy)";
 "Zoom zurücksetzen (100 %)" = "Obnovit přiblížení (100 %)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Zkontrolovat před uložením";
+"Vor Speichern prüfen …" = "Zkontrolovat před uložením …";
+"Interaktiven HTML-Bericht exportieren …" = "Exportovat interaktivní HTML zprávu …";
+"Jetzt speichern" = "Uložit nyní";
+"Trotzdem speichern" = "Přesto uložit";
+"Änderungsübersicht" = "Přehled změn";
+"Geänderte Maps" = "Změněné mapy";

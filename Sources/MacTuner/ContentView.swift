@@ -185,6 +185,10 @@ struct ContentView: View {
             ContentPortingSheet()
                 .environment(model)
         }
+        .sheet(isPresented: Binding(get: { model.showPreSaveReview }, set: { model.showPreSaveReview = $0 })) {
+            PreSaveReviewSheet { model.save() }
+                .environment(model)
+        }
     }
 
     // MARK: - 1. Studio Shell (4-Mode Apple Pro App)

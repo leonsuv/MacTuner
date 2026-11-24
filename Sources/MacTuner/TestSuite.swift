@@ -98,6 +98,12 @@ enum TestSuite {
             expect(false, "XDF XML roundtrip threw: \(error)")
         }
 
+        // 7. Interactive HTML report generator sanity check
+        let htmlCheck = MainActor.assumeIsolated {
+            HTMLReportExporter.generateHTML(for: AppModel.shared)
+        }
+        expect(htmlCheck.contains("<!DOCTYPE html>") && htmlCheck.contains("function setMode(") && !htmlCheck.contains("http://"), "HTMLReportExporter standalone output")
+
         print("MacTuner Self-Test: \(passed) passed, \(failed) failed")
         return failed == 0 ? 0 : 1
     }

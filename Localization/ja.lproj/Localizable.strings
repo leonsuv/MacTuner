@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "比較ワイヤーフレーム";
 "Punkte ziehen (Edit-Modus)" = "頂点ドラッグ（編集モード）";
 "Zoom zurücksetzen (100 %)" = "ズームをリセット (100%)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "保存前の確認";
+"Vor Speichern prüfen …" = "保存前の確認 …";
+"Interaktiven HTML-Bericht exportieren …" = "インタラクティブHTMLレポートを書き出す …";
+"Jetzt speichern" = "今すぐ保存";
+"Trotzdem speichern" = "このまま保存";
+"Änderungsübersicht" = "変更の概要";
+"Geänderte Maps" = "変更されたマップ";

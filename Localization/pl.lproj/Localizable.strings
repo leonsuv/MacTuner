@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Siatka porównawcza";
 "Punkte ziehen (Edit-Modus)" = "Przeciągaj punkty (edycja)";
 "Zoom zurücksetzen (100 %)" = "Resetuj powiększenie (100%)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Sprawdź przed zapisaniem";
+"Vor Speichern prüfen …" = "Sprawdź przed zapisaniem …";
+"Interaktiven HTML-Bericht exportieren …" = "Eksportuj interaktywny raport HTML …";
+"Jetzt speichern" = "Zapisz teraz";
+"Trotzdem speichern" = "Zapisz mimo to";
+"Änderungsübersicht" = "Podsumowanie zmian";
+"Geänderte Maps" = "Zmodyfikowane mapy";

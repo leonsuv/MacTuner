@@ -573,6 +573,7 @@ struct TableChart: View {
         let x: Double
         let y: Double
         let original: Bool
+        var cell: Cell? = nil
     }
 
     let points: [Point]
@@ -582,6 +583,8 @@ struct TableChart: View {
     let units: String
     let xUnits: String
     var slicesMode: Binding<Bool>? = nil
+    var hoveredCell: Binding<Cell?>? = nil
+    var onDragCellValue: ((Cell, Double) -> Void)? = nil
     var onShowAll: (() -> Void)? = nil
     var onSelectAll: (() -> Void)? = nil
     var onSmooth: (() -> Void)? = nil
@@ -589,11 +592,25 @@ struct TableChart: View {
     var onJumpHex: (() -> Void)? = nil
     var onEditXDF: (() -> Void)? = nil
 
+    @State private var draggedPoint: Point? = nil
+    @State private var liveDragValue: Double? = nil
+
     var body: some View {
+        let activeHover = hoveredCell?.wrappedValue
+        let hoveredPoint = activeHover.flatMap { hc in points.first { !$0.original && $0.cell == hc } }
+
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text("2D-Kurven").font(.headline)
-                if !xUnits.isEmpty { Text("über \(xUnits)").font(.caption).foregroundStyle(.secondary) }
+                if let dp = draggedPoint, let lv = liveDragValue {
+                    Text("\(dp.series) → \(String(format: "%.2f", lv)) \(units)")
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(Theme.changed)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Theme.changed.opacity(0.15), in: Capsule())
+                } else if !xUnits.isEmpty {
+                    Text("über \(xUnits)").font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
                 if let showAll = onShowAll {
                     Button {
@@ -627,18 +644,28 @@ struct TableChart: View {
                     .fixedSize()
                 }
             }
-            Chart(points) { p in
-                LineMark(
-                    x: .value("X", p.x),
-                    y: .value(units.isEmpty ? "Wert" : units, p.y),
-                    series: .value("Reihe", p.series + (p.original ? " (Vergleich)" : "")))
-                    .foregroundStyle(by: .value("Reihe", p.series))
-                    .lineStyle(p.original ? StrokeStyle(lineWidth: 1.2, dash: [4, 3]) : StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                    .opacity(p.original ? 0.5 : 1)
-                if !p.original && points.count <= 120 {
-                    PointMark(x: .value("X", p.x), y: .value(units.isEmpty ? "Wert" : units, p.y))
+            Chart {
+                ForEach(points) { p in
+                    LineMark(
+                        x: .value("X", p.x),
+                        y: .value(units.isEmpty ? "Wert" : units, p.y),
+                        series: .value("Reihe", p.series + (p.original ? " (Vergleich)" : "")))
                         .foregroundStyle(by: .value("Reihe", p.series))
-                        .symbolSize(18)
+                        .lineStyle(p.original ? StrokeStyle(lineWidth: 1.2, dash: [4, 3]) : StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                        .opacity(p.original ? 0.5 : 1)
+                    if !p.original && points.count <= 120 {
+                        PointMark(x: .value("X", p.x), y: .value(units.isEmpty ? "Wert" : units, p.y))
+                            .foregroundStyle(by: .value("Reihe", p.series))
+                            .symbolSize(p.cell == activeHover ? 64 : 18)
+                    }
+                }
+                if let hp = hoveredPoint {
+                    RuleMark(x: .value("X", hp.x))
+                        .foregroundStyle(Color.cyan.opacity(0.45))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    PointMark(x: .value("X", hp.x), y: .value(units.isEmpty ? "Wert" : units, hp.y))
+                        .foregroundStyle(Color.cyan)
+                        .symbolSize(72)
                 }
             }
             .chartLegend(seriesCount > 1 && seriesCount <= 16 ? .visible : .hidden)
@@ -646,6 +673,54 @@ struct TableChart: View {
             .chartYScale(domain: .automatic(includesZero: false))
             .chartXAxis { AxisMarks { AxisGridLine().foregroundStyle(.separator); AxisValueLabel() } }
             .chartYAxis { AxisMarks(position: .leading) { AxisGridLine().foregroundStyle(.separator); AxisValueLabel() } }
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    Rectangle()
+                        .fill(Color.clear)
+                        .contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let loc):
+                                guard let plotFrame = proxy.plotFrame else { return }
+                                let origin = geo[plotFrame].origin
+                                let px = loc.x - origin.x
+                                let py = loc.y - origin.y
+                                if let nearest = nearestEditablePoint(px: px, py: py, proxy: proxy, maxDist: 28) {
+                                    if hoveredCell?.wrappedValue != nearest.cell {
+                                        hoveredCell?.wrappedValue = nearest.cell
+                                    }
+                                }
+                            case .ended:
+                                if draggedPoint == nil { hoveredCell?.wrappedValue = nil }
+                            }
+                        }
+                        .gesture(
+                            DragGesture(minimumDistance: 2)
+                                .onChanged { value in
+                                    guard let onDrag = onDragCellValue,
+                                          slicesMode?.wrappedValue != true,
+                                          let plotFrame = proxy.plotFrame else { return }
+                                    let origin = geo[plotFrame].origin
+                                    if draggedPoint == nil {
+                                        let sx = value.startLocation.x - origin.x
+                                        let sy = value.startLocation.y - origin.y
+                                        draggedPoint = nearestEditablePoint(px: sx, py: sy, proxy: proxy, maxDist: 24)
+                                    }
+                                    guard let dp = draggedPoint, let cell = dp.cell else { return }
+                                    hoveredCell?.wrappedValue = cell
+                                    let localY = value.location.y - origin.y
+                                    if let newY: Double = proxy.value(atY: localY) {
+                                        liveDragValue = newY
+                                        onDrag(cell, newY)
+                                    }
+                                }
+                                .onEnded { _ in
+                                    draggedPoint = nil
+                                    liveDragValue = nil
+                                }
+                        )
+                }
+            }
         }
         .card(padding: 14)
         .contextMenu {
@@ -681,6 +756,22 @@ struct TableChart: View {
                 Button("Im XDF-Editor bearbeiten …", action: edit)
             }
         }
+    }
+
+    private func nearestEditablePoint(px: CGFloat, py: CGFloat, proxy: ChartProxy, maxDist: CGFloat) -> Point? {
+        var best: Point?
+        var bestDist = maxDist * maxDist
+        for p in points where !p.original && p.cell != nil {
+            guard let xPos = proxy.position(forX: p.x),
+                  let yPos = proxy.position(forY: p.y) else { continue }
+            let dx = xPos - px, dy = yPos - py
+            let d2 = dx * dx + dy * dy
+            if d2 < bestDist {
+                bestDist = d2
+                best = p
+            }
+        }
+        return best
     }
 }
 

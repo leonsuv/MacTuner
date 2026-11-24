@@ -843,3 +843,12 @@
 "Vergleichs-Wireframe" = "Összehasonlító drótváz";
 "Punkte ziehen (Edit-Modus)" = "Pontok húzása (szerkesztés)";
 "Zoom zurücksetzen (100 %)" = "Nagyítás visszaállítása (100%)";
+
+/* v3.1 Phase 1 */
+"Vor dem Speichern prüfen" = "Ellenőrzés mentés előtt";
+"Vor Speichern prüfen …" = "Ellenőrzés mentés előtt …";
+"Interaktiven HTML-Bericht exportieren …" = "Interaktív HTML jelentés exportálása …";
+"Jetzt speichern" = "Mentés most";
+"Trotzdem speichern" = "Mentés mindenképp";
+"Änderungsübersicht" = "Változások összegzése";
+"Geänderte Maps" = "Módosított térképek";
