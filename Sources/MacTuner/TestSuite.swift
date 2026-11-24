@@ -98,12 +98,19 @@ enum TestSuite {
             expect(false, "XDF XML roundtrip threw: \(error)")
         }
 
-        // 7. Interactive HTML report generator sanity check
+        // 7. Interactive HTML report generator & UpdateChecker semver comparison
         #if !MACTUNER_CORE_TDD
         let htmlCheck = MainActor.assumeIsolated {
             HTMLReportExporter.generateHTML(for: AppModel.shared)
         }
         expect(htmlCheck.contains("<!DOCTYPE html>") && htmlCheck.contains("function setMode(") && !htmlCheck.contains("http://"), "HTMLReportExporter standalone output")
+        let updOK = MainActor.assumeIsolated {
+            UpdateChecker.isNewer("3.1.1", than: "3.1.0")
+            && UpdateChecker.isNewer("3.2.0", than: "3.1.9")
+            && !UpdateChecker.isNewer("3.1.1", than: "3.1.1")
+            && !UpdateChecker.isNewer("3.0.9", than: "3.1.0")
+        }
+        expect(updOK, "UpdateChecker semver comparison")
         #endif
 
         // 8. DisassemblerEngine TriCore & PowerPC XREF detection

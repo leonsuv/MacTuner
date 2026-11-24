@@ -256,6 +256,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         NSWindow.allowsAutomaticWindowTabbing = true
         ClickThroughMenuManager.shared.installIfNeeded()
+        MainActor.assumeIsolated {
+            UpdateChecker.checkOnLaunchIfNeeded()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
