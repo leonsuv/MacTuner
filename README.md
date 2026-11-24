@@ -5,16 +5,15 @@
 <h1 align="center">MacTuner</h1>
 
 <p align="center">
-  <strong>A native macOS ECU &amp; TCU tuning workbench.</strong><br>
-  WinOLS-class 60-FPS Hex &amp; Map Recognition · Native .ols / .kp / A2L / XDF · TriCore/PowerPC/C167 XREFs · Interactive 2D/3D Surface Editing · Live OBD-II/UDS Telemetry · Checksums &amp; Recipes — no Wine, no VM, zero dependencies.
+  <strong>Built like a Mac app. Runs everywhere — macOS, Windows, Linux &amp; Web.</strong><br>
+  WinOLS-class Split Hex-Diff &amp; Structural Map Detection · Jewel-Tile Thermal Heatmap &amp; Interactive 3D Surface · XDF / A2L / CSV / Intel HEX / S-Record · TriCore/PowerPC/C166 Disassembler &amp; XREFs · Datalog &amp; Virtual Dyno · Checksums &amp; Preflight.
 </p>
 
 <p align="center">
   <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/leonsuv/MacTuner?label=Download&color=007AFF" alt="Download"></a>
-  <img src="https://img.shields.io/badge/macOS-14%2B-blue" alt="macOS 14+">
-  <img src="https://img.shields.io/badge/Apple%20Silicon%20%2B%20Intel-Universal-lightgrey" alt="Universal">
-  <img src="https://img.shields.io/badge/Swift-SwiftUI-orange" alt="SwiftUI">
-  <img src="https://img.shields.io/badge/Languages-25-purple" alt="25 languages">
+  <img src="https://img.shields.io/badge/macOS-14%2B%20Universal-blue" alt="macOS 14+ Universal">
+  <img src="https://img.shields.io/badge/Platforms-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20Web-lightgrey" alt="Multiplatform">
+  <img src="https://img.shields.io/badge/Core-TypeScript%20%2B%20Tauri%20v2-orange" alt="TypeScript + Tauri v2">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT">
 </p>
 
@@ -28,19 +27,19 @@
   <a href="#building">Building</a>
 </p>
 
-![MacTuner 3.0: WinOLS-class Split Hex-Diff, In-Hex Map Recognition with Live Mini-Heatmap HUD and 2D Waveform](docs/v3.0-hex-recognition.png)
+![MacTuner 4.0: Jewel-Tile Thermal Heatmap, Interactive 3D Surface, Catmull-Rom 2D Curves and Multi-Cell Calibration](docs/v4.0-map-editor.png)
 
-TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI &amp; AppKit tuning workbench engineered from the ground up for macOS. Every edit is non-destructive and byte-exact: when saving a binary, only the exact bytes of edited values change.
+**MacTuner 4.0** is an Apple-Pro-Obsidian ECU &amp; TCU calibration workbench engineered for **macOS (Universal Apple Silicon + Intel), Windows, Linux, and the Web**. Every edit is non-destructive, undoable, and byte-exact: when exporting a binary, only the exact bytes of edited values (and corrected checksums) change.
 
 ---
 
 ## Gallery
 
-| **Map Editor: Heatmap, 3D Surface &amp; 2D Curves** | **Visual Memory Atlas &amp; Shared-Axis Pool** |
+| **Split Hex-Diff, Map Detection &amp; 2D Waveform** | **Visual Memory Map &amp; Shared-Axis Pool** |
 |---|---|
-| ![Map Editor with Heatmap, Interactive 3D Surface and 2D Curves](docs/v3.0-hero-editor.png) | ![Visual Memory Atlas with proportional flash partition bar and sector table](docs/v3.0-memory-atlas.png) |
-| **Preflight, Checksums, CVN &amp; Flash-Tool Export** | **2-Column Live-Preview XDF Editor** |
-| ![Preflight & Checksums with KPI cards, block table and Flash-Tool export presets](docs/v3.0-checksum-flash.png) | ![2-Column Live-Preview XDF Editor with real-time 2D Mini-Heatmap, Min/Mean/Max and decoded cells](docs/v3.0-xdf-editor.png) |
+| ![Split Hex-Diff with structural map detection and 2D Waveform](docs/v4.0-hex-diff.png) | ![Visual Memory Map with proportional flash partition bar and sector breakdown](docs/v4.0-memory-map.png) |
+| **Flash Preflight, Checksums, Diagnostics &amp; Snapshots** | **20 Hz Datalogger, XY Scatter &amp; Virtual Dyno** |
+| ![Flash Preflight with live checksum repair and export presets](docs/v4.0-flash-preflight.png) | ![20 Hz WOT Dyno Pull Telemetry and Virtual Dyno](docs/v4.0-virtual-dyno.png) |
 
 ---
 

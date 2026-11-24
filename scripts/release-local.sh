@@ -25,6 +25,7 @@ echo "  ✓ $ROOT/dist/MacTuner-Web-${TAG}.zip"
 if command -v cargo >/dev/null 2>&1; then
   echo "▶ 3/4 Building signed Tauri v2 desktop app (local host OS)..."
   export TAURI_SIGNING_PRIVATE_KEY="$(cat "$KEY_PATH")"
+  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
   npm run tauri:build
   echo "  ✓ Desktop bundles & updater artifacts written to $STUDIO/src-tauri/target/release/bundle/"
 else
