@@ -19,7 +19,7 @@ enum UpdateChecker {
     private static let skippedVersionKey = "mactuner.skippedUpdateVersion"
 
     static var currentVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "3.1.1"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "3.1.2"
     }
 
     /// Runs a quiet background update check shortly after launch (at most once every 12 hours).

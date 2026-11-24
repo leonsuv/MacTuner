@@ -95,7 +95,7 @@ MacTuner follows the macOS system language and falls back to English. To pick a 
 
 ## Installation
 
-1. Download **`MacTuner-3.1.1.zip`** from [**Releases**](../../releases/latest) and unzip it (universal binary for Apple Silicon &amp; Intel).
+1. Download **`MacTuner-3.1.2.zip`** from [**Releases**](../../releases/latest) and unzip it (universal binary for Apple Silicon &amp; Intel).
 2. Move `MacTuner.app` to `/Applications`.
 3. Because the release is unsigned/not notarized, allow the first launch under **System Settings → Privacy &amp; Security → Open Anyway**, or run:
    ```sh
