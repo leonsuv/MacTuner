@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>A native macOS ECU &amp; TCU tuning workbench.</strong><br>
-  WinOLS-class 60-FPS Hex &amp; Map Recognition · Native `.ols` / `.kp` / A2L / XDF · TriCore/PowerPC/C167 XREFs · Interactive 2D/3D Surface Editing · Live OBD-II/UDS Telemetry · Checksums &amp; Recipes — no Wine, no VM, zero dependencies.
+  WinOLS-class 60-FPS Hex &amp; Map Recognition · Native .ols / .kp / A2L / XDF · TriCore/PowerPC/C167 XREFs · Interactive 2D/3D Surface Editing · Live OBD-II/UDS Telemetry · Checksums &amp; Recipes — no Wine, no VM, zero dependencies.
 </p>
 
 <p align="center">
