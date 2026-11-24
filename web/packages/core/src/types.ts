@@ -103,9 +103,9 @@ export function scalingRawFor(s: Scaling, v: number, layout: DataLayout): number
       r = c;
     }
   }
-  if (r === null && !layout.isFloat) {
-    let lo = lo0;
-    let hi = hi0;
+  if (r === null) {
+    let lo = layout.isFloat ? -1e6 : lo0;
+    let hi = layout.isFloat ? 1e6 : hi0;
     const rising = s.expr.eval(hi) >= s.expr.eval(lo);
     for (let i = 0; i < 100; i++) {
       const mid = (lo + hi) / 2;

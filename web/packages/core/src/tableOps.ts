@@ -83,7 +83,23 @@ export const TableOps = {
     hPos: (cell: Cell) => number,
     vPos: (cell: Cell) => number,
   ): Map<string, number> {
-    if (selKeys.size < 2) return new Map();
+    if (selKeys.size === 0) return new Map();
+    if (selKeys.size === 1) {
+      const cell = parseCellKey(Array.from(selKeys)[0]);
+      const vc = value(cell);
+      if (vc === null || !Number.isFinite(vc)) return new Map();
+      const neighbors = [
+        { r: cell.r, c: cell.c - 1 },
+        { r: cell.r, c: cell.c + 1 },
+        { r: cell.r - 1, c: cell.c },
+        { r: cell.r + 1, c: cell.c },
+      ]
+        .map(value)
+        .filter((v): v is number => v !== null && Number.isFinite(v));
+      if (neighbors.length === 0) return new Map();
+      const avg = neighbors.reduce((a, b) => a + b, 0) / neighbors.length;
+      return new Map([[cellKey(cell), 0.5 * vc + 0.5 * avg]]);
+    }
     const cells = Array.from(selKeys, parseCellKey);
     const rowSet = new Set(cells.map((c) => c.r));
     const colSet = new Set(cells.map((c) => c.c));

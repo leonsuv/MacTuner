@@ -106,7 +106,14 @@ export const BinCodec = {
       }
     } else if (axis.source.kind === 'labels') {
       for (let i = 0; i < axis.source.labels.length; i++) {
-        const parsed = parseFloat(axis.source.labels[i].replace(',', '.'));
+        const rawLbl = axis.source.labels[i].trim();
+        const normalized =
+          rawLbl.includes(',') && rawLbl.includes('.')
+            ? rawLbl.lastIndexOf(',') > rawLbl.lastIndexOf('.')
+              ? rawLbl.replace(/\./g, '').replace(',', '.')
+              : rawLbl.replace(/,/g, '')
+            : rawLbl.replace(',', '.');
+        const parsed = parseFloat(normalized);
         out.push(Number.isFinite(parsed) ? parsed : i);
       }
     }

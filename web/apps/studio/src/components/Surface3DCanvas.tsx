@@ -164,8 +164,8 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       const rx = p.x * cosY - p.z * sinY;
       const rz1 = p.x * sinY + p.z * cosY;
 
-      const ry = p.y * cosP - rz1 * sinP;
-      const rz = p.y * sinP + rz1 * cosP;
+      const ry = p.y * cosP + rz1 * sinP;
+      const rz = -p.y * sinP + rz1 * cosP;
 
       const fov = 3.6;
       const dist = 3.35 / Math.max(0.45, Math.min(2.6, zoom));
