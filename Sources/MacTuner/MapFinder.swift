@@ -200,6 +200,14 @@ enum MapFinder {
             scanHeaderless2D16(buf: buf, calMask: calMask, lsb: primaryLSB,
                                occupied: &occupied, scratch: &scratch, out: &candidates, localLimit: 6000)
 
+            // Pass 2B: Headerless 8-bit 2D Surfaces (essential for Bosch ME7 / EDC15 / Siemens MS4x where 60%+ of maps are 8-bit!)
+            if !isTriCore {
+                scanHeaderless2D8(buf: buf, calMask: calMask, signed: false,
+                                  occupied: &occupied, scratch: &scratch, out: &candidates, localLimit: 2000)
+                scanHeaderless2D8(buf: buf, calMask: calMask, signed: true,
+                                  occupied: &occupied, scratch: &scratch, out: &candidates, localLimit: 1000)
+            }
+
             return deduplicateNMS(candidates, maxResults: maxResults)
         }
     }

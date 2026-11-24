@@ -370,7 +370,13 @@ enum TestSuite {
                     let binData = [UInt8](try Data(contentsOf: me7BinURL))
                     let xdf = try XDFParser.load(me7XdfURL)
                     let ecu = ECUIdentifier.identify(binData)
+                    let detected = MapFinder.scanWorkspaceBin(bytes: binData, ecu: ecu)
+                    let xdf2D = xdf.items.filter { $0.isTable && $0.data.rows >= 4 && $0.data.cols >= 4 }
+                    let matched2D = xdf2D.filter { item in
+                        detected.contains { $0.dataRange.overlaps(item.data.byteRange) }
+                    }.count
                     expect(xdf.items.count > 20 && (ecu.ecuFamily?.contains("ME7") == true), "Real VAG ME7.5 BIN+XDF + ECUIdentifier (\(xdf.items.count) maps, \(ecu.ecuFamily ?? "?"))")
+                    expect(detected.count >= 80 && matched2D >= 8, "Real VAG ME7.5 MapFinder recall (\(detected.count) detected, \(matched2D)/\(xdf2D.count) XDF 2D maps covered)")
                 } catch {
                     expect(false, "Real VAG ME7.5 test threw: \(error)")
                 }
