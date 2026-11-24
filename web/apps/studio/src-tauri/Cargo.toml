@@ -1,0 +1,22 @@
+[package]
+name = "mactuner-desktop"
+version = "4.0.0"
+description = "MacTuner — Cross-Platform ECU & TCU Calibration Workbench"
+authors = ["leonsuv <leon.suvorkov@outlook.de>"]
+edition = "2021"
+
+[lib]
+name = "mactuner_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

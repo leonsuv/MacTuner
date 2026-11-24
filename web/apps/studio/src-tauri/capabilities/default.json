@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "MacTuner default desktop capabilities (updater, native dialogs, file I/O, process relaunch)",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "fs:default",
+    "process:default",
+    "updater:default"
+  ]
+}

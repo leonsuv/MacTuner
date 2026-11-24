@@ -9,3 +9,4 @@ testdata/
 __pycache__/
 node_modules/
 dist/
+src-tauri/target/

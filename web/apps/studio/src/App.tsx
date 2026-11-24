@@ -44,6 +44,8 @@ import { MemoryMapView } from './components/MemoryMapView';
 import { FlashPreflightView, type ChecksumBlock as UiChecksumBlock } from './components/FlashPreflightView';
 import { DatalogView } from './components/DatalogView';
 import { CommandPalette } from './components/CommandPalette';
+import { UpdateModal } from './components/UpdateModal';
+import { APP_VERSION, checkForUpdates, type UpdateInfo } from './lib/updater';
 
 type TopSection = 'workspace' | 'discovery' | 'memory' | 'datalog' | 'flash';
 
@@ -131,6 +133,23 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  const runUpdateCheck = useCallback(async () => {
+    setCheckingUpdate(true);
+    const info = await checkForUpdates();
+    setUpdateInfo(info);
+    setCheckingUpdate(false);
+  }, []);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void runUpdateCheck();
+    }, 1800);
+    return () => window.clearTimeout(t);
+  }, [runUpdateCheck]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const compareInputRef = useRef<HTMLInputElement>(null);
@@ -693,6 +712,17 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setUpdateModalOpen(true)}
+            className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-medium transition ${
+              updateInfo?.available
+                ? 'bg-[#0a84ff]/20 text-sky-300 hover:bg-[#0a84ff]/30'
+                : 'text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200'
+            }`}
+            title="Check for MacTuner updates"
+          >
+            {updateInfo?.available ? `Update v${updateInfo.latestVersion}` : `v${APP_VERSION}`}
+          </button>
           {changedItemIds.size > 0 && (
             <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
               {changedItemIds.size} maps changed
@@ -753,6 +783,14 @@ export default function App() {
         onSwitchSection={setSection}
         onFixChecksums={handleFixChecksums}
         onSwapBins={handleSwapBins}
+      />
+
+      <UpdateModal
+        open={updateModalOpen}
+        info={updateInfo}
+        checking={checkingUpdate}
+        onCheckNow={() => void runUpdateCheck()}
+        onClose={() => setUpdateModalOpen(false)}
       />
     </div>
   );

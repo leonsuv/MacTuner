@@ -7,7 +7,9 @@
     "dev": "vite --port 5173",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "tauri:dev": "npx @tauri-apps/cli@^2 dev",
+    "tauri:build": "npx @tauri-apps/cli@^2 build"
   },
   "dependencies": {
     "@mactuner/core": "*",
