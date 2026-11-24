@@ -75,12 +75,12 @@ TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI &amp; 
 
 ### OEM DTC Switcher, Checksums, BIN Tools &amp; Virtual Road Dyno
 - **OEM DTC Table Scanner &amp; 1-Click Switcher:** Detects Bosch/Siemens OBD-II P-code arrays and correlated 8-bit Error Class switches with undoable 1-click Enable/Disable and **Save as XDF Switch**.
-- **Checksums, TPROT &amp; BIN Utilities:** Built-in checksum plugins (Bosch ME7 / MED17 / EDC17, Siemens MS4x/SIMOS, Temic DQ250, CRC-32), TPROT/RSA advisories, flash-tool export presets (KESS, KTAG, PCMFlash, Flex, CMDFlash, MPPS), plus 16/32-bit Byte-Swap, Pad to Flash Size (`0xFF`), Extract Slice, and undoable Segment Inject.
-- **Datalogging, Math Channels &amp; Virtual Road Dyno:** Import CSV (auto-skipping VCDS/ME7Logger/MHD/BM3/Cobb preambles), `.adx`, and `.ads` logs; filter by WOT, Steady-State, Reject DFCO, and Warm (≥75 °C); trace live heatmap cells with 4-cell bilinear attribution; create custom Math Channels (`Boost Deviation`, `Lambda Error %`, `IDC %`); and compute SAE J1349-corrected wheel/engine **HP &amp; Nm** curves from WOT pulls.
+- **11 Built-in Checksum Plugins, TPROT &amp; BIN Utilities:** Built-in checksum plugins (**Bosch ME7**, **MED17/EDC17**, **MG1/MD1**, **BMW MEVD17.2**, **Siemens MS4x/SIMOS**, **Continental Simos 18/19**, **Continental SID208/305/310**, **Temic DQ250**, **DQ381/DQ500**, **DL501**, and **Generic CRC-32**), TPROT/RSA advisories, flash-tool export presets (KESS, KTAG, PCMFlash, Flex, CMDFlash, MPPS), plus 16/32-bit Byte-Swap, Pad to Flash Size (`0xFF`), Extract Slice, and undoable Segment Inject.
+- **Datalogging, Live OBD-II/UDS &amp; Virtual Road Dyno:** Stream live telemetry (USB-Serial ELM327/OBDLink/K+DCAN, ENET DoIP UDS, Bluetooth LE, or the 20 Hz Bench Simulator) or import CSV (auto-skipping VCDS/ME7Logger/MHD/BM3/Cobb preambles), `.adx`, and `.ads` logs; filter by WOT, Steady-State, Reject DFCO, and Warm (≥75 °C); trace live heatmap cells with 4-cell bilinear attribution; create custom Math Channels (`Boost Deviation`, `Lambda Error %`, `IDC %`); and compute SAE J1349-corrected wheel/engine **HP &amp; Nm** curves from WOT pulls.
 
 ### Definitions, Automation &amp; Multi-BIN Workspace
-- **Unified Multi-BIN Workspace:** Open any number of `.bin`, Intel `.hex`, and Motorola `.s19/.srec` files in tabs (`L` / `R` badges), compare 3+ tunes side by side, save named snapshots, track per-map edit history across sessions, and export multi-page **PDF reports with charts** (`⌘P` / `⇧⌘E`).
-- **Definitions &amp; Porting:** Reads **XDF 1.60 XML**, **legacy XDF v1.11 text**, **A2L / DAMOS**, and **WinOLS `.kp` / `.csv`**; exports XDF, WinOLS `.csv`, and `.a2l`; includes a built-in XDF editor with live byte-nudge preview, cross-version tune porting, `.mtpatch` batch tuning, ECU glossary translation, `⌘K` Command Palette, `mactuner` CLI, Shortcuts/AppleScript, and full-BIN JavaScript plugins (`JavaScriptCore`).
+- **Unified Multi-BIN Workspace:** Open any number of `.bin`, Intel `.hex`, and Motorola `.s19/.srec` files in tabs (`L` / `R` badges), compare 3+ tunes side by side, save named snapshots, track per-map edit history across sessions, review all changes before saving (`⌃⌘S`), and export multi-page **PDF reports with charts** (`⌘P` / `⇧⌘E`) or **standalone offline interactive HTML tune reports**.
+- **Definitions &amp; Porting:** Reads **XDF 1.60 XML** (incl. `<TABLEINFO>`), **legacy XDF v1.11 text**, **A2L / DAMOS**, **WinOLS `.ols` / `.kp` / `.csv`**, and **RomRaider `.xml`**; exports XDF, WinOLS `.csv`, `.a2l`, and RomRaider `.xml`; includes a built-in 2-column XDF editor with live byte-nudge preview and 1-click scaling presets, local Reference Library auto-identification, cross-version tune porting, `.mtpatch` &amp; `.mtrecipe` automation, ECU glossary translation, `⌘K` Command Palette, `mactuner` CLI, Shortcuts/AppleScript, and full-BIN JavaScript plugins (`JavaScriptCore`).
 
 ---
 
@@ -95,7 +95,7 @@ MacTuner follows the macOS system language and falls back to English. To pick a 
 
 ## Installation
 
-1. Download **`MacTuner-3.0.2.zip`** from [**Releases**](../../releases/latest) and unzip it (universal binary for Apple Silicon &amp; Intel).
+1. Download **`MacTuner-3.1.0.zip`** from [**Releases**](../../releases/latest) and unzip it (universal binary for Apple Silicon &amp; Intel).
 2. Move `MacTuner.app` to `/Applications`.
 3. Because the release is unsigned/not notarized, allow the first launch under **System Settings → Privacy &amp; Security → Open Anyway**, or run:
    ```sh
@@ -115,8 +115,10 @@ A Homebrew Cask formula is also included in [`Casks/mactuner.rb`](Casks/mactuner
 | Shortcut | Action |
 |---|---|
 | `⌘K` | Command Palette (search every map, address &amp; action) |
+| `⌃⌘1` / `⌃⌘2` / `⌃⌘3` | Switch Workspace Mode: Studio / IDE / Canvas |
+| `⌥⌘I` / `⇧⌘Y` | Toggle Right Inspector (Properties, XREFs, Physics Calc) / Bottom Drawer |
 | `⌘O` / `⇧⌘O` / `⌥⌘O` | Open XDF / binary / comparison binary |
-| `⌘S` / `⇧⌘S` | Save / Save As |
+| `⌘S` / `⌃⌘S` / `⇧⌘S` | Save / Pre-Save Diff Review / Save As |
 | `⌘Z` / `⇧⌘Z` | Undo / Redo |
 | `⌘0` / `⌘4` / `⌘5` / `⌘6` / `⌘7` | Overview / Multi-Compare / Hex-Diff / Snapshots / History |
 | `⌘1` / `⌘2` / `⌘3` | Sidebar: All / Changed / Favorites |
@@ -134,8 +136,8 @@ The bundled [`scripts/mactuner`](scripts/mactuner) CLI exposes headless automati
 mactuner diff <xdf> <bin> <compare>
 mactuner export <xdf> <bin> <compare> <report.pdf|report.txt>
 mactuner apply <xdf> <tune.mtpatch> <in.bin> <out.bin> [--mode absolute|delta|percent]
-mactuner checksum <bin> [--plugin bosch-me7|bosch-med17|siemens-simos|temic-dq250] [--fix out.bin]
-mactuner convert <in.a2l|in.kp> <out.xdf>
+mactuner checksum <bin> [--plugin bosch-me7|bosch-med17|bosch_mg1_md1|bmw_mevd17|siemens-simos|siemens_simos18|continental_sid|temic-dq250|temic_dq381|temic_dl501|generic-crc32] [--fix out.bin]
+mactuner convert <in.a2l|in.kp|in.ols|in.xdf> <out.xdf|out.csv|out.a2l>
 mactuner info <xdf>
 ```
 
@@ -145,11 +147,11 @@ mactuner info <xdf>
 
 | Category | Supported Formats |
 |---|---|
-| **Definitions** | TunerPro XDF 1.60 XML (`XDFTABLE`, `XDFCONSTANT`, `XDFFLAG`, `XDFPATCH`), legacy XDF v1.11 text, ASAP2 `.a2l` / DAMOS, WinOLS `.kp` / `.csv` |
+| **Definitions** | TunerPro XDF 1.60 XML (`XDFTABLE`, `XDFCONSTANT`, `XDFFLAG`, `XDFPATCH`, incl. `<TABLEINFO>`), legacy XDF v1.11 text, ASAP2 `.a2l` / DAMOS, WinOLS `.ols` (v2–v5) / `.kp` / `.csv`, RomRaider `.xml` |
 | **Binaries** | Raw `.bin` / `.ori` / `.mod`, Intel HEX (`.hex` / `.ihex`), Motorola S-Record (`.s19` / `.s28` / `.s37` / `.srec`) |
 | **Data Types** | 8 / 16 / 32-bit signed &amp; unsigned, Little &amp; Big Endian, column-major, 32-bit IEEE-754 Float, hex output, embedded &amp; label axes, arbitrary `X` / multi-variable equations |
-| **Datalogs** | CSV (auto-delimiter &amp; VCDS/ME7Logger/MHD/BM3/Cobb preamble detection), TunerPro v5 `.adx`, legacy TunerPro v4 `.ads` |
-| **Projects &amp; Patches** | Single-file `.mtproj` projects and `.mtpatch` batch tune packages |
+| **Datalogs &amp; Telemetry** | Live OBD-II / UDS (USB-Serial ELM327/OBDLink/K+DCAN, ENET DoIP, BLE, 20 Hz Bench Simulator), CSV (auto-delimiter &amp; VCDS/ME7Logger/MHD/BM3/Cobb preamble detection), TunerPro v5 `.adx`, legacy TunerPro v4 `.ads` |
+| **Projects, Recipes &amp; Reports** | Single-file `.mtproj` projects, `.mtpatch` batch tunes, declarative `.mtrecipe` JSON recipes, PDF reports, and standalone offline interactive HTML tune reports |
 
 ---
 
@@ -182,11 +184,13 @@ mactuner info <xdf>
 - [x] BIN Utilities: 16/32-bit Byte-Swap, Pad to Flash Size (`0xFF`), Extract Slice, and undoable Segment Inject
 
 ### Definitions, Checksums, Datalogging &amp; macOS
-- [x] XDF 1.60 XML, legacy XDF v1.11, A2L/DAMOS, WinOLS `.kp`/`.csv` import &amp; XDF/CSV/A2L export
-- [x] Built-in XDF editor with live byte-nudge preview, cross-version tune porting, `.mtpatch` batch tuning, and TCU shift-hysteresis validator
-- [x] Checksum plugins (Bosch ME7/MED17/EDC17, Siemens MS4x/SIMOS, Temic DQ250, CRC-32) + flash-tool hand-off presets
-- [x] Datalog playback with WOT/Steady-State/DFCO/Warm filters, 4-cell bilinear attribution, Math Channels, and SAE-corrected Virtual Road Dyno (HP / Nm)
-- [x] `.mtproj` projects, multi-window tabs, Quick Look previews, Shortcuts/AppleScript, `mactuner` CLI, full-BIN JavaScript plugins (`JavaScriptCore`), 25 languages, Homebrew Cask, and `--self-test` suite
+- [x] XDF 1.60 XML (incl. `<TABLEINFO>`), legacy XDF v1.11, A2L/DAMOS, WinOLS `.ols`/`.kp`/`.csv`, and RomRaider `.xml` import &amp; XDF/CSV/A2L/XML export
+- [x] Built-in 2-column XDF editor with live byte-nudge preview, 1-click scaling presets, local Reference Library auto-identification, cross-version tune porting, `.mtpatch` / `.mtrecipe` automation, and TCU shift-hysteresis validator
+- [x] Native Disassembler &amp; Code XREF Finder (TriCore TC17xx–TC3xx, PowerPC MPC5xx, Infineon C167) + Linked Diesel/Gasoline Physics Calculator in Right Inspector
+- [x] 11 built-in checksum plugins (Bosch ME7, MED17/EDC17, MG1/MD1, BMW MEVD17.2, Siemens MS4x/SIMOS, Simos 18/19, Continental SID208/305/310, Temic DQ250, DQ381/DQ500, DL501, CRC-32) + flash-tool hand-off presets
+- [x] Interactive 2D curve dragging + 3-way crosshair sync across Heatmap, 2D Curve &amp; 3D Surface, Pre-Save Diff Review (`⌃⌘S`), and standalone interactive HTML tune reports
+- [x] Live OBD-II / UDS / ENET DoIP / BLE telemetry + 20 Hz Bench Simulator, datalog playback with WOT/Steady-State/DFCO/Warm filters, 4-cell bilinear attribution, Math Channels, and SAE-corrected Virtual Road Dyno (HP / Nm)
+- [x] `.mtproj` projects, multi-window tabs, Quick Look previews, Shortcuts/AppleScript, `mactuner` CLI, full-BIN JavaScript plugins (`JavaScriptCore`), 25 languages, Homebrew Cask, fast CLI TDD runner (`./scripts/tdd.sh`), and `--self-test` suite
 
 </details>
 
@@ -204,7 +208,12 @@ The macOS 27 SDK that ships with the Command Line Tools lacks the SwiftUI macro 
 
 ### Self-Tests
 
-If you have an XDF and a matching binary, the build script can also run byte-exact round-trip verification:
+Run the fast (~15s) CLI core-engine TDD suite without rebuilding SwiftUI:
+```sh
+./scripts/tdd.sh
+```
+
+Or run the full self-test suite (`MacTuner --self-test`) and byte-exact round-trip verification:
 
 ```sh
 MACTUNER_XDF=def.xdf MACTUNER_BIN=stock.bin MACTUNER_CMP=tuned.bin ./build_app.sh
