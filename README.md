@@ -27,7 +27,7 @@
   <a href="#building">Building</a>
 </p>
 
-![MacTuner 3.0: Unified 4-tab sidebar, heatmap, interactive 3D surface and 2D curves side by side](docs/v3.0-hero-editor.png)
+![MacTuner 3.0: WinOLS-class Split Hex-Diff, In-Hex Map Recognition with Live Mini-Heatmap HUD and 2D Waveform](docs/v3.0-hex-recognition.png)
 
 TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI &amp; AppKit tuning workbench engineered from the ground up for macOS. Every edit is non-destructive and byte-exact: when saving a binary, only the exact bytes of edited values change.
 
@@ -35,13 +35,11 @@ TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI &amp; 
 
 ## Gallery
 
-| **WinOLS-Class Split Hex-Diff &amp; In-Hex Map Recognition** | **Visual Memory Atlas &amp; Shared-Axis Pool** |
+| **Map Editor: Heatmap, 3D Surface &amp; 2D Curves** | **Visual Memory Atlas &amp; Shared-Axis Pool** |
 |---|---|
-| ![Split Hex-Diff with In-Hex Map Recognition, Live Mini-Heatmap HUD and 2D Waveform](docs/v3.0-hex-recognition.png) | ![Visual Memory Atlas with proportional flash partition bar and sector table](docs/v3.0-memory-atlas.png) |
+| ![Map Editor with Heatmap, Interactive 3D Surface and 2D Curves](docs/v3.0-hero-editor.png) | ![Visual Memory Atlas with proportional flash partition bar and sector table](docs/v3.0-memory-atlas.png) |
 | **Preflight, Checksums, CVN &amp; Flash-Tool Export** | **2-Column Live-Preview XDF Editor** |
 | ![Preflight & Checksums with KPI cards, block table and Flash-Tool export presets](docs/v3.0-checksum-flash.png) | ![2-Column Live-Preview XDF Editor with real-time 2D Mini-Heatmap, Min/Mean/Max and decoded cells](docs/v3.0-xdf-editor.png) |
-| **Overview, ECU Identification &amp; Change Summary** | **Map Editor: Heatmap, 3D Surface &amp; 2D Curves** |
-| ![Overview Dashboard with ECU Identification and Change List](docs/v3.0-overview.png) | ![Map Editor with Heatmap, 3D Surface and 2D Curves](docs/v3.0-hero-editor.png) |
 
 ---
 
