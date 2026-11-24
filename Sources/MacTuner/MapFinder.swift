@@ -1250,12 +1250,12 @@ enum MapFinder {
                                           occupied: inout WordBitset, scratch: inout [Double],
                                           out: inout [Candidate], localLimit: Int) {
         let count = buf.count
-        let shapes = [(16, 16), (12, 12), (8, 16), (8, 12), (8, 8)]
+        let shapes = [(16, 16), (12, 16), (16, 8), (14, 14), (12, 12), (8, 16), (8, 12), (8, 8)]
         var off = 0
         var added = 0
         while off + 64 < count && added < localLimit {
             if !isCalibrated(off, calMask) { off = nextBlock(off); continue }
-            if occupied.isSet(byteOffset: off) { off += 16; continue }
+            if occupied.isSet(byteOffset: off) { off += 4; continue }
             var best: (r: Int, c: Int, res: SmoothResult)?
             for (r, c) in shapes {
                 guard off + r * c <= count, !occupied.overlaps(byteRange: off ..< (off + r * c)) else { continue }
@@ -1275,14 +1275,14 @@ enum MapFinder {
                     lsbFirst: true, columnMajor: false,
                     xAxisAddress: nil, yAxisAddress: nil, xAxisSigned: false, yAxisSigned: false,
                     axisBits: 8, axisInferred: false,
-                    confidence: min(0.80, b.res.score * 0.86), minVal: b.res.minVal, maxVal: b.res.maxVal, meanVal: b.res.meanVal,
+                    confidence: min(0.82, 0.14 + b.res.score * 0.78), minVal: b.res.minVal, maxVal: b.res.maxVal, meanVal: b.res.meanVal,
                     domainHint: nil, reason: "Glatte 8-Bit 2D-Oberfläche (\(b.r)×\(b.c))"
                 ))
                 occupied.mark(byteRange: off ..< (off + b.r * b.c))
                 off += b.r * b.c
                 added += 1
             } else {
-                off += 16
+                off += 4
             }
         }
     }
