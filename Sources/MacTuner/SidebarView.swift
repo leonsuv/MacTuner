@@ -4,7 +4,7 @@ import SwiftUI
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.liquidGlass.rawValue
-    @AppStorage("potentialMinConfidence") private var potentialMinConfidence: Double = 0.85
+    @AppStorage("potentialMinConfidence") private var potentialMinConfidence: Double = 0.70
     let search: String
     @State private var expanded: Set<Int> = []
     @State private var activeTab: SidebarTab = .diffs

@@ -256,7 +256,7 @@ struct HexDiffView: View {
 
     // Potential map recognition overlay state
     @State private var showPotentialMaps = true
-    @AppStorage("potentialMinConfidence") private var potentialMinConfidence: Double = 0.85
+    @AppStorage("potentialMinConfidence") private var potentialMinConfidence: Double = 0.70
     @State private var potentialPatternFilter: PotentialFilter = .all
     @State private var autoAlignOnPotentialJump = true
     @State private var pinnedCandidateKey: String? = nil
@@ -937,10 +937,10 @@ struct HexDiffView: View {
             Menu {
                 Section("Konfidenz-Schwelle") {
                     Button { potentialMinConfidence = 0.85 } label: {
-                        Label("Hoch (≥ 85 % — Empfohlen)", systemImage: potentialMinConfidence >= 0.84 ? "checkmark" : "")
+                        Label("Hoch (≥ 85 %)", systemImage: potentialMinConfidence >= 0.84 ? "checkmark" : "")
                     }
                     Button { potentialMinConfidence = 0.70 } label: {
-                        Label("Ausgewogen (≥ 70 %)", systemImage: (potentialMinConfidence >= 0.68 && potentialMinConfidence < 0.84) ? "checkmark" : "")
+                        Label("Ausgewogen (≥ 70 % — Empfohlen)", systemImage: (potentialMinConfidence >= 0.68 && potentialMinConfidence < 0.84) ? "checkmark" : "")
                     }
                     Button { potentialMinConfidence = 0.55 } label: {
                         Label("Sensitiv (≥ 55 % — inkl. Kurven)", systemImage: potentialMinConfidence < 0.68 ? "checkmark" : "")
