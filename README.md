@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>A native macOS ECU &amp; TCU tuning workbench.</strong><br>
-  WinOLS-class 60-FPS Hex &amp; Map Recognition · TunerPro XDF, A2L/DAMOS &amp; WinOLS Map Packs · Interactive 3D Surfaces · OEM DTC Switcher · Virtual Road Dyno · Checksums — no Wine, no VM, zero dependencies.
+  WinOLS-class 60-FPS Hex &amp; Map Recognition · Native `.ols` / `.kp` / A2L / XDF · TriCore/PowerPC/C167 XREFs · Interactive 2D/3D Surface Editing · Live OBD-II/UDS Telemetry · Checksums &amp; Recipes — no Wine, no VM, zero dependencies.
 </p>
 
 <p align="center">
@@ -44,6 +44,16 @@ TunerPro and WinOLS only run on Windows. **MacTuner** is a native SwiftUI &amp; 
 ---
 
 ## Highlights
+
+### New in v3.1 — Pro Calibration, Reverse Engineering &amp; Live Telemetry
+- **Interactive 2D Curve Dragging &amp; 3-Way Crosshair Sync:** Drag breakpoints directly on 2D slice charts with live undoable edits, synchronized across the Heatmap, 2D Curve, and 3D Surface simultaneously.
+- **Native WinOLS `.ols` &amp; `.kp` Importer + `<TABLEINFO>` XDFs:** Directly import modern WinOLS v4/v5 (`.ols`, including interned string pools &amp; multi-language records), legacy WinOLS v2/v3 `.kp` map packs, ASAP2 `.a2l`, and community `<TABLEINFO>`-wrapped `.xdf` files.
+- **Native Disassembler &amp; Code XREF Finder:** Right-click any map or hex range to find pointer cross-references (`MOVH.A + LEA/LD.*` on **TriCore TC17xx/TC2xx/TC3xx**, `LIS + ADDI/LWZ/LHZ` on **PowerPC MPC5xx**, and `MOV #imm16` on **Infineon C167**) with decoded instruction context and 1-click jump in the Right Inspector.
+- **Local Reference Library &amp; 1-Click Scaling Presets:** Index your own `(BIN + XDF)` pairs locally by ECU family and structural map fingerprints, then auto-identify unknown BINs offline via normalized surface correlation — plus 1-click physical scaling presets (`RPM`, `mbar`, `°C`, `Nm`, `mg/Hub`, `λ`, `bar`, `°KW`) in the XDF Editor.
+- **Modern ECU &amp; TCU Checksum Plugins:** Expanded checksum engine covering **Bosch MG1/MD1**, **Continental Simos 18/19**, **Continental SID208/305/310**, **BMW MEVD17.2**, **Temic DQ381/DQ500**, and **Temic DL501 (0B5)** alongside ME7, MED17/EDC17, MS4x, DQ250, and Generic CRC-32.
+- **Declarative Tuning Recipes (`.mtrecipe`) &amp; Linked Physics Calculator:** Run non-destructive, JSON-shareable mod recipes with mandatory dry-run byte/map diff preview, automatic Pre-Recipe Snapshot, and single-step Undo — plus a live Diesel (`Air/IQ → λ/AFR/Smoke`) &amp; Gasoline (`Boost/Displacement/RPM → Load/Nm/PS`) calculator in the Inspector.
+- **Pre-Save Diff Review (`⌃⌘S`) &amp; Standalone Interactive HTML Tune Report:** Review every modified map, byte delta, and checksum status before writing a BIN, and export zero-dependency offline HTML tune reports with interactive `Tuned / Original / Δ Delta` heatmaps.
+- **Native Live OBD-II / UDS / ENET / BLE Telemetry &amp; Map Tracing:** Stream live telemetry over **USB-Serial (`ELM327 / OBDLink / K+DCAN`)**, **BMW/VAG ENET DoIP (`UDS 0x22 / 0x62`)**, **Bluetooth LE**, or the built-in **20 Hz Bench Simulator** — driving live gauges, CSV recording, and real-time cell tracing directly in the Map Editor.
 
 ### Redesigned v3.0 Pro Workbench &amp; Visual Architecture
 - **3 Adaptive Workspace Modes (`⌃⌘1` / `⌃⌘2` / `⌃⌘3`):** Switch seamlessly between **Studio** (5 flat workflow sections: *Workspace*, *Discovery &amp; DTCs*, *Memory Map*, *Datalog*, *Flash*), **IDE** (live multi-tab editor bar), and **Canvas** (minimal distraction-free floating dock).
