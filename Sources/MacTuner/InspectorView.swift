@@ -219,6 +219,8 @@ struct InspectorView: View {
                 HStack(spacing: 6) {
                     Text(model.activeXREFArch.rawValue)
                         .font(.system(size: 9.5, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(theme.accentColor.opacity(0.16), in: Capsule())
                         .foregroundStyle(theme.accentColor)
@@ -307,6 +309,7 @@ struct InspectorView: View {
             }
 
             sectionHeader("Flash-Preflight")
+            let reasons = preflightReasons(pf)
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Circle().fill(badgeColor).frame(width: 8, height: 8)
@@ -314,6 +317,29 @@ struct InspectorView: View {
                     Spacer()
                     Button("Details") { model.selection = AppModel.checksumSelection }
                         .controlSize(.mini)
+                }
+                if !reasons.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(reasons, id: \.self) { reason in
+                            HStack(alignment: .top, spacing: 5) {
+                                Text("•").font(.caption2.weight(.bold)).foregroundStyle(badgeColor)
+                                Text(reason).font(.caption2).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(badgeColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+                }
+                if pf.checksumTriage.invalidFixableBlocks > 0 {
+                    Button {
+                        model.correctChecksums()
+                    } label: {
+                        Label("Prüfsumme jetzt korrigieren", systemImage: "wrench.and.screwdriver")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .controlSize(.mini)
+                    .buttonStyle(.borderedProminent)
                 }
                 kvRow("Geprüft / Fixbar", "\(pf.checksumTriage.correctedBytes) B", mono: true)
                 kvRow("TPROT / RSA", "\(pf.checksumTriage.uncorrectableBytes) B", mono: true)
@@ -482,6 +508,31 @@ struct InspectorView: View {
             Slider(value: value, in: range)
                 .controlSize(.mini)
         }
+    }
+
+    private func preflightReasons(_ pf: FlashPreflightReport) -> [String] {
+        var out: [String] = []
+        if pf.checksumTriage.invalidFixableBlocks > 0 {
+            let plug = model.checksumReport?.pluginName ?? "Checksum"
+            out.append("\(pf.checksumTriage.invalidFixableBlocks) ungültige(r) Prüfsummen-Block/Blöcke (\(plug))")
+        }
+        if pf.checksumTriage.uncorrectableBytes > 0 {
+            out.append("\(pf.checksumTriage.uncorrectableBytes) B in TPROT/RSA-signiertem Bereich geändert (Flash-Tool erforderlich)")
+        }
+        let errCount = pf.physicsWarnings.filter { $0.severity == .error }.count
+        if errCount > 0 {
+            out.append("\(errCount) kritische Firmware-Invariante(n) verletzt")
+        }
+        if let epk = pf.epkMismatch {
+            out.append(epk)
+        }
+        if !pf.forgottenTwins.isEmpty {
+            out.append("\(pf.forgottenTwins.count) nicht übertragene Zwillings-Kennfelder")
+        }
+        if pf.checksumTriage.uncheckedBytes > 0 {
+            out.append("\(pf.checksumTriage.uncheckedBytes) B außerhalb bekannter Prüfsummen-Blöcke")
+        }
+        return out
     }
 
     private func sectionHeader(_ title: String) -> some View {
