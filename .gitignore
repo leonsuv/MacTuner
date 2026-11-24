@@ -7,3 +7,5 @@ build/
 !Samples/*.xdf
 testdata/
 __pycache__/
+web/node_modules/
+web/apps/studio/dist/

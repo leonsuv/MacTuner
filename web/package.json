@@ -1,0 +1,14 @@
+{
+  "name": "mactuner-web-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@mactuner/studio",
+    "build": "npm run build --workspace=@mactuner/core && npm run build --workspace=@mactuner/studio",
+    "test": "npm run test --workspace=@mactuner/core",
+    "typecheck": "npm run typecheck --workspace=@mactuner/core && npm run typecheck --workspace=@mactuner/studio"
+  }
+}
