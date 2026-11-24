@@ -908,7 +908,12 @@ enum MapFinder {
             var prev = v1
             while runLen <= 256 && (off + (runLen + 1) * 2) <= count {
                 let cur = readU16(buf, off + runLen * 2, lsb: lsb)
-                if cur <= prev || cur == 0xFFFF { break }
+                if cur <= prev { break }
+                if cur == 0xFFFF {
+                    // Allow 0xFFFF (100.0 % full-scale) as the final element of a monotonic axis (e.g. Bosch ME7 pedal axis)
+                    if prev >= 0xA000 { runLen += 1 }
+                    break
+                }
                 prev = cur
                 runLen += 1
             }
@@ -1384,7 +1389,8 @@ enum MapFinder {
         var okU = true
         for i in 1..<count {
             let cur = readU16(buf, off + i * 2, lsb: lsb)
-            if cur <= prevU || cur == 0xFFFF { okU = false; break }
+            if cur <= prevU { okU = false; break }
+            if cur == 0xFFFF && !(i == count - 1 && prevU >= 0xA000) { okU = false; break }
             let step = cur - prevU
             if step > maxStepU { maxStepU = step }
             prevU = cur

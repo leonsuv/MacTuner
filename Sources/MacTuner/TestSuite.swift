@@ -377,6 +377,9 @@ enum TestSuite {
                     }.count
                     expect(xdf.items.count > 20 && (ecu.ecuFamily?.contains("ME7") == true), "Real VAG ME7.5 BIN+XDF + ECUIdentifier (\(xdf.items.count) maps, \(ecu.ecuFamily ?? "?"))")
                     expect(detected.count >= 80 && matched2D >= 8, "Real VAG ME7.5 MapFinder recall (\(detected.count) detected, \(matched2D)/\(xdf2D.count) XDF 2D maps covered)")
+                    let kfpedHit = detected.first { $0.address == 0x12C5C || $0.dataRange.contains(0x12C5C) }
+                    let kfpedrHit = detected.first { $0.address == 0x12E10 }
+                    expect(kfpedHit != nil && kfpedrHit != nil, "Real VAG ME7.5 0xFFFF pedal-axis alignment (KFPED=\(kfpedHit.map { String(format: "0x%X %dx%d", $0.address, $0.rows, $0.cols) } ?? "nil"), KFPEDR=\(kfpedrHit.map { String(format: "0x%X %dx%d", $0.address, $0.rows, $0.cols) } ?? "nil"))")
                 } catch {
                     expect(false, "Real VAG ME7.5 test threw: \(error)")
                 }
