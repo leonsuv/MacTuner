@@ -258,6 +258,7 @@ final class AppModel {
     }
     private(set) var lastMapSelection: Int?
     var alert: String?
+    @ObservationIgnored private var isSizeMismatchAlert = false
     var showCommandPalette = false
     var showPreSaveReview = false
     var showReferenceLibrary = false
@@ -1388,7 +1389,12 @@ final class AppModel {
 
             if makeActive || activeBinID == nil {
                 activeBinID = doc.id
-                if compareSource == .bin(doc.id) { compareSource = .openedState }
+                if case .bin(let cmpID) = compareSource {
+                    let cmpSize = openBins.first(where: { $0.id == cmpID })?.bytes.count
+                    if cmpID == doc.id || (cmpSize != nil && cmpSize != doc.bytes.count) {
+                        compareSource = .openedState
+                    }
+                }
                 clearAlignmentState()
                 refreshEmbeddedSourceBin()
                 schedulePotentialMapScan(for: doc.id)
@@ -1703,7 +1709,15 @@ final class AppModel {
     }
 
     private func checkSize() {
-        guard hasBin, let need = definition?.regionSize, bin.count < need else { return }
+        guard hasBin, let need = definition?.regionSize else {
+            if isSizeMismatchAlert { alert = nil; isSizeMismatchAlert = false }
+            return
+        }
+        if bin.count >= need {
+            if isSizeMismatchAlert { alert = nil; isSizeMismatchAlert = false }
+            return
+        }
+        isSizeMismatchAlert = true
         alert = String(localized: "Die BIN ist \(bin.count) Bytes groß, die XDF erwartet \(need) Bytes. Passt die Datei zur Definition?")
     }
 
