@@ -21,6 +21,15 @@ enum MapFinder {
         case boschHeader       = "Struktur-Beleg"    // Amber/Emerald: Strict Bosch 8/16-bit header
         case axisAnchored      = "Achsen-Beleg"      // Teal: Contiguous monotonic axis + 2D surface
         case dataPattern       = "Datenmuster"       // Muted/Red: Headerless smoothness / Float32 raster
+
+        var localizedLabel: String {
+            switch self {
+            case .pointerDescriptor: return String(localized: "Pointer-Beleg")
+            case .boschHeader:       return String(localized: "Struktur-Beleg")
+            case .axisAnchored:      return String(localized: "Achsen-Beleg")
+            case .dataPattern:       return String(localized: "Datenmuster")
+            }
+        }
     }
 
     struct Candidate: Identifiable, Hashable, Sendable {
@@ -109,12 +118,12 @@ enum MapFinder {
         var shortBadge: String {
             switch pattern {
             case .triCorePointer:  return "TriCore Ptr \(rows)×\(cols)"
-            case .bosch2DHeader:   return "Bosch \(rows)×\(cols) + Achsen"
-            case .bosch1DCurve:    return "1D-Kurve (\(cols)) + Achse"
-            case .splitAxis2D:     return "\(rows)×\(cols) + Achsen"
+            case .bosch2DHeader:   return String(localized: "Bosch \(rows)×\(cols) + Achsen")
+            case .bosch1DCurve:    return String(localized: "1D-Kurve (\(cols)) + Achse")
+            case .splitAxis2D:     return String(localized: "\(rows)×\(cols) + Achsen")
             case .float32Surface:  return rows == 1 ? "Float 1D (\(cols))" : "Float \(rows)×\(cols)"
-            case .smooth2DSurface: return "Potenziell \(rows)×\(cols)"
-            case .smooth1DCurve:   return "1D-Kurve (\(cols))"
+            case .smooth2DSurface: return String(localized: "Potenziell \(rows)×\(cols)")
+            case .smooth1DCurve:   return String(localized: "1D-Kurve (\(cols))")
             }
         }
 
@@ -632,7 +641,7 @@ enum MapFinder {
             domainHint: hint,
             reason: isFlatValid
                 ? "\(styleTag) Achsen-Header (\(rows)×\(cols)) · konstante/Null-Tabelle"
-                : "\(styleTag) Achsen-Header (\(rows)×\(cols)) + glatte 2D-Oberfläche"
+                : String(localized: "\(styleTag) Achsen-Header (\(rows)×\(cols)) + glatte 2D-Oberfläche")
         )
     }
 
@@ -693,7 +702,7 @@ enum MapFinder {
                             axisBits: 8, axisInferred: false,
                             confidence: conf, minVal: res.minVal, maxVal: res.maxVal, meanVal: res.meanVal,
                             domainHint: "8-Bit Kennfeld",
-                            reason: "Bosch 8-Bit Achsen-Header (\(n1)×\(n2)) + glatte 2D-Oberfläche"
+                            reason: String(localized: "Bosch 8-Bit Achsen-Header (\(n1)×\(n2)) + glatte 2D-Oberfläche")
                         ))
                         occupied.mark(byteRange: off ..< fullEnd)
                         off = fullEnd
@@ -731,7 +740,7 @@ enum MapFinder {
                                     confidence: min(0.95, 0.56 + res.score * 0.39),
                                     minVal: res.minVal, maxVal: res.maxVal, meanVal: res.meanVal,
                                     domainHint: "8-Bit Kennfeld",
-                                    reason: "Bosch 8-Bit Achsen-Header (\(n1)×\(m2)) + glatte 2D-Oberfläche"
+                                    reason: String(localized: "Bosch 8-Bit Achsen-Header (\(n1)×\(m2)) + glatte 2D-Oberfläche")
                                 ))
                                 occupied.mark(byteRange: off ..< fullEnd)
                                 off = fullEnd
@@ -1171,8 +1180,8 @@ enum MapFinder {
                     confidence: conf, minVal: b.res.minVal, maxVal: b.res.maxVal, meanVal: b.res.meanVal,
                     domainHint: hint,
                     reason: hasAx
-                        ? "Glatte 2D-Oberfläche (\(b.r)×\(b.c)) + angrenzende Achsen"
-                        : "Glatte 2D-Oberfläche (\(b.r)×\(b.c) · \(b.signed ? "Signed" : "16-Bit"))"
+                        ? String(localized: "Glatte 2D-Oberfläche (\(b.r)×\(b.c)) + angrenzende Achsen")
+                        : String(localized: "Glatte 2D-Oberfläche (\(b.r)×\(b.c) · \(b.signed ? "Signed" : "16-Bit"))")
                 ))
                 occupied.mark(byteRange: off ..< (off + bytesNeeded))
                 off += bytesNeeded
@@ -1698,7 +1707,7 @@ enum MapFinder {
 
     private static func inferDomainHint(buf: UnsafeBufferPointer<UInt8>, xAxisOff: Int?, xCount: Int,
                                         yAxisOff: Int?, yCount: Int, lsb: Bool, signed: Bool) -> String? {
-        if signed { return "Vorzeichen (±) · Zündung / Moment?" }
+        if signed { return String(localized: "Vorzeichen (±) · Zündung / Moment?") }
         func looksLikeRPM(_ off: Int?, _ n: Int) -> Bool {
             guard let o = off, n >= 4, o + n * 2 <= buf.count else { return false }
             let first = readU16(buf, o, lsb: lsb)
@@ -1707,7 +1716,7 @@ enum MapFinder {
                 || (first >= 1600 && first <= 5000 && last >= 16000 && last <= 34000)
         }
         if looksLikeRPM(xAxisOff, xCount) || looksLikeRPM(yAxisOff, yCount) {
-            return "Drehzahl-Achse erkannt"
+            return String(localized: "Drehzahl-Achse erkannt")
         }
         return nil
     }

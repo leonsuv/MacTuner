@@ -349,12 +349,12 @@ final class AppModel {
         } ?? Axis(source: .none, count: c.rows, scaling: .identity)
 
         let title = c.rows == 1
-            ? String(format: "Kennlinie 0x%05X (%d)", c.address, c.cols)
-            : String(format: "Kennfeld 0x%05X (%d×%d)", c.address, c.rows, c.cols)
+            ? String(format: "%@ 0x%05X (%d)", String(localized: "Kennlinie"), c.address, c.cols)
+            : String(format: "%@ 0x%05X (%d×%d)", String(localized: "Kennfeld"), c.address, c.rows, c.cols)
         let item = XDFItem(
             id: def.items.count,
             title: title,
-            description: "Automatisch erkannt: \(c.reason)",
+            description: "\(String(localized: "Automatisch erkannt:")) \(c.reason)",
             categories: [],
             kind: .table(x: xAxis, y: yAxis),
             data: c.layout,

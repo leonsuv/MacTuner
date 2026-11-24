@@ -129,7 +129,7 @@ struct SidebarView: View {
             activeTab = tab
         } label: {
             VStack(spacing: 1) {
-                Text(tab.rawValue)
+                Text(LocalizedStringKey(tab.rawValue))
                     .font(.system(size: 10.5, weight: active ? .semibold : .medium))
                     .lineLimit(1)
                 Text("\(count)")
@@ -295,7 +295,7 @@ struct SidebarView: View {
                                                 .background(PotentialMapIndex.amberData.opacity(0.18), in: Capsule())
                                                 .foregroundStyle(PotentialMapIndex.amberData)
                                             Spacer(minLength: 2)
-                                            Text(cand.evidence.rawValue)
+                                            Text(cand.evidence.localizedLabel)
                                                 .font(.system(size: 8.5, weight: .bold))
                                                 .padding(.horizontal, 4).padding(.vertical, 1)
                                                 .background(evColor.opacity(0.16), in: Capsule())

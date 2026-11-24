@@ -107,16 +107,16 @@ struct ChecksumAndFlashView: View {
         let (title, subtitle, icon, color): (String, String, String, Color) = {
             switch preflight.overallStatus {
             case .ready:
-                let blkTxt = report.map { "Alle \($0.blocks.count) Prüfsummen-Blöcke gültig." } ?? "Keine Blocker erkannt."
-                let tprotTxt = (report?.tprotBlockCount ?? 0) > 0 ? " \(report!.tprotBlockCount) OTP/TPROT-Blöcke bleiben schreibgeschützt." : ""
-                return ("Bereit zum Flashen", blkTxt + tprotTxt, "checkmark.shield.fill", .green)
+                let blkTxt = report.map { String(localized: "Alle \($0.blocks.count) Prüfsummen-Blöcke gültig.") } ?? String(localized: "Keine Blocker erkannt.")
+                let tprotTxt = (report?.tprotBlockCount ?? 0) > 0 ? " " + String(localized: "\(report!.tprotBlockCount) OTP/TPROT-Blöcke bleiben schreibgeschützt.") : ""
+                return (String(localized: "Bereit zum Flashen"), blkTxt + tprotTxt, "checkmark.shield.fill", .green)
             case .caution:
-                return ("Prüfung vor dem Flashen empfohlen",
-                        "\(preflight.forgottenTwins.count) Zwillings-Hinweis(e) · \(preflight.physicsWarnings.count) Plausibilitäts-Hinweis(e) · \(preflight.checksumTriage.uncheckedBytes) ungeprüfte Bytes.",
+                return (String(localized: "Prüfung vor dem Flashen empfohlen"),
+                        String(localized: "\(preflight.forgottenTwins.count) Zwillings-Hinweis(e) · \(preflight.physicsWarnings.count) Plausibilitäts-Hinweis(e) · \(preflight.checksumTriage.uncheckedBytes) ungeprüfte Bytes."),
                         "exclamationmark.shield.fill", .orange)
             case .blocked:
-                return ("Blocker gefunden — nicht ungeprüft flashen!",
-                        "\(preflight.checksumTriage.invalidFixableBlocks) ungültige Prüfsumme(n) · \(preflight.checksumTriage.uncorrectableBytes) B in geschützten TPROT/RSA-Bereichen.",
+                return (String(localized: "Blocker gefunden — nicht ungeprüft flashen!"),
+                        String(localized: "\(preflight.checksumTriage.invalidFixableBlocks) ungültige Prüfsumme(n) · \(preflight.checksumTriage.uncorrectableBytes) B in geschützten TPROT/RSA-Bereichen."),
                         "xmark.shield.fill", .red)
             }
         }()
@@ -150,9 +150,9 @@ struct ChecksumAndFlashView: View {
         let totalBlocks = report?.blocks.count ?? 0
         let t = preflight.checksumTriage
         return HStack(spacing: 10) {
-            kpiTile("Prüfsummen-Blöcke",
+            kpiTile(String(localized: "Prüfsummen-Blöcke"),
                     value: totalBlocks > 0 ? "\(validCount) / \(totalBlocks)" : "—",
-                    sub: report?.pluginName ?? "Kein Profil aktiv",
+                    sub: report?.pluginName ?? String(localized: "Kein Profil aktiv"),
                     color: (totalBlocks > 0 && validCount == totalBlocks) ? .green : (totalBlocks > 0 ? .red : .secondary))
 
             VStack(alignment: .leading, spacing: 3) {
@@ -165,21 +165,21 @@ struct ChecksumAndFlashView: View {
                     Button("Soll \(comp) herstellen") { _ = model.correctCVNInPlace() }
                         .buttonStyle(.borderedProminent).controlSize(.mini)
                 } else {
-                    Text(report?.compTestCVNHex.map { "Soll: \($0) ✓" } ?? "Kein CVN-Struct")
+                    Text(report?.compTestCVNHex.map { String(localized: "Soll: \($0) ✓") } ?? String(localized: "Kein CVN-Struct"))
                         .font(.caption2).foregroundStyle(.tertiary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .card(padding: 11)
 
-            kpiTile("TPROT / Geschützt",
-                    value: "\(report?.tprotBlockCount ?? 0) Blöcke",
-                    sub: t.uncorrectableBytes > 0 ? "\(t.uncorrectableBytes) B betroffen!" : "Unverändert (sicher)",
+            kpiTile(String(localized: "TPROT / Geschützt"),
+                    value: String(localized: "\(report?.tprotBlockCount ?? 0) Blöcke"),
+                    sub: t.uncorrectableBytes > 0 ? String(localized: "\(t.uncorrectableBytes) B betroffen!") : String(localized: "Unverändert (sicher)"),
                     color: t.uncorrectableBytes > 0 ? .red : .secondary)
 
-            kpiTile("Geänderte Bytes",
+            kpiTile(String(localized: "Geänderte Bytes"),
                     value: "\(t.totalChangedBytes) B",
-                    sub: "\(t.correctedBytes) B geprüft · \(t.uncheckedBytes) B ungeprüft",
+                    sub: String(localized: "\(t.correctedBytes) B geprüft · \(t.uncheckedBytes) B ungeprüft"),
                     color: t.totalChangedBytes > 0 ? theme.changedColor : .secondary)
         }
     }
@@ -224,9 +224,9 @@ struct ChecksumAndFlashView: View {
                     }
                     TableColumn("Status") { b in
                         let (txt, col): (String, Color) = switch b.triage {
-                        case .corrected: (b.valid ? "OK" : "Fixbar", b.valid ? .green : .red)
+                        case .corrected: (b.valid ? "OK" : String(localized: "Fixbar"), b.valid ? .green : .red)
                         case .uncorrectable: ("TPROT/OTP", .orange)
-                        case .unchecked: ("Ungeprüft", .secondary)
+                        case .unchecked: (String(localized: "Ungeprüft"), .secondary)
                         }
                         Text(txt).font(.system(size: 9.5, weight: .bold))
                             .padding(.horizontal, 6).padding(.vertical, 1.5)

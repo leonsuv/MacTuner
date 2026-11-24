@@ -21,7 +21,7 @@ struct MapFinderView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Text("Kennfeld-Finder").font(.system(size: 22, weight: .bold))
-                Chip(text: "\(displayedCandidates.count) Kandidaten", icon: "sparkle.magnifyingglass")
+                Chip(text: String(localized: "\(displayedCandidates.count) Kandidaten"), icon: "sparkle.magnifyingglass")
                 Spacer()
                 Picker("Bits", selection: Binding(
                     get: { isFloat ? 32 : bits },
@@ -115,7 +115,7 @@ struct MapFinderView: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(String(format: "Kandidat @ 0x%05X", c.address)).font(.headline.monospaced())
+                Text(String(format: "%@ @ 0x%05X", String(localized: "Kandidat"), c.address)).font(.headline.monospaced())
                 Chip(text: "\(c.rows)×\(c.cols)")
                 Chip(text: "\(c.bits)-Bit \(c.lsbFirst ? "LE" : "BE")")
                 if let xa = c.xAxisAddress { Chip(text: String(format: "X: 0x%05X", xa)) }

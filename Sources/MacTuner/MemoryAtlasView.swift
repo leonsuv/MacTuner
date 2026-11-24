@@ -36,11 +36,11 @@ struct MemoryAtlasView: View {
             switch self {
             case .startup: return "Startup / Boot"
             case .tprot: return "TPROT / OTP"
-            case .codeASW: return "Programmcode (ASW)"
-            case .calibration: return "Kalibrierung / Dataset"
-            case .variant: return "Varianten-Dataset"
-            case .modified: return "Geänderte Bereiche"
-            case .free: return "Leer (0xFF / 0x00)"
+            case .codeASW: return String(localized: "Programmcode (ASW)")
+            case .calibration: return String(localized: "Kalibrierung / Dataset")
+            case .variant: return String(localized: "Varianten-Dataset")
+            case .modified: return String(localized: "Geänderte Bereiche")
+            case .free: return String(localized: "Leer (0xFF / 0x00)")
             }
         }
     }
@@ -113,16 +113,16 @@ struct MemoryAtlasView: View {
         return VStack(alignment: .leading, spacing: 14) {
             // 1. Clean 4-Metric KPI Strip
             HStack(spacing: 10) {
-                kpiTile("Flash-Größe", value: "\(totalBytes / 1024) KB", sub: "\(regions.count) Regionen", color: theme.accentColor)
-                kpiTile("Kalibrierung", value: "\(calKB) KB", sub: "\(model.definition?.items.count ?? model.activePotentialMaps.count) Kennfelder", color: RegionKind.calibration.color)
-                kpiTile("Geänderte Bytes", value: "\(totalDiff) B", sub: "\(model.diffClusters.count) Diff-Blöcke", color: totalDiff > 0 ? theme.changedColor : .secondary)
-                kpiTile("Freier Speicher", value: "\(freeKB) KB", sub: "\(Int(Double(freeKB * 1024) / Double(totalBytes) * 100))% 0xFF/0x00", color: .secondary)
+                kpiTile(String(localized: "Flash-Größe"), value: "\(totalBytes / 1024) KB", sub: String(localized: "\(regions.count) Regionen"), color: theme.accentColor)
+                kpiTile(String(localized: "Kalibrierung"), value: "\(calKB) KB", sub: String(localized: "\(model.definition?.items.count ?? model.activePotentialMaps.count) Kennfelder"), color: RegionKind.calibration.color)
+                kpiTile(String(localized: "Geänderte Bytes"), value: "\(totalDiff) B", sub: String(localized: "\(model.diffClusters.count) Diff-Blöcke"), color: totalDiff > 0 ? theme.changedColor : .secondary)
+                kpiTile(String(localized: "Freier Speicher"), value: "\(freeKB) KB", sub: "\(Int(Double(freeKB * 1024) / Double(totalBytes) * 100))% 0xFF/0x00", color: .secondary)
             }
 
             // 2. Proportional macOS Storage Partition Bar
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Speicheraufteilung (0x00000 – \(String(format: "0x%05X", totalBytes - 1)))")
+                    Text("\(String(localized: "Speicheraufteilung")) (0x00000 – \(String(format: "0x%05X", totalBytes - 1)))")
                         .font(.caption.weight(.semibold))
                     Spacer()
                     if let hid = hoveredRegionID, let hr = regions.first(where: { $0.id == hid }) {
@@ -311,7 +311,7 @@ struct MemoryAtlasView: View {
                     let tail = cursor..<n
                     let isEmpty = isMostlyPadding(bin, range: tail)
                     out.append(FlashRegion(
-                        name: isEmpty ? "Freier Bereich (0xFF/0x00)" : "Restbereich",
+                        name: isEmpty ? String(localized: "Freier Bereich (0xFF/0x00)") : String(localized: "Restbereich"),
                         subtitle: "",
                         range: tail,
                         kind: isEmpty ? .free : .codeASW,
@@ -338,7 +338,7 @@ struct MemoryAtlasView: View {
             let hasMaps = (model.definition?.items.contains { $0.data.byteRange.overlaps(r) } ?? false) || d > 0
             let kind: RegionKind = empty ? .free : (hasMaps ? .calibration : .codeASW)
             out.append(FlashRegion(
-                name: String(format: "Sektor %02d (%@)", i + 1, kind.label),
+                name: String(format: "%@ %02d (%@)", String(localized: "Sektor"), i + 1, kind.label),
                 subtitle: "",
                 range: r,
                 kind: kind,

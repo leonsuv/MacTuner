@@ -177,7 +177,7 @@ struct PotentialMapPreviewCard: View {
                 case .axisAnchored: mint
                 case .dataPattern: .secondary
                 }
-                Text(candidate.evidence.rawValue)
+                Text(candidate.evidence.localizedLabel)
                     .font(.system(size: 9, weight: .bold))
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(evColor.opacity(0.18), in: Capsule())

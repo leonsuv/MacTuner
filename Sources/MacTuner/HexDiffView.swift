@@ -434,7 +434,8 @@ struct HexDiffView: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "slider.horizontal.3").font(.system(size: 10.5))
-                    Text("\(dataFormat.rawValue)\(dataFormat == .u8 ? "" : (lsbFirst ? " LoHi" : " HiLo")) · \(numberBase.rawValue)\(isSigned ? " ±" : "") · \(columns) Sp.")
+                    let colUnit = String(localized: "Sp.")
+                    Text("\(dataFormat.rawValue)\(dataFormat == .u8 ? "" : (lsbFirst ? " LoHi" : " HiLo")) · \(numberBase.rawValue)\(isSigned ? " ±" : "") · \(columns) \(colUnit)")
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
                     Image(systemName: "chevron.down").font(.system(size: 8.5, weight: .semibold)).foregroundStyle(.secondary)
                 }
@@ -1021,7 +1022,8 @@ struct HexDiffView: View {
                              at: CGPoint(x: gutterStartX + gutterWidth * 0.5, y: headerH / 2), anchor: .center)
 
                     // Right pane header (Comparison BIN)
-                    let rightTitle = splitRightDisplay == .values ? "Vergleich · \(cmpLabel)" : "\(splitRightDisplay.rawValue) vs. \(cmpLabel)"
+                    let cmpWord = String(localized: "Vergleich")
+                    let rightTitle = splitRightDisplay == .values ? "\(cmpWord) · \(cmpLabel)" : "\(splitRightDisplay.rawValue) vs. \(cmpLabel)"
                     ctx.draw(Text(rightTitle).font(.caption2.bold()).foregroundStyle(Theme.changed),
                              at: CGPoint(x: rightStartX + 6, y: headerH / 2), anchor: .leading)
 
@@ -2552,7 +2554,8 @@ struct HexDiffView: View {
             HStack(spacing: 8) {
                 Label(compact ? "2D-Wellenform" as LocalizedStringKey : "2D-Wellenform (Vollbild)", systemImage: "waveform.path.ecg")
                     .font(.caption.weight(.semibold))
-                Text(String(format: "0x%05X – 0x%05X (%d Werte)", startAddr, min(bin.count, startAddr + windowBytes), waveWindowElements))
+                let valWord = String(localized: "Werte")
+                Text(String(format: "0x%05X – 0x%05X (%d %@)", startAddr, min(bin.count, startAddr + windowBytes), waveWindowElements, valWord))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -3075,8 +3078,9 @@ struct HexDiffView: View {
             }
             Spacer()
             if let range = selectedRange {
-                Text(String(format: "Auswahl: 0x%05X–0x%05X (%d B · %d Werte)",
-                             range.lowerBound, range.upperBound - 1, range.count, range.count / elemBytes))
+                Text(String(format: "%@ 0x%05X–0x%05X (%d B · %d %@)",
+                             String(localized: "Auswahl:"),
+                             range.lowerBound, range.upperBound - 1, range.count, range.count / elemBytes, String(localized: "Werte")))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                 Button("Hex kopieren") {
