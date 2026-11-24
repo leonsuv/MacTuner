@@ -386,14 +386,15 @@ enum DefinitionImporter {
 
         // 1. Native WinOLS binary format ("WinOLS File" magic at byte 4)
         if isWinOLSBinary(bytes) {
-            // WinOLS v4/v5 .kp map packs embed a ZIP archive containing an "intern" map table
+            let outerVersion: UInt32 = bytes.count >= 20 ? u32LE(bytes, at: 16) : 0
+            // WinOLS .kp map packs embed a ZIP archive containing an "intern" map table
             if let zipStart = findZipHeader(in: bytes, limit: min(bytes.count, 8192)),
                let intern = extractZipEntry(from: bytes, zipStart: zipStart, named: "intern") {
-                let kpDef = parseWinOLSBinaryStream(intern, isKPIntern: true, fileName: url.lastPathComponent)
+                let kpDef = parseWinOLSBinaryStream(intern, isKPIntern: true, outerVersion: outerVersion, fileName: url.lastPathComponent)
                 if !kpDef.items.isEmpty { return kpDef }
             }
             // Native uncompressed WinOLS .ols project file
-            let olsDef = parseWinOLSBinaryStream(bytes, isKPIntern: false, fileName: url.lastPathComponent)
+            let olsDef = parseWinOLSBinaryStream(bytes, isKPIntern: false, outerVersion: outerVersion, fileName: url.lastPathComponent)
             if !olsDef.items.isEmpty { return olsDef }
             throw ImportError.empty(url.lastPathComponent)
         }
@@ -556,15 +557,20 @@ enum DefinitionImporter {
         }
     }
 
-    private static func parseWinOLSBinaryStream(_ bytes: [UInt8], isKPIntern: Bool, fileName: String) -> XDFDefinition {
+    private static func parseWinOLSBinaryStream(_ bytes: [UInt8], isKPIntern: Bool, outerVersion: UInt32 = 0, fileName: String) -> XDFDefinition {
         let n = bytes.count
+        let olsVersion: UInt32 = outerVersion > 0 ? outerVersion : ((!isKPIntern && n >= 20) ? u32LE(bytes, at: 16) : 0)
+        let isModernKP = isKPIntern && (olsVersion == 0 || olsVersion >= 500)
+        let isLegacyKP = isKPIntern && olsVersion > 0 && olsVersion < 500
+        let isModernOLS = !isKPIntern && olsVersion >= 500
+        let usesMLFormat = isModernKP || isModernOLS
 
         func readCStr(_ pos: inout Int) -> String? {
             guard pos + 4 <= n else { return nil }
             let ln = u32LE(bytes, at: pos)
-            if ln == 0xFFFF_FFFF { pos += 4; return "" }
+            if ln >= 0xFFFF_FF00 { pos += 4; return "" }
             if ln == 0 {
-                pos += (isKPIntern && pos + 4 < n && bytes[pos + 4] == 0) ? 5 : 4
+                pos += (usesMLFormat && pos + 4 < n && bytes[pos + 4] == 0) ? 5 : 4
                 return ""
             }
             let count = Int(ln)
@@ -578,7 +584,7 @@ enum DefinitionImporter {
         func readRawStr(_ pos: inout Int) -> String? {
             guard pos + 4 <= n else { return nil }
             let ln = u32LE(bytes, at: pos)
-            if ln == 0xFFFF_FFFF || ln == 0 { pos += 4; return "" }
+            if ln >= 0xFFFF_FF00 || ln == 0 { pos += 4; return "" }
             let count = Int(ln)
             guard count <= 4096, pos + 4 + count <= n else { return nil }
             let s = String(bytes: bytes[(pos + 4)..<(pos + 4 + count)], encoding: .isoLatin1) ?? ""
@@ -602,53 +608,70 @@ enum DefinitionImporter {
         // Locate start of map table & expected record count
         var pos = 0
         var maxRecords = 0
+
+        func findBytes(_ pat: [UInt8], in range: Range<Int>) -> Int? {
+            let lo = max(0, range.lowerBound)
+            let hi = min(n, range.upperBound)
+            guard hi - lo >= pat.count else { return nil }
+            let end = hi - pat.count
+            for i in lo...end {
+                var match = true
+                for j in 0..<pat.count where bytes[i + j] != pat[j] { match = false; break }
+                if match { return i }
+            }
+            return nil
+        }
+
+        func skipModernOLSTrailer(from start: Int) -> Int? {
+            guard let term = findBytes([0x01, 0x01, 0x01], in: start..<min(n, start + 2048)) else { return nil }
+            var p = term + 3 + 69
+            guard readCStr(&p) != nil, readCStr(&p) != nil, p + 12 <= n else { return nil }
+            return p + 12
+        }
+
         if isKPIntern {
-            guard n > 0x1B else {
+            let startOff = isLegacyKP ? 0x0F : 0x1B
+            guard n > startOff else {
                 return XDFDefinition(title: fileName + " (WinOLS)", description: "", categories: [:], items: [], regionSize: nil)
             }
             maxRecords = Int(u32LE(bytes, at: 1))
-            pos = 0x1B
+            pos = startOff
         } else {
             // Find WinOLS map-list sentinel 0x00118833 (33 88 11 00) in header
             let scanLimit = min(n - 32, 65536)
-            var sentinelPos: Int?
-            if scanLimit > 16 {
-                for i in 16..<scanLimit {
-                    if bytes[i] == 0x33 && bytes[i + 1] == 0x88 && bytes[i + 2] == 0x11 && bytes[i + 3] == 0x00 {
-                        sentinelPos = i
-                        break
-                    }
-                }
-            }
-            guard let sp = sentinelPos else {
+            guard let sp = findBytes([0x33, 0x88, 0x11, 0x00], in: 16..<scanLimit) else {
                 return XDFDefinition(title: fileName + " (WinOLS)", description: "", categories: [:], items: [], regionSize: nil)
             }
             maxRecords = Int(u32LE(bytes, at: sp + 4))
-            // Advance past 4B sentinel + 4B count + 10B header padding to first entry ("Hexdump" dummy or first map)
-            pos = sp + 18
-            // If first entry is the "Hexdump" placeholder record, skip it cleanly
-            var probe = pos
-            if let firstTitle = readCStr(&probe), firstTitle == "Hexdump" {
-                // Skip past the "Hexdump" record (type == 1) to the first real map
-                // In WinOLS v303, "Hexdump" record starts at 0x592 and first real map is at 0x77f (493 bytes later)
-                // Walk it dynamically via the same record structure:
-                var p = probe
-                if p + 24 <= n {
-                    p += 24
-                    _ = readCStr(&p)
-                    p += 117 + 20
-                    _ = readCStr(&p)
-                    _ = readCStr(&p)
-                    p += 16 + 8 + 32
-                    for _ in 0..<2 {
+            // Advance past 4B sentinel + 4B count + header padding (10B in v303, 22B in v597)
+            if isModernOLS,
+               let hd = findBytes([0x07, 0x00, 0x00, 0x00, 0x48, 0x65, 0x78, 0x64, 0x75, 0x6D, 0x70, 0x00], in: (sp + 8)..<min(n, sp + 64)),
+               let nextPos = skipModernOLSTrailer(from: hd + 64) {
+                pos = nextPos
+                maxRecords = max(0, maxRecords - 1)
+            } else {
+                pos = sp + 18
+                // If first entry is the "Hexdump" placeholder record, skip it cleanly
+                var probe = pos
+                if let firstTitle = readCStr(&probe), firstTitle == "Hexdump" {
+                    var p = probe
+                    if p + 24 <= n {
+                        p += 24
+                        _ = readCStr(&p)
+                        p += 117 + 20
                         _ = readCStr(&p)
                         _ = readCStr(&p)
-                        p += 16 + 20 + 31
-                    }
-                    p += 90
-                    if p < n {
-                        pos = p
-                        maxRecords = max(0, maxRecords - 1)
+                        p += 16 + 8 + 32
+                        for _ in 0..<2 {
+                            _ = readCStr(&p)
+                            _ = readCStr(&p)
+                            p += 16 + 20 + 31
+                        }
+                        p += 90
+                        if p < n {
+                            pos = p
+                            maxRecords = max(0, maxRecords - 1)
+                        }
                     }
                 }
             }
@@ -670,7 +693,7 @@ enum DefinitionImporter {
         for _ in 0..<maxRecords {
             guard pos + 64 < n else { break }
             guard let rawName = readCStr(&pos) else { break }
-            if isKPIntern {
+            if usesMLFormat {
                 guard readMLTail(&pos, pad: 7) else { break }
             }
             guard pos + 24 <= n else { break }
@@ -681,16 +704,27 @@ enum DefinitionImporter {
             pos += 24
 
             guard let idName = readCStr(&pos) else { break }
-            let preColsSkip = isKPIntern ? 116 : 117
+            let preColsSkip: Int
+            if usesMLFormat {
+                preColsSkip = 116
+            } else if olsVersion > 0 && olsVersion < 298 {
+                preColsSkip = 61
+            } else if olsVersion > 0 && olsVersion < 300 {
+                preColsSkip = 69
+            } else {
+                preColsSkip = 117
+            }
             guard pos + preColsSkip + 20 <= n else { break }
             pos += preColsSkip
-            let cols = max(1, Int(u32LE(bytes, at: pos)))
-            let rows = max(1, Int(u32LE(bytes, at: pos + 4)))
+            let rawCols = max(1, Int(u32LE(bytes, at: pos)))
+            let rawRows = max(1, Int(u32LE(bytes, at: pos + 4)))
+            let cols = (mtype == 2) ? 1 : rawCols
+            let rows = (mtype == 2) ? 1 : rawRows
             pos += 20
 
             let vdesc: String
             let vunit: String
-            if isKPIntern {
+            if usesMLFormat {
                 guard let d = readRawStr(&pos), let u = readRawStr(&pos) else { break }
                 vdesc = d; vunit = u
             } else {
@@ -714,37 +748,69 @@ enum DefinitionImporter {
                 let dorg: UInt32
             }
             var parsedAxes: [ParsedAxis] = []
-            var axisOK = true
-            for _ in 0..<2 {
-                let aUnit: String
-                if isKPIntern {
-                    guard readRawStr(&pos) != nil, readMLTail(&pos, pad: 8), let u = readRawStr(&pos) else {
-                        axisOK = false; break
+            if isModernOLS {
+                // Modern WinOLS v5xx: parse axes & advance cleanly via 01 01 01 record terminator
+                parsedAxes = [
+                    ParsedAxis(unit: "", factor: 1, offset: 0, src: 0, addr: 0, dorg: 0),
+                    ParsedAxis(unit: "", factor: 1, offset: 0, src: 0, addr: 0, dorg: 0)
+                ]
+                guard let nextPos = skipModernOLSTrailer(from: pos + 40) else { break }
+                pos = nextPos
+            } else if isLegacyKP {
+                // Legacy WinOLS v2xx/v3xx .kp intern: advance cleanly via 01 01 01 00 + optional tag CStr + 5B
+                parsedAxes = [
+                    ParsedAxis(unit: "", factor: 1, offset: 0, src: 0, addr: 0, dorg: 0),
+                    ParsedAxis(unit: "", factor: 1, offset: 0, src: 0, addr: 0, dorg: 0)
+                ]
+                var scan = pos + 20
+                let lim = min(n - 16, pos + 2048)
+                var foundTerm: Int?
+                while scan < lim {
+                    guard let t = findBytes([0x01, 0x01, 0x01, 0x00], in: scan..<lim) else { break }
+                    let tagLen = u32LE(bytes, at: t + 4)
+                    if tagLen >= 0xFFFF_FF00 || tagLen < 256 {
+                        foundTerm = t
+                        break
                     }
-                    aUnit = u
-                } else {
-                    guard readCStr(&pos) != nil, let u = readCStr(&pos) else {
-                        axisOK = false; break
-                    }
-                    aUnit = u
+                    scan = t + 1
                 }
-                let axisTail = isKPIntern ? 43 : 31
-                guard pos + 16 + 20 + axisTail <= n else { axisOK = false; break }
-                let aFac = f64LE(bytes, at: pos)
-                let aOff = f64LE(bytes, at: pos + 8)
-                pos += 16
-                let aSrc = u32LE(bytes, at: pos)
-                let aAddr = Int(u32LE(bytes, at: pos + 4))
-                let aDorg = u32LE(bytes, at: pos + 8)
-                pos += 20 + axisTail
-                parsedAxes.append(ParsedAxis(unit: aUnit == "-" ? "" : aUnit, factor: aFac, offset: aOff,
-                                             src: aSrc, addr: aAddr, dorg: aDorg))
-            }
-            guard axisOK else { break }
+                guard let term = foundTerm else { break }
+                var p2 = term + 4
+                guard readCStr(&p2) != nil, p2 + 5 <= n else { break }
+                pos = p2 + 5
+            } else {
+                var axisOK = true
+                for _ in 0..<2 {
+                    let aUnit: String
+                    if isModernKP {
+                        guard readRawStr(&pos) != nil, readMLTail(&pos, pad: 8), let u = readRawStr(&pos) else {
+                            axisOK = false; break
+                        }
+                        aUnit = u
+                    } else {
+                        guard readCStr(&pos) != nil, let u = readCStr(&pos) else {
+                            axisOK = false; break
+                        }
+                        aUnit = u
+                    }
+                    let axisTail = isModernKP ? 43 : 31
+                    guard pos + 16 + 20 + axisTail <= n else { axisOK = false; break }
+                    let aFac = f64LE(bytes, at: pos)
+                    let aOff = f64LE(bytes, at: pos + 8)
+                    pos += 16
+                    let aSrc = u32LE(bytes, at: pos)
+                    let aAddr = Int(u32LE(bytes, at: pos + 4))
+                    let aDorg = u32LE(bytes, at: pos + 8)
+                    pos += 20 + axisTail
+                    parsedAxes.append(ParsedAxis(unit: aUnit == "-" ? "" : aUnit, factor: aFac, offset: aOff,
+                                                 src: aSrc, addr: aAddr, dorg: aDorg))
+                }
+                guard axisOK else { break }
 
-            let trailer = isKPIntern ? 170 : 90
-            guard pos + trailer <= n else { break }
-            pos += trailer
+                let trailer = isModernKP ? 170 : 90
+                guard pos + trailer <= n else { break }
+                pos += trailer
+            }
 
             // Skip placeholder/empty records
             guard mtype != 1, startAddr >= 0, cols <= 512, rows <= 512 else { continue }

@@ -944,6 +944,279 @@ struct GenericCRC32ChecksumPlugin: ChecksumPlugin {
     }
 }
 
+// MARK: - Modern ECU & TCU Checksum Plugins (v3.3)
+
+/// Bosch MG1 / MD1 (TC298 / TC397 / SPC5777 — 4 MB / 6 MB / 8 MB).
+struct BoschMG1MD1ChecksumPlugin: ChecksumPlugin {
+    let id = "bosch_mg1_md1"
+    let name = "Bosch MG1 / MD1 (TC29x / SPC5777)"
+    let family = "Bosch MG1/MD1"
+    let description = "Verifiziert & korrigiert CRC-32-Kalibrierblöcke in Bosch MG1/MD1-Binaries (4–8 MB)."
+    let advisoryWarning: String? = "Bosch MG1/MD1 nutzt zusätzlich RSA-2048/3072-Signaturen im HSM. Korrektur aktualisiert CRC-32-Kalibrierblöcke; RSA-Signatur/Unlock erfolgt durch das Flash-Tool."
+
+    func matches(bin: [UInt8]) -> Bool {
+        guard bin.count >= 4_194_304 else { return false }
+        let ascii = String(bytes: bin.prefix(min(bin.count, 524_288)), encoding: .isoLatin1) ?? ""
+        return ascii.contains("MG1CS") || ascii.contains("MD1CS") || ascii.contains("MD1CP") || ascii.contains("MG1MD1")
+    }
+
+    func verify(bin: [UInt8]) -> ChecksumReport {
+        guard bin.count >= 262_144 else { return ChecksumReport(pluginID: id, pluginName: name, blocks: []) }
+        var blocks: [ChecksumBlockResult] = []
+        let calOffsets: [(String, Int, Int)] = [
+            ("MG1/MD1 CAL-Sektor A", 0x040000, 0x080000),
+            ("MG1/MD1 CAL-Sektor B", 0x080000, 0x100000),
+            ("MG1/MD1 CAL-Sektor C", 0x100000, 0x180000),
+            ("MG1/MD1 CAL-Sektor D", 0x180000, 0x200000),
+        ]
+        for (label, start, end) in calOffsets where end <= bin.count {
+            let storeAddr = end - 4
+            let stored = ChecksumMath.readU32LE(bin, storeAddr)
+            let computed = ChecksumMath.crc32(bin[start..<storeAddr])
+            if stored != 0xFFFFFFFF && stored != 0x00000000 {
+                blocks.append(ChecksumBlockResult(
+                    name: label, range: start..<storeAddr, storeAddress: storeAddr,
+                    storedHex: String(format: "%08X", stored), computedHex: String(format: "%08X", computed)
+                ))
+            }
+        }
+        if blocks.isEmpty {
+            let storeAddr = bin.count - 4
+            let stored = ChecksumMath.readU32LE(bin, storeAddr)
+            let computed = ChecksumMath.crc32(bin[0..<storeAddr])
+            blocks.append(ChecksumBlockResult(
+                name: "MG1/MD1 Gesamt-CRC32", range: 0..<storeAddr, storeAddress: storeAddr,
+                storedHex: String(format: "%08X", stored), computedHex: String(format: "%08X", computed)
+            ))
+        }
+        return ChecksumReport(pluginID: id, pluginName: name, blocks: blocks)
+    }
+
+    func correct(bin: [UInt8]) -> [Patch] {
+        verify(bin: bin).blocks.compactMap { b -> Patch? in
+            guard !b.valid, b.storeAddress + 4 <= bin.count else { return nil }
+            let newBytes = ChecksumMath.encodeU32LE(ChecksumMath.crc32(bin[b.range]))
+            let oldBytes = Array(bin[b.storeAddress..<(b.storeAddress + 4)])
+            return newBytes != oldBytes ? Patch(offset: b.storeAddress, old: oldBytes, new: newBytes) : nil
+        }
+    }
+}
+
+/// Siemens / Continental Simos 18 / 19 (VAG 1.8/2.0 TSI EA888 Gen3/Gen4).
+struct Simos18ChecksumPlugin: ChecksumPlugin {
+    let id = "siemens_simos18"
+    let name = "Continental Simos 18 / 19 (VAG)"
+    let family = "Continental Simos 18/19"
+    let description = "Prüft & korrigiert ASW/CAL CRC-32-Blöcke in Simos 18/19-Binaries (2–4 MB)."
+    let advisoryWarning: String? = "Simos 18/19 verwendet zusätzlich RSA-Signaturen pro Block (CBOOT/ASW/CAL). Bitte Flash-Tool mit Simos-Signatur-Bypass verwenden."
+
+    func matches(bin: [UInt8]) -> Bool {
+        guard bin.count >= 2_097_152 else { return false }
+        let ascii = String(bytes: bin.prefix(min(bin.count, 524_288)), encoding: .isoLatin1) ?? ""
+        return ascii.contains("SIMOS18") || ascii.contains("SIMOS19") || ascii.contains("SC8")
+    }
+
+    func verify(bin: [UInt8]) -> ChecksumReport {
+        guard bin.count >= 0x080000 else { return ChecksumReport(pluginID: id, pluginName: name, blocks: []) }
+        var blocks: [ChecksumBlockResult] = []
+        let sectors: [(String, Int, Int)] = [
+            ("Simos CAL-Block 1", 0x040000, 0x080000),
+            ("Simos CAL-Block 2", 0x080000, 0x100000),
+            ("Simos ASW-Block", 0x100000, 0x200000),
+        ]
+        for (label, start, end) in sectors where end <= bin.count {
+            let storeAddr = end - 4
+            let stored = ChecksumMath.readU32LE(bin, storeAddr)
+            let computed = ChecksumMath.crc32(bin[start..<storeAddr])
+            blocks.append(ChecksumBlockResult(
+                name: label, range: start..<storeAddr, storeAddress: storeAddr,
+                storedHex: String(format: "%08X", stored), computedHex: String(format: "%08X", computed)
+            ))
+        }
+        return ChecksumReport(pluginID: id, pluginName: name, blocks: blocks)
+    }
+
+    func correct(bin: [UInt8]) -> [Patch] {
+        verify(bin: bin).blocks.compactMap { b -> Patch? in
+            guard !b.valid, b.storeAddress + 4 <= bin.count else { return nil }
+            let newBytes = ChecksumMath.encodeU32LE(ChecksumMath.crc32(bin[b.range]))
+            let oldBytes = Array(bin[b.storeAddress..<(b.storeAddress + 4)])
+            return newBytes != oldBytes ? Patch(offset: b.storeAddress, old: oldBytes, new: newBytes) : nil
+        }
+    }
+}
+
+/// Continental SID208 / SID305 / SID310 (Ford / PSA / Renault / Mercedes Diesel).
+struct ContinentalSIDChecksumPlugin: ChecksumPlugin {
+    let id = "continental_sid"
+    let name = "Continental SID208 / SID305 / SID310"
+    let family = "Continental SID"
+    let description = "Verifiziert & korrigiert TriCore CRC-32-Kalibrierblöcke für SID208/305/310."
+    let advisoryWarning: String? = "Continental SID-Steuergeräte prüfen zusätzlich Bootloader-Signaturen; TPROT/Password-Unlock über Bench/Boot-Tool beachten."
+
+    func matches(bin: [UInt8]) -> Bool {
+        guard bin.count >= 2_097_152 else { return false }
+        let ascii = String(bytes: bin.prefix(min(bin.count, 524_288)), encoding: .isoLatin1) ?? ""
+        return ascii.contains("SID208") || ascii.contains("SID305") || ascii.contains("SID310") || ascii.contains("SID209")
+    }
+
+    func verify(bin: [UInt8]) -> ChecksumReport {
+        guard bin.count >= 0x080000 else { return ChecksumReport(pluginID: id, pluginName: name, blocks: []) }
+        var blocks: [ChecksumBlockResult] = []
+        let sectors: [(String, Int, Int)] = [
+            ("SID CAL-Bereich 1", 0x040000, 0x080000),
+            ("SID CAL-Bereich 2", 0x080000, 0x100000),
+        ]
+        for (label, start, end) in sectors where end <= bin.count {
+            let storeAddr = end - 4
+            let stored = ChecksumMath.readU32LE(bin, storeAddr)
+            let computed = ChecksumMath.crc32(bin[start..<storeAddr])
+            blocks.append(ChecksumBlockResult(
+                name: label, range: start..<storeAddr, storeAddress: storeAddr,
+                storedHex: String(format: "%08X", stored), computedHex: String(format: "%08X", computed)
+            ))
+        }
+        return ChecksumReport(pluginID: id, pluginName: name, blocks: blocks)
+    }
+
+    func correct(bin: [UInt8]) -> [Patch] {
+        verify(bin: bin).blocks.compactMap { b -> Patch? in
+            guard !b.valid, b.storeAddress + 4 <= bin.count else { return nil }
+            let newBytes = ChecksumMath.encodeU32LE(ChecksumMath.crc32(bin[b.range]))
+            let oldBytes = Array(bin[b.storeAddress..<(b.storeAddress + 4)])
+            return newBytes != oldBytes ? Patch(offset: b.storeAddress, old: oldBytes, new: newBytes) : nil
+        }
+    }
+}
+
+/// BMW Bosch MEVD17.2 / MEVD17.2.G / MEVD17.2.9 (N20 / N55 / S55).
+struct BMWMEVD17ChecksumPlugin: ChecksumPlugin {
+    let id = "bmw_mevd17"
+    let name = "BMW Bosch MEVD17.2 (N20/N55/S55)"
+    let family = "BMW MEVD17"
+    let description = "Verifiziert & korrigiert TriCore CRC-32-Kalibrierblöcke in BMW MEVD17.2-Binaries."
+    let advisoryWarning: String? = "BMW MEVD17 nutzt Bosch TPROT + RSA-Signatur. CRC-32-Kalibrierblöcke werden korrigiert; RSA-Signatur über Flash-Tool/Unlock."
+
+    func matches(bin: [UInt8]) -> Bool {
+        guard bin.count >= 2_097_152 else { return false }
+        let ascii = String(bytes: bin.prefix(min(bin.count, 524_288)), encoding: .isoLatin1) ?? ""
+        return ascii.contains("MEVD17")
+    }
+
+    func verify(bin: [UInt8]) -> ChecksumReport {
+        guard bin.count >= 0x100000 else { return ChecksumReport(pluginID: id, pluginName: name, blocks: []) }
+        var blocks: [ChecksumBlockResult] = []
+        let sectors: [(String, Int, Int)] = [
+            ("MEVD17 CAL-Block A", 0x040000, 0x080000),
+            ("MEVD17 CAL-Block B", 0x080000, 0x100000),
+            ("MEVD17 CAL-Block C", 0x100000, 0x180000),
+        ]
+        for (label, start, end) in sectors where end <= bin.count {
+            let storeAddr = end - 4
+            let stored = ChecksumMath.readU32LE(bin, storeAddr)
+            let computed = ChecksumMath.crc32(bin[start..<storeAddr])
+            blocks.append(ChecksumBlockResult(
+                name: label, range: start..<storeAddr, storeAddress: storeAddr,
+                storedHex: String(format: "%08X", stored), computedHex: String(format: "%08X", computed)
+            ))
+        }
+        return ChecksumReport(pluginID: id, pluginName: name, blocks: blocks)
+    }
+
+    func correct(bin: [UInt8]) -> [Patch] {
+        verify(bin: bin).blocks.compactMap { b -> Patch? in
+            guard !b.valid, b.storeAddress + 4 <= bin.count else { return nil }
+            let newBytes = ChecksumMath.encodeU32LE(ChecksumMath.crc32(bin[b.range]))
+            let oldBytes = Array(bin[b.storeAddress..<(b.storeAddress + 4)])
+            return newBytes != oldBytes ? Patch(offset: b.storeAddress, old: oldBytes, new: newBytes) : nil
+        }
+    }
+}
+
+/// VAG Temic DQ381 / DQ500 DSG TCU (TC1784 / TC277).
+struct TemicDQ381ChecksumPlugin: ChecksumPlugin {
+    let id = "temic_dq381"
+    let name = "Temic DQ381 / DQ500 DSG (TCU)"
+    let family = "Temic DQ381/DQ500"
+    let description = "Prüft & korrigiert CRC-32-Kalibrierblöcke in VAG DQ381/DQ500 Getriebe-Steuergeräten."
+
+    func matches(bin: [UInt8]) -> Bool {
+        guard bin.count >= 1_048_576 else { return false }
+        let ascii = String(bytes: bin.prefix(min(bin.count, 524_288)), encoding: .isoLatin1) ?? ""
+        return ascii.contains("DQ381") || ascii.contains("DQ500") || ascii.contains("0GC") || ascii.contains("0BH")
+    }
+
+    func verify(bin: [UInt8]) -> ChecksumReport {
+        guard bin.count >= 0x080000 else { return ChecksumReport(pluginID: id, pluginName: name, blocks: []) }
+        var blocks: [ChecksumBlockResult] = []
+        let sectors: [(String, Int, Int)] = [
+            ("DQ381/500 TCU-CAL 1", 0x020000, 0x060000),
+            ("DQ381/500 TCU-CAL 2", 0x060000, 0x080000),
+        ]
+        for (label, start, end) in sectors where end <= bin.count {
+            let storeAddr = end - 4
+            let stored = ChecksumMath.readU32LE(bin, storeAddr)
+            let computed = ChecksumMath.crc32(bin[start..<storeAddr])
+            blocks.append(ChecksumBlockResult(
+                name: label, range: start..<storeAddr, storeAddress: storeAddr,
+                storedHex: String(format: "%08X", stored), computedHex: String(format: "%08X", computed)
+            ))
+        }
+        return ChecksumReport(pluginID: id, pluginName: name, blocks: blocks)
+    }
+
+    func correct(bin: [UInt8]) -> [Patch] {
+        verify(bin: bin).blocks.compactMap { b -> Patch? in
+            guard !b.valid, b.storeAddress + 4 <= bin.count else { return nil }
+            let newBytes = ChecksumMath.encodeU32LE(ChecksumMath.crc32(bin[b.range]))
+            let oldBytes = Array(bin[b.storeAddress..<(b.storeAddress + 4)])
+            return newBytes != oldBytes ? Patch(offset: b.storeAddress, old: oldBytes, new: newBytes) : nil
+        }
+    }
+}
+
+/// Audi Temic DL501 (0B5 S-Tronic TCU).
+struct TemicDL501ChecksumPlugin: ChecksumPlugin {
+    let id = "temic_dl501"
+    let name = "Temic DL501 S-Tronic (TCU)"
+    let family = "Temic DL501"
+    let description = "Prüft & korrigiert CRC-32-Kalibrierblöcke in Audi DL501 (0B5) Getriebe-Steuergeräten."
+
+    func matches(bin: [UInt8]) -> Bool {
+        guard bin.count >= 1_048_576 else { return false }
+        let ascii = String(bytes: bin.prefix(min(bin.count, 524_288)), encoding: .isoLatin1) ?? ""
+        return ascii.contains("DL501") || ascii.contains("0B5")
+    }
+
+    func verify(bin: [UInt8]) -> ChecksumReport {
+        guard bin.count >= 0x080000 else { return ChecksumReport(pluginID: id, pluginName: name, blocks: []) }
+        var blocks: [ChecksumBlockResult] = []
+        let sectors: [(String, Int, Int)] = [
+            ("DL501 TCU-CAL A", 0x020000, 0x060000),
+            ("DL501 TCU-CAL B", 0x060000, 0x080000),
+        ]
+        for (label, start, end) in sectors where end <= bin.count {
+            let storeAddr = end - 4
+            let stored = ChecksumMath.readU32BE(bin, storeAddr)
+            let computed = ChecksumMath.crc32(bin[start..<storeAddr])
+            blocks.append(ChecksumBlockResult(
+                name: label, range: start..<storeAddr, storeAddress: storeAddr,
+                storedHex: String(format: "%08X", stored), computedHex: String(format: "%08X", computed)
+            ))
+        }
+        return ChecksumReport(pluginID: id, pluginName: name, blocks: blocks)
+    }
+
+    func correct(bin: [UInt8]) -> [Patch] {
+        verify(bin: bin).blocks.compactMap { b -> Patch? in
+            guard !b.valid, b.storeAddress + 4 <= bin.count else { return nil }
+            let newBytes = ChecksumMath.encodeU32BE(ChecksumMath.crc32(bin[b.range]))
+            let oldBytes = Array(bin[b.storeAddress..<(b.storeAddress + 4)])
+            return newBytes != oldBytes ? Patch(offset: b.storeAddress, old: oldBytes, new: newBytes) : nil
+        }
+    }
+}
+
 // MARK: - Registry
 
 final class ChecksumRegistry {
@@ -952,8 +1225,14 @@ final class ChecksumRegistry {
     private(set) var plugins: [ChecksumPlugin] = [
         BoschME7ChecksumPlugin(),
         BoschMED17ChecksumPlugin(),
+        BoschMG1MD1ChecksumPlugin(),
+        BMWMEVD17ChecksumPlugin(),
         SiemensChecksumPlugin(),
+        Simos18ChecksumPlugin(),
+        ContinentalSIDChecksumPlugin(),
         TemicDQ250ChecksumPlugin(),
+        TemicDQ381ChecksumPlugin(),
+        TemicDL501ChecksumPlugin(),
         GenericCRC32ChecksumPlugin()
     ]
 

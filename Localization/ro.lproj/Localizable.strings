@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Salvează oricum";
 "Änderungsübersicht" = "Rezumat modificări";
 "Geänderte Maps" = "Hărți modificate";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Caută referințe în cod (XREFs)";
+"Code-Referenzen (XREFs)" = "Referințe în cod (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Bibliotecă de referință și autoidentificare …";
+"Tuning-Rezepte (.mtrecipe) …" = "Rețete de tuning (.mtrecipe) …";
+"Physik-Rechner" = "Calculator fizic";
+"Live-Stream starten" = "Pornește fluxul live";
+"CSV speichern" = "Salvează CSV";
+"Presets" = "Presetări";

@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Přesto uložit";
 "Änderungsübersicht" = "Přehled změn";
 "Geänderte Maps" = "Změněné mapy";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Najít reference v kódu (XREFs)";
+"Code-Referenzen (XREFs)" = "Reference v kódu (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Referenční knihovna a autoidentifikace …";
+"Tuning-Rezepte (.mtrecipe) …" = "Tuningové recepty (.mtrecipe) …";
+"Physik-Rechner" = "Fyzikální kalkulačka";
+"Live-Stream starten" = "Spustit živý přenos";
+"CSV speichern" = "Uložit CSV";
+"Presets" = "Předvolby";

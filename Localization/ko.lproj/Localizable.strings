@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "그래도 저장";
 "Änderungsübersicht" = "변경 요약";
 "Geänderte Maps" = "수정된 맵";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "코드 참조 (XREFs) 찾기";
+"Code-Referenzen (XREFs)" = "코드 참조 (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "참조 라이브러리 및 자동 식별 …";
+"Tuning-Rezepte (.mtrecipe) …" = "튜닝 레시피 (.mtrecipe) …";
+"Physik-Rechner" = "물리 계산기";
+"Live-Stream starten" = "라이브 스트림 시작";
+"CSV speichern" = "CSV 저장";
+"Presets" = "프리셋";

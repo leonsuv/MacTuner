@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Save Anyway";
 "Änderungsübersicht" = "Change Summary";
 "Geänderte Maps" = "Modified Maps";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Poišči sklice v kodi (XREFs)";
+"Code-Referenzen (XREFs)" = "Sklici v kodi (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Referenčna knjižnica in samodejno prepoznavanje …";
+"Tuning-Rezepte (.mtrecipe) …" = "Tuning recepti (.mtrecipe) …";
+"Physik-Rechner" = "Fizikalni kalkulator";
+"Live-Stream starten" = "Začni prenos v živo";
+"CSV speichern" = "Shrani CSV";
+"Presets" = "Prednastavitve";

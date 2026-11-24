@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Всё равно сохранить";
 "Änderungsübersicht" = "Сводка изменений";
 "Geänderte Maps" = "Изменённые карты";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Найти ссылки в коде (XREFs)";
+"Code-Referenzen (XREFs)" = "Ссылки в коде (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Справочная библиотека и автоопределение …";
+"Tuning-Rezepte (.mtrecipe) …" = "Рецепты тюнинга (.mtrecipe) …";
+"Physik-Rechner" = "Физический калькулятор";
+"Live-Stream starten" = "Запустить поток в реальном времени";
+"CSV speichern" = "Сохранить CSV";
+"Presets" = "Пресеты";

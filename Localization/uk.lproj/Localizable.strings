@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Все одно зберегти";
 "Änderungsübersicht" = "Зведення змін";
 "Geänderte Maps" = "Змінені карти";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Знайти посилання в коді (XREFs)";
+"Code-Referenzen (XREFs)" = "Посилання в коді (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Довідкова бібліотека та автовизначення …";
+"Tuning-Rezepte (.mtrecipe) …" = "Рецепти тюнінгу (.mtrecipe) …";
+"Physik-Rechner" = "Фізичний калькулятор";
+"Live-Stream starten" = "Запустити потік наживо";
+"CSV speichern" = "Зберегти CSV";
+"Presets" = "Пресети";

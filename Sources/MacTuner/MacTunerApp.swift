@@ -95,6 +95,10 @@ struct MacTunerApp: App {
                     .disabled(!model.hasBin || model.definition == nil)
                 Button("Interaktiven HTML-Bericht exportieren …") { model.exportHTMLReport() }
                     .disabled(!model.hasBin)
+                Divider()
+                Button("Referenz-Bibliothek & Auto-Identifikation …") { model.showReferenceLibrary = true }
+                Button("Tuning-Rezepte (.mtrecipe) …") { model.showRecipeRunner = true }
+                    .disabled(!model.hasBin)
                 Button("Änderungsbericht drucken …") { model.printChangeReport() }
                     .keyboardShortcut("p")
                     .disabled(!model.hasBin || model.definition == nil)

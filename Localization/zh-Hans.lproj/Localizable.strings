@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "仍然保存";
 "Änderungsübersicht" = "更改摘要";
 "Geänderte Maps" = "已修改图谱";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "查找代码引用 (XREFs)";
+"Code-Referenzen (XREFs)" = "代码引用 (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "参考库与自动识别 …";
+"Tuning-Rezepte (.mtrecipe) …" = "调校配方 (.mtrecipe) …";
+"Physik-Rechner" = "物理计算器";
+"Live-Stream starten" = "启动实时流";
+"CSV speichern" = "保存 CSV";
+"Presets" = "预设";

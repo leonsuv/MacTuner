@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Spara ändå";
 "Änderungsübersicht" = "Ändringsöversikt";
 "Geänderte Maps" = "Ändrade mappar";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Sök kodreferenser (XREFs)";
+"Code-Referenzen (XREFs)" = "Kodreferenser (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Referensbibliotek & auto-identifiering …";
+"Tuning-Rezepte (.mtrecipe) …" = "Tuning-recept (.mtrecipe) …";
+"Physik-Rechner" = "Fysikkalkylator";
+"Live-Stream starten" = "Starta liveström";
+"CSV speichern" = "Spara CSV";
+"Presets" = "Förinställningar";

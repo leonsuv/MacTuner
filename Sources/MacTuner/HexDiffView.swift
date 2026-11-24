@@ -2348,6 +2348,11 @@ struct HexDiffView: View {
             } label: {
                 Label("Gesamtes Kennfeld auswählen (\(span.range.count) B)", systemImage: "selection.pin.in.out")
             }
+            Button {
+                model.findCodeXREFs(for: span.range)
+            } label: {
+                Label("Code-Referenzen (XREFs) suchen", systemImage: "cpu")
+            }
             if is2D {
                 Button {
                     let rowBase = max(0, span.range.lowerBound - rowStride * 2)
@@ -2414,6 +2419,11 @@ struct HexDiffView: View {
             } label: {
                 Label("Zwillinge / Parallel-Kennfelder suchen", systemImage: "doc.on.doc")
             }
+            Button {
+                model.findCodeXREFs(for: cand.fullEnvelopeRange)
+            } label: {
+                Label("Code-Referenzen (XREFs) suchen", systemImage: "cpu")
+            }
             Divider()
             Button(role: .destructive) {
                 model.dismissPotentialMap(cand)
@@ -2449,6 +2459,11 @@ struct HexDiffView: View {
                 Label("Zwillinge / Parallel-Kennfelder suchen", systemImage: "doc.on.doc")
             }
             .disabled(range.count < elemBytes * 4)
+            Button {
+                model.findCodeXREFs(for: range)
+            } label: {
+                Label("Code-Referenzen (XREFs) suchen", systemImage: "cpu")
+            }
             Button {
                 viewMode = .surface3D
             } label: {

@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Save Anyway";
 "Änderungsübersicht" = "Change Summary";
 "Geänderte Maps" = "Modified Maps";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Пронађи референце у коду (XREFs)";
+"Code-Referenzen (XREFs)" = "Референце у коду (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Референтна библиотека и аутоидентификација …";
+"Tuning-Rezepte (.mtrecipe) …" = "Тунинг рецепти (.mtrecipe) …";
+"Physik-Rechner" = "Физички калкулатор";
+"Live-Stream starten" = "Покрени пренос уживо";
+"CSV speichern" = "Сачувај CSV";
+"Presets" = "Пресети";

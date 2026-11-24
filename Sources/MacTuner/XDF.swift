@@ -270,7 +270,15 @@ enum XDFParser {
         }
 
         var items: [XDFItem] = []
-        for e in root.children?.compactMap({ $0 as? XMLElement }) ?? [] {
+        var itemElements: [XMLElement] = []
+        for child in root.children?.compactMap({ $0 as? XMLElement }) ?? [] {
+            if child.name == "TABLEINFO" || child.name == "XDFGROUP" {
+                itemElements.append(contentsOf: child.children?.compactMap { $0 as? XMLElement } ?? [])
+            } else {
+                itemElements.append(child)
+            }
+        }
+        for e in itemElements {
             let title = e.child("title")?.stringValue ?? "?"
             let desc = e.child("description")?.stringValue ?? ""
             let cats = e.children("CATEGORYMEM").compactMap { int($0.attr("category")).map { $0 - 1 } }

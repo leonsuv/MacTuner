@@ -49,6 +49,8 @@ struct DatalogView: View {
             }
             .controlSize(.small)
 
+            liveOBDBar
+
             if let log = model.datalog {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
@@ -569,6 +571,120 @@ struct DatalogView: View {
             }
         }
         .card(padding: 14)
+    }
+
+    private var liveOBDBar: some View {
+        let obd = model.liveOBD
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(obd.isConnected ? Color.green : Color.secondary.opacity(0.4))
+                    .frame(width: 8, height: 8)
+                Text("Live OBD-II / UDS")
+                    .font(.subheadline.weight(.semibold))
+
+                Picker("", selection: Binding(get: { obd.mode }, set: { obd.mode = $0 })) {
+                    ForEach(LiveOBDTransportMode.allCases) { m in
+                        Text(m.rawValue).tag(m)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 225)
+                .disabled(obd.isConnected)
+
+                if obd.mode == .serial {
+                    Picker("", selection: Binding(get: { obd.selectedSerialPort }, set: { obd.selectedSerialPort = $0 })) {
+                        if obd.availableSerialPorts.isEmpty {
+                            Text("Kein /dev/cu.* Port").tag("")
+                        }
+                        ForEach(obd.availableSerialPorts, id: \.self) { p in
+                            Text(p).tag(p)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 170)
+                    .disabled(obd.isConnected)
+                    Button { obd.refreshSerialPorts() } label: { Image(systemName: "arrow.clockwise") }
+                        .help("Serielle Ports aktualisieren")
+                        .disabled(obd.isConnected)
+                } else if obd.mode == .enetDoIP {
+                    TextField("Host", text: Binding(get: { obd.enetHost }, set: { obd.enetHost = $0 }))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 120)
+                        .disabled(obd.isConnected)
+                }
+
+                Spacer()
+
+                Text(obd.statusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                if obd.isConnected {
+                    Button {
+                        model.stopLiveOBD()
+                    } label: {
+                        Label("Stopp", systemImage: "stop.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                } else {
+                    Button {
+                        model.startLiveOBD()
+                    } label: {
+                        Label("Live-Stream starten", systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                if model.datalog != nil {
+                    Button {
+                        model.exportLiveDatalogCSV()
+                    } label: {
+                        Label("CSV speichern", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+            .controlSize(.small)
+
+            if let s = obd.latestSample {
+                HStack(spacing: 12) {
+                    liveGaugePill("RPM", String(format: "%.0f", s.rpm), unit: "rpm", color: .cyan)
+                    liveGaugePill("Last", String(format: "%.1f", s.loadPct), unit: "%", color: .blue)
+                    liveGaugePill("Ladedruck", String(format: "%.0f", s.mapMbar), unit: "mbar", color: .orange)
+                    liveGaugePill("Lambda", String(format: "%.3f", s.lambda), unit: "λ", color: s.lambda < 0.85 ? .green : .yellow)
+                    liveGaugePill("Zündung", String(format: "%.1f", s.ignitionDeg), unit: "°KW", color: .purple)
+                    liveGaugePill("Tempo", String(format: "%.0f", s.speedKmh), unit: "km/h", color: .secondary)
+                    Spacer()
+                    if obd.sampleRateHz > 0 {
+                        Text(String(format: "%.0f Hz · Live Map-Tracing aktiv", obd.sampleRateHz))
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.green)
+                    }
+                }
+            }
+        }
+        .card(padding: 12)
+    }
+
+    private func liveGaugePill(_ title: String, _ value: String, unit: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title.uppercased())
+                .font(.system(size: 8.5, weight: .bold))
+                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(color)
+                Text(unit)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 9).padding(.vertical, 5)
+        .background(color.opacity(0.09), in: RoundedRectangle(cornerRadius: 7))
     }
 
     private func featureCard(icon: String, color: Color, title: String, desc: String) -> some View {

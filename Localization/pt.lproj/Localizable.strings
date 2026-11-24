@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Salvar mesmo assim";
 "Änderungsübersicht" = "Resumo de alterações";
 "Geänderte Maps" = "Mapas modificados";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Procurar referências de código (XREFs)";
+"Code-Referenzen (XREFs)" = "Referências de código (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Biblioteca de referência e autoidentificação …";
+"Tuning-Rezepte (.mtrecipe) …" = "Receitas de tuning (.mtrecipe) …";
+"Physik-Rechner" = "Calculadora física";
+"Live-Stream starten" = "Iniciar fluxo ao vivo";
+"CSV speichern" = "Salvar CSV";
+"Presets" = "Predefinições";

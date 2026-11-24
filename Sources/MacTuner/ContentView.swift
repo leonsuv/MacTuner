@@ -189,6 +189,14 @@ struct ContentView: View {
             PreSaveReviewSheet { model.save() }
                 .environment(model)
         }
+        .sheet(isPresented: Binding(get: { model.showReferenceLibrary }, set: { model.showReferenceLibrary = $0 })) {
+            ReferenceLibrarySheet()
+                .environment(model)
+        }
+        .sheet(isPresented: Binding(get: { model.showRecipeRunner }, set: { model.showRecipeRunner = $0 })) {
+            RecipeRunnerSheet()
+                .environment(model)
+        }
     }
 
     // MARK: - 1. Studio Shell (4-Mode Apple Pro App)

@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Αποθήκευση ούτως ή άλλως";
 "Änderungsübersicht" = "Σύνοψη αλλαγών";
 "Geänderte Maps" = "Τροποποιημένοι χάρτες";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Εύρεση αναφορών κώδικα (XREFs)";
+"Code-Referenzen (XREFs)" = "Αναφορές κώδικα (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Βιβλιοθήκη αναφοράς & αυτόματη αναγνώριση …";
+"Tuning-Rezepte (.mtrecipe) …" = "Συνταγές tuning (.mtrecipe) …";
+"Physik-Rechner" = "Υπολογιστής φυσικής";
+"Live-Stream starten" = "Έναρξη ζωντανής ροής";
+"CSV speichern" = "Αποθήκευση CSV";
+"Presets" = "Προεπιλογές";

@@ -475,6 +475,22 @@ struct XDFItemEditorSheet: View {
                 }
             }
 
+            editorRow("Presets") {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 5) {
+                        scalingPresetButton("RPM", eq: "X * 0.25", unit: "rpm", dec: 0)
+                        scalingPresetButton("mbar", eq: "X * 0.1", unit: "mbar", dec: 1)
+                        scalingPresetButton("°C (Bosch)", eq: "X * 0.1 - 273.15", unit: "°C", dec: 1)
+                        scalingPresetButton("°C (−40)", eq: "X * 0.75 - 48", unit: "°C", dec: 1)
+                        scalingPresetButton("Nm", eq: "X * 0.1", unit: "Nm", dec: 1)
+                        scalingPresetButton("mg/Hub", eq: "X * 0.01", unit: "mg", dec: 2)
+                        scalingPresetButton("λ", eq: "X * 0.001", unit: "λ", dec: 3)
+                        scalingPresetButton("bar (Rail)", eq: "X * 0.1", unit: "bar", dec: 1)
+                        scalingPresetButton("°KW", eq: "X * 0.75 - 23.4", unit: "°KW", dec: 2)
+                    }
+                }
+            }
+
             editorRow("Ausgabe") {
                 HStack(spacing: 12) {
                     Picker("", selection: $outputType) {
@@ -500,6 +516,22 @@ struct XDFItemEditorSheet: View {
                 }
             }
         }
+    }
+
+    private func scalingPresetButton(_ title: String, eq: String, unit: String, dec: Int) -> some View {
+        Button {
+            equation = eq
+            units = unit
+            decimals = dec
+            outputType = .float
+        } label: {
+            Text(title)
+                .font(.system(size: 10.5, weight: .medium))
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(Color.accentColor.opacity(0.12), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("\(eq) (\(unit))")
     }
 
     private var axesCard: some View {

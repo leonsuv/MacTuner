@@ -2,37 +2,7 @@ import AppKit
 import Observation
 import UniformTypeIdentifiers
 
-enum BinCodec {
-    static func raw(_ l: DataLayout, _ cell: Cell, in bytes: [UInt8]) -> Double? {
-        let o = l.offset(cell), n = l.elementBytes
-        guard o >= 0, o + n <= bytes.count else { return nil }
-        var u: UInt64 = 0
-        for k in 0..<n { u = (u << 8) | UInt64(bytes[o + (l.lsbFirst ? n - 1 - k : k)]) }
-        if l.isFloat {
-            if n == 4 { return Double(Float(bitPattern: UInt32(truncatingIfNeeded: u))) }
-            if n == 8 { return Double(bitPattern: u) }
-            return nil
-        }
-        if l.signed, n < 8 {
-            let shift = UInt64(64 - n * 8)
-            return Double(Int64(bitPattern: u << shift) >> shift)
-        }
-        return l.signed ? Double(Int64(bitPattern: u)) : Double(u)
-    }
-
-    static func encode(_ l: DataLayout, raw: Double) -> [UInt8] {
-        let n = l.elementBytes
-        var u: UInt64
-        if l.isFloat {
-            u = n == 4 ? UInt64(Float(raw).bitPattern) : raw.bitPattern
-        } else {
-            let r = min(max(raw.rounded(), l.rawRange.lowerBound), l.rawRange.upperBound)
-            u = r < 0 ? UInt64(bitPattern: Int64(r)) : UInt64(r)
-        }
-        var out = [UInt8](repeating: 0, count: n)
-        for k in 0..<n { out[n - 1 - k] = UInt8(truncatingIfNeeded: u >> (8 * UInt64(k))) }
-        return l.lsbFirst ? out.reversed() : out
-    }
+extension BinCodec {
     /// Byte changes for an edit on the given cells; only the element bytes of changed cells.
     static func patches(_ op: EditOp, item: XDFItem, cells: Set<Cell>, bin: [UInt8], compare: [UInt8]?) -> [Patch] {
         let l = item.data, s = item.scaling
@@ -64,23 +34,7 @@ enum BinCodec {
         }
         return patches
     }
-
-    static func axisLabels(_ a: Axis, count: Int, in bytes: [UInt8]) -> [String] {
-        var out: [String]
-        switch a.source {
-        case .data(let l):
-            out = (0..<l.cols).map { c in raw(l, Cell(r: 0, c: c), in: bytes).map { a.scaling.display(raw: $0, layout: l) } ?? "—" }
-        case .labels(let ls):
-            out = ls
-        case .none:
-            out = []
-        }
-        if out.count < count { out += (out.count..<count).map(String.init) }
-        return Array(out.prefix(count))
-    }
 }
-
-struct Patch { var offset: Int; var old: [UInt8]; var new: [UInt8] }
 
 enum EditOp {
     case set(Double)
@@ -290,6 +244,7 @@ final class AppModel {
     @ObservationIgnored private var diffClusterCache: (revision: Int, gap: Int, sync: Int, clusters: [DiffCluster])?
     // Datalog state
     private(set) var datalog: Datalog?
+    let liveOBD = LiveOBDController()
     var logFrame = 0
     var logXChannel: Int?
     var logYChannel: Int?
@@ -305,6 +260,12 @@ final class AppModel {
     var alert: String?
     var showCommandPalette = false
     var showPreSaveReview = false
+    var showReferenceLibrary = false
+    var showRecipeRunner = false
+    var activeXREFs: [DisassemblerEngine.XREFHit] = []
+    var activeXREFTarget: Range<Int>?
+    var activeXREFArch: DisassemblerEngine.Architecture = .triCore
+    var xrefSearchToken: Int = 0
     var xdfEditorRequest: XDFEditorRequest?
     var hexJumpTarget: Range<Int>?
     var hexSnapCandidate: MapFinder.Candidate?
@@ -548,6 +509,21 @@ final class AppModel {
         hexJumpTarget = range
         selection = Self.hexDiffSelection
     }
+
+    func jumpToHexRange(_ range: Range<Int>) {
+        hexJumpTarget = range
+        selection = Self.hexDiffSelection
+    }
+
+    func findCodeXREFs(for range: Range<Int>) {
+        guard hasBin, !bin.isEmpty else { return }
+        let arch = DisassemblerEngine.detectArchitecture(bin: bin, ecu: activeBin?.ecuIdentity)
+        activeXREFArch = arch
+        activeXREFTarget = range
+        activeXREFs = DisassemblerEngine.findXREFs(to: range, in: bin, ecu: activeBin?.ecuIdentity, maxHits: 40)
+        xrefSearchToken += 1
+        UserDefaults.standard.set(true, forKey: "showRightInspector")
+    }
     private(set) var xdfDirty = false
     var scope: SidebarScope = .all {
         didSet { UserDefaults.standard.set(scope.rawValue, forKey: "scope") }
@@ -675,9 +651,59 @@ final class AppModel {
     }
 
     func clearDatalog() {
+        stopLiveOBD()
         stopLogPlayback()
         datalog = nil
         logFrame = 0
+    }
+
+    func startLiveOBD() {
+        stopLogPlayback()
+        let liveLog = Datalog(
+            name: "Live OBD-II (\(liveOBD.mode.rawValue))",
+            channels: ["Time", "RPM", "Load", "MAP", "Lambda", "Ignition", "Speed", "Coolant"],
+            units: ["s", "rpm", "%", "mbar", "λ", "°KW", "km/h", "°C"],
+            samples: []
+        )
+        datalog = liveLog
+        logXChannel = 1 // RPM
+        logYChannel = 2 // Load
+        logFrame = 0
+        showHitOverlay = true
+
+        liveOBD.start { [weak self] sample in
+            guard let self, var current = self.datalog else { return }
+            current.samples.append([
+                sample.timeSec, sample.rpm, sample.loadPct, sample.mapMbar,
+                sample.lambda, sample.ignitionDeg, sample.speedKmh, sample.coolantC
+            ])
+            if current.samples.count > 4000 {
+                current.samples.removeFirst(current.samples.count - 4000)
+            }
+            self.datalog = current
+            self.logFrame = max(0, current.samples.count - 1)
+        }
+    }
+
+    func stopLiveOBD() {
+        liveOBD.stop()
+    }
+
+    func exportLiveDatalogCSV() {
+        guard let log = datalog, !log.samples.isEmpty else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.nameFieldStringValue = "MacTuner_LiveLog.csv"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        var lines: [String] = []
+        let header = zip(log.channels, log.units).map { name, unit in
+            unit.isEmpty ? name : "\(name) [\(unit)]"
+        }
+        lines.append(header.joined(separator: ","))
+        for row in log.samples {
+            lines.append(row.map { String(format: "%.3f", $0) }.joined(separator: ","))
+        }
+        try? lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 
     @discardableResult

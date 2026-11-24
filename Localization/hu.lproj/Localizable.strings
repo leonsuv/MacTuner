@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Mentés mindenképp";
 "Änderungsübersicht" = "Változások összegzése";
 "Geänderte Maps" = "Módosított térképek";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Kódhivatkozások (XREF) keresése";
+"Code-Referenzen (XREFs)" = "Kódhivatkozások (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Referenciakönyvtár és automatikus azonosítás …";
+"Tuning-Rezepte (.mtrecipe) …" = "Tuning receptek (.mtrecipe) …";
+"Physik-Rechner" = "Fizikai kalkulátor";
+"Live-Stream starten" = "Élő adatfolyam indítása";
+"CSV speichern" = "CSV mentése";
+"Presets" = "Előbeállítások";

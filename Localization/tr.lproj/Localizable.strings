@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Yine de Kaydet";
 "Änderungsübersicht" = "Değişiklik Özeti";
 "Geänderte Maps" = "Değiştirilen Haritalar";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Kod Referanslarını (XREFs) Ara";
+"Code-Referenzen (XREFs)" = "Kod Referansları (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Referans Kütüphanesi ve Otomatik Tanımlama …";
+"Tuning-Rezepte (.mtrecipe) …" = "Tuning Tarifleri (.mtrecipe) …";
+"Physik-Rechner" = "Fizik Hesaplayıcı";
+"Live-Stream starten" = "Canlı Akışı Başlat";
+"CSV speichern" = "CSV Kaydet";
+"Presets" = "Ön Ayarlar";

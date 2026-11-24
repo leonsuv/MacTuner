@@ -852,3 +852,13 @@
 "Trotzdem speichern" = "Save Anyway";
 "Änderungsübersicht" = "Change Summary";
 "Geänderte Maps" = "Modified Maps";
+
+/* Roadmap v3.2–v3.4 */
+"Code-Referenzen (XREFs) suchen" = "Kërko referenca në kod (XREFs)";
+"Code-Referenzen (XREFs)" = "Referenca në kod (XREFs)";
+"Referenz-Bibliothek & Auto-Identifikation …" = "Biblioteka e referencës & auto-identifikimi …";
+"Tuning-Rezepte (.mtrecipe) …" = "Receta tuning (.mtrecipe) …";
+"Physik-Rechner" = "Kalkulatori fizik";
+"Live-Stream starten" = "Nis transmetimin drejtpërdrejt";
+"CSV speichern" = "Ruaj CSV";
+"Presets" = "Paracaktime";
