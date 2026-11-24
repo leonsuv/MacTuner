@@ -9,3 +9,7 @@ export * from './mapFinder';
 export * from './checksumEngine';
 export * from './memoryMap';
 export * from './demoData';
+export * from './definitionImporter';
+export * from './diagnosticsEngine';
+export * from './disassembler';
+export * from './snapshotsAndReports';

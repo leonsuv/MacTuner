@@ -12,10 +12,18 @@ import {
   createMed17DemoBundle,
   createScaling,
   diffClusters,
+  disassembleSlice,
+  findCodeXRefs,
+  findSharedAxes,
   findTwinMaps,
   fixChecksums,
+  generateHtmlReport,
   identifyECU,
+  importDefinition,
+  parseBinaryFile,
   parseXDF,
+  rescaleAxisValues,
+  runDiagnostics,
   scalingDisplay,
   scalingRawFor,
   scalingValue,
@@ -151,5 +159,33 @@ describe('@mactuner/core — MED17 Demo, XDF, MapFinder, Checksums & MemoryMap',
     // Twin Finder smoke test
     const twins = findTwinMaps(demo.stage1Bin, [0x20044, 0x20044 + 64]);
     expect(Array.isArray(twins)).toBe(true);
+
+    // Diagnostics & Lint
+    const findings = runDiagnostics(demo.stage1Bin, demo.stockBin, demo.xdf);
+    expect(Array.isArray(findings)).toBe(true);
+
+    // Disassembler & XREF Finder
+    const disasm = disassembleSlice(demo.stage1Bin, 0x1000, 8, 'tricore');
+    expect(disasm.length).toBeGreaterThan(0);
+    const xrefs = findCodeXRefs(demo.stage1Bin, 0x20044, 5);
+    expect(Array.isArray(xrefs)).toBe(true);
+
+    // Shared Axes, Axis Rescale, HTML Report
+    const sharedAxes = findSharedAxes(demo.stage1Bin, demo.xdf);
+    expect(Array.isArray(sharedAxes)).toBe(true);
+    const html = generateHtmlReport(demo.stage1Name, demo.stockName, demo.stage1Bin, demo.stockBin, demo.xdf);
+    expect(html).toContain('<!DOCTYPE html');
+    expect(html).toContain(demo.xdf.items[0].title);
+    const rescalePatches = rescaleAxisValues(demo.xdf.items[0], demo.stage1Bin, 'x', 1000, 7000);
+    expect(rescalePatches.length).toBeGreaterThan(0);
+
+    // Multi-format Definition Importer (CSV & A2L) + Intel HEX Binary Parser
+    const csvDef = importDefinition('maps.csv', 'title,address,rows,cols,bits,signed,equation,units\nBoost,0x20044,16,16,16,false,X*0.1,mbar\n');
+    expect(csvDef.items.length).toBe(1);
+    expect(csvDef.items[0].title).toBe('Boost');
+
+    const hexText = ':0400000001020304F2\n:00000001FF\n';
+    const parsedHex = parseBinaryFile('test.hex', new TextEncoder().encode(hexText));
+    expect(Array.from(parsedHex.slice(0, 4))).toEqual([1, 2, 3, 4]);
   });
 });

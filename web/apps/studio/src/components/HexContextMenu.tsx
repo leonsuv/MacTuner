@@ -1,6 +1,8 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Copy,
+  Cpu,
+  Crosshair,
   Eraser,
   FilePlus2,
   GitCompareArrows,
@@ -27,6 +29,8 @@ export interface HexContextMenuProps {
   onFillSelection: (byteValue: number) => void;
   onCopyAddress: () => void;
   onFindTwins?: () => void;
+  onFindXRefs?: () => void;
+  onDisassembleHere?: () => void;
 }
 
 interface MenuItemProps {
@@ -41,20 +45,20 @@ interface MenuItemProps {
 function MenuItem({ icon, label, shortcut, accent, disabled, onClick }: MenuItemProps) {
   const accentCls =
     accent === 'blue'
-      ? 'text-sky-300 hover:bg-[#2589ff]/20 hover:text-sky-100'
+      ? 'text-sky-300 hover:bg-[#0a84ff]/25 hover:text-sky-100'
       : accent === 'amber'
         ? 'text-amber-300 hover:bg-amber-500/20 hover:text-amber-100'
         : accent === 'danger'
-          ? 'text-rose-300 hover:bg-rose-500/15 hover:text-rose-100'
-          : 'text-slate-200 hover:bg-white/10 hover:text-white';
+          ? 'text-rose-300 hover:bg-rose-500/20 hover:text-rose-100'
+          : 'text-zinc-200 hover:bg-white/[0.08] hover:text-zinc-100';
 
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`flex w-full items-center justify-between gap-4 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium transition-colors ${
-        disabled ? 'cursor-not-allowed text-slate-600' : accentCls
+      className={`flex w-full items-center justify-between gap-4 rounded-[7px] px-2.5 py-1.5 text-left text-[12px] font-medium transition-colors ${
+        disabled ? 'cursor-not-allowed text-zinc-600' : accentCls
       }`}
     >
       <span className="flex items-center gap-2 truncate">
@@ -62,7 +66,7 @@ function MenuItem({ icon, label, shortcut, accent, disabled, onClick }: MenuItem
         <span className="truncate">{label}</span>
       </span>
       {shortcut ? (
-        <span className="shrink-0 font-mono text-[10px] text-slate-500">{shortcut}</span>
+        <span className="shrink-0 font-mono text-[10px] text-zinc-500">{shortcut}</span>
       ) : null}
     </button>
   );
@@ -83,6 +87,8 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
   onFillSelection,
   onCopyAddress,
   onFindTwins,
+  onFindXRefs,
+  onDisassembleHere,
 }) => {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number }>({ left: x, top: y });
@@ -133,19 +139,19 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
       role="menu"
       style={{ left: pos.left, top: pos.top }}
       onContextMenu={(e) => e.preventDefault()}
-      className="glass-popover fixed z-50 w-64 select-none rounded-xl p-1.5 text-slate-200 ring-1 ring-white/10"
+      className="glass-popover fixed z-50 w-68 select-none rounded-xl p-1.5 text-zinc-100"
     >
       {/* Header badge */}
-      <div className="mb-1 flex items-center justify-between border-b border-white/10 px-2.5 py-1">
-        <span className="font-mono text-[11px] font-semibold text-sky-300 tabular-nums">
+      <div className="mb-1 flex items-center justify-between border-b border-white/[0.065] px-2.5 py-1.5">
+        <span className="font-mono text-[11px] font-semibold tracking-tight text-sky-300 tabular-nums">
           {addrHex}
         </span>
         {candidate ? (
-          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-300">
+          <span className="rounded-md border border-amber-400/25 bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-300 tabular-nums">
             {candidate.rows}×{candidate.cols} · {candidate.bits}b
           </span>
         ) : hasSelection ? (
-          <span className="font-mono text-[10px] text-slate-400 tabular-nums">
+          <span className="font-mono text-[10px] text-zinc-400 tabular-nums">
             {selBytes} B sel
           </span>
         ) : null}
@@ -165,7 +171,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           />
           <MenuItem
             icon={<Table2 className="h-3.5 w-3.5" />}
-            label="Add to XDF & Open in Table Editor"
+            label="Add to XDF & Open Editor"
             accent="blue"
             onClick={() => {
               onAddCandidateToXdf(candidate, true);
@@ -180,7 +186,37 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
               onClose();
             }}
           />
-          <div className="my-1 border-t border-white/10" />
+          <div className="my-1 border-t border-white/[0.065]" />
+        </>
+      ) : null}
+
+      {/* Reverse engineering: Code XREFs & Disassembler */}
+      {onFindXRefs || onDisassembleHere ? (
+        <>
+          {onFindXRefs ? (
+            <MenuItem
+              icon={<Crosshair className="h-3.5 w-3.5" />}
+              label="Find Code References (XREFs)"
+              accent="blue"
+              shortcut="X"
+              onClick={() => {
+                onFindXRefs();
+                onClose();
+              }}
+            />
+          ) : null}
+          {onDisassembleHere ? (
+            <MenuItem
+              icon={<Cpu className="h-3.5 w-3.5" />}
+              label="Disassemble Here"
+              shortcut="D"
+              onClick={() => {
+                onDisassembleHere();
+                onClose();
+              }}
+            />
+          ) : null}
+          <div className="my-1 border-t border-white/[0.065]" />
         </>
       ) : null}
 
@@ -218,7 +254,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
         />
       ) : null}
 
-      <div className="my-1 border-t border-white/10" />
+      <div className="my-1 border-t border-white/[0.065]" />
 
       {/* Fill actions */}
       <MenuItem
@@ -240,7 +276,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
         }}
       />
 
-      <div className="my-1 border-t border-white/10" />
+      <div className="my-1 border-t border-white/[0.065]" />
 
       <MenuItem
         icon={<Hash className="h-3.5 w-3.5" />}

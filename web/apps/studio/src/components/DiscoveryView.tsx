@@ -8,6 +8,7 @@ import {
   Plus,
   Radar,
   ScanSearch,
+  Search,
   Sparkles,
 } from 'lucide-react';
 import {
@@ -69,22 +70,37 @@ function formatHex(addr: number): string {
   return `0x${Math.max(0, addr).toString(16).toUpperCase().padStart(5, '0')}`;
 }
 
-function heatColor(t: number): string {
-  const c = Math.max(0, Math.min(1, t));
-  if (c < 0.25) {
-    const k = c / 0.25;
-    return `rgb(${Math.round(18 + k * 14)}, ${Math.round(42 + k * 84)}, ${Math.round(115 + k * 110)})`;
-  }
-  if (c < 0.5) {
-    const k = (c - 0.25) / 0.25;
-    return `rgb(${Math.round(32 + k * 24)}, ${Math.round(126 + k * 74)}, ${Math.round(225 - k * 95)})`;
-  }
-  if (c < 0.75) {
-    const k = (c - 0.5) / 0.25;
-    return `rgb(${Math.round(56 + k * 189)}, ${Math.round(200 - k * 42)}, ${Math.round(130 - k * 119)})`;
-  }
-  const k = (c - 0.75) / 0.25;
-  return `rgb(${Math.round(245 - k * 12)}, ${Math.round(158 - k * 98)}, ${Math.round(11 + k * 42)})`;
+/** Luxury jewel-tile thermal palette: sapphire -> cyan -> emerald -> amber -> ruby */
+function jewelTileStyle(tRaw: number): React.CSSProperties {
+  const t = Math.max(0, Math.min(1, Number.isFinite(tRaw) ? tRaw : 0.5));
+  const stops: [number, number, number][] = [
+    [24, 64, 168],   // deep sapphire
+    [14, 148, 196],  // jewel cyan
+    [16, 168, 114],  // emerald
+    [224, 154, 18],  // warm amber
+    [217, 56, 68],   // ruby crimson
+  ];
+  const scaled = t * (stops.length - 1);
+  const idx = Math.min(stops.length - 2, Math.floor(scaled));
+  const frac = scaled - idx;
+  const a = stops[idx];
+  const b = stops[idx + 1];
+  const r = Math.round(a[0] + (b[0] - a[0]) * frac);
+  const g = Math.round(a[1] + (b[1] - a[1]) * frac);
+  const bl = Math.round(a[2] + (b[2] - a[2]) * frac);
+
+  const hiR = Math.min(255, r + 26);
+  const hiG = Math.min(255, g + 26);
+  const hiB = Math.min(255, bl + 26);
+  const loR = Math.max(0, r - 24);
+  const loG = Math.max(0, g - 24);
+  const loB = Math.max(0, bl - 24);
+
+  return {
+    background: `linear-gradient(180deg, rgba(${hiR},${hiG},${hiB},0.84) 0%, rgba(${loR},${loG},${loB},0.72) 100%)`,
+    borderColor: `rgba(${hiR},${hiG},${hiB},0.35)`,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22)',
+  };
 }
 
 function scanBinForMaps(
@@ -125,7 +141,6 @@ function scanBinForMaps(
     return rises >= Math.max(2, Math.floor(count * 0.6));
   };
 
-  // Pass 1: Bosch 2D Header Proof [rows, cols, yAxis, xAxis, data]
   for (let off = 0; off + 32 * elemBytes < bytes.length; off += elemBytes) {
     const r = readU(off);
     const c = readU(off + elemBytes);
@@ -137,7 +152,6 @@ function scanBinForMaps(
     if (endAddr > bytes.length || overlaps(off, endAddr)) continue;
     if (!isMonotonic(yAxisAddr, r) || !isMonotonic(xAxisAddr, c)) continue;
 
-    // Check data smoothness & non-trivial variance
     let minV = Infinity;
     let maxV = -Infinity;
     let diffSum = 0;
@@ -212,7 +226,6 @@ function scanBinForDtcs(bytes: Uint8Array): DtcMatch[] {
     return code;
   };
 
-  // Look for contiguous runs of >= 4 plausible Bosch OBD-II 16-bit P-codes (0x0000..0x2FFF)
   let off = 0;
   while (off + 8 <= bytes.length && matches.length < 64) {
     let runLen = 0;
@@ -261,7 +274,9 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
   const [selectedCandId, setSelectedCandId] = useState<string | null>(
     candidates[0]?.id ?? null,
   );
+  const [hoveredTile, setHoveredTile] = useState<{ r: number; c: number; val: number } | null>(null);
   const [dtcResults, setDtcResults] = useState<DtcMatch[] | null>(null);
+  const [dtcQuery, setDtcQuery] = useState('');
   const [portedMessage, setPortedMessage] = useState<string | null>(null);
 
   const selectedCandidate = useMemo(
@@ -296,6 +311,18 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
     }
     return { grid, min, max };
   }, [selectedCandidate, bytes]);
+
+  const filteredDtcs = useMemo(() => {
+    if (!dtcResults) return null;
+    const q = dtcQuery.trim().toLowerCase();
+    if (!q) return dtcResults;
+    return dtcResults.filter(
+      (d) =>
+        d.code.toLowerCase().includes(q) ||
+        d.description.toLowerCase().includes(q) ||
+        formatHex(d.address).toLowerCase().includes(q),
+    );
+  }, [dtcResults, dtcQuery]);
 
   const changedMapsForPorting = useMemo(() => {
     if (!xdf || !baselineBytes) return [];
@@ -342,6 +369,11 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
     return changed;
   }, [xdf, bytes, baselineBytes]);
 
+  const totalChangedCells = useMemo(
+    () => changedMapsForPorting.reduce((acc, m) => acc + m.changedCells, 0),
+    [changedMapsForPorting],
+  );
+
   const handleScanBin = () => {
     const found = scanBinForMaps(bytes, baselineBytes, bits, signed, lsbFirst);
     onCandidatesChange?.(found);
@@ -379,10 +411,10 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0d1016] text-slate-100 overflow-hidden">
+    <div className="h-full flex flex-col bg-[#0c0d10] text-zinc-100 overflow-hidden">
       {/* Sub-tab Header */}
-      <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between gap-4 bg-[#10141c]">
-        <div className="flex items-center gap-1 p-1 rounded-lg bg-[#141821] border border-white/10">
+      <div className="px-5 py-3 border-b border-white/[0.065] flex items-center justify-between gap-4 bg-[#121317]">
+        <div className="flex items-center gap-0.5 p-0.5 rounded-full bg-white/[0.04] border border-white/[0.065]">
           {(
             [
               { id: 'finder', label: 'Map Finder', icon: <Radar className="w-3.5 h-3.5" /> },
@@ -394,10 +426,10 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
               key={t.id}
               type="button"
               onClick={() => setSubTab(t.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11.5px] font-medium transition-all cursor-pointer ${
                 subTab === t.id
-                  ? 'bg-[#2589ff] text-white shadow-[0_1px_10px_rgba(37,137,255,0.35)]'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-[#0a84ff] text-white shadow-[0_1px_10px_rgba(10,132,255,0.4)]'
+                  : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04]'
               }`}
             >
               {t.icon}
@@ -406,8 +438,12 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
           ))}
         </div>
 
-        <div className="text-xs font-mono tabular-nums text-slate-400">
-          BIN: {(bytes.length / 1024).toFixed(0)} KB · {candidates.length} candidates
+        <div className="flex items-center gap-2 text-[11.5px] font-mono tabular-nums text-zinc-400">
+          <span className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.065] text-zinc-300">
+            {(bytes.length / 1024).toFixed(0)} KB
+          </span>
+          <span className="text-zinc-600">·</span>
+          <span>{candidates.length} candidates</span>
         </div>
       </div>
 
@@ -415,18 +451,18 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
       {subTab === 'finder' && (
         <div className="flex-1 flex flex-col min-h-0">
           {/* Scan Controls Bar */}
-          <div className="px-5 py-2.5 border-b border-white/10 bg-[#141821]/60 flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center rounded-md bg-[#0d1016] border border-white/10 p-0.5">
+          <div className="px-5 py-2.5 border-b border-white/[0.065] bg-[#15161b] flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3.5 flex-wrap">
+              <div className="flex items-center rounded-lg bg-[#0c0d10] border border-white/[0.065] p-0.5">
                 {([8, 16] as const).map((b) => (
                   <button
                     key={b}
                     type="button"
                     onClick={() => setBits(b)}
-                    className={`px-2.5 py-1 rounded text-xs font-mono tabular-nums transition-colors ${
+                    className={`px-2.5 py-1 rounded-md text-[11.5px] font-mono tabular-nums transition-colors cursor-pointer ${
                       bits === b
-                        ? 'bg-[#2589ff]/25 text-[#6ab0ff] font-semibold'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-[#0a84ff]/20 text-[#5ac8fa] font-semibold'
+                        : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
                     {b}-bit
@@ -434,22 +470,22 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                 ))}
               </div>
 
-              <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={signed}
                   onChange={(e) => setSigned(e.target.checked)}
-                  className="accent-[#2589ff] rounded"
+                  className="accent-[#0a84ff] rounded"
                 />
                 <span>Signed</span>
               </label>
 
-              <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={lsbFirst}
                   onChange={(e) => setLsbFirst(e.target.checked)}
-                  className="accent-[#2589ff] rounded"
+                  className="accent-[#0a84ff] rounded"
                 />
                 <span>LSB (Intel)</span>
               </label>
@@ -458,22 +494,22 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
             <button
               type="button"
               onClick={handleScanBin}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#2589ff] hover:bg-[#1d78e8] text-white text-xs font-semibold shadow-[0_2px_12px_rgba(37,137,255,0.35)] transition-all"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_2px_12px_rgba(10,132,255,0.35)] transition-all cursor-pointer"
             >
               <ScanSearch className="w-3.5 h-3.5" />
               <span>Scan BIN</span>
             </button>
           </div>
 
-          {/* Split Body: Candidates Left / Thermal Preview Right */}
+          {/* Split Body: Candidates Left / Jewel-Tile Heatmap Preview Right */}
           <div className="flex-1 grid grid-cols-12 min-h-0">
             {/* Left Candidate List */}
-            <div className="col-span-5 border-r border-white/10 overflow-y-auto p-3 space-y-2">
+            <div className="col-span-5 border-r border-white/[0.065] overflow-y-auto p-3.5 space-y-2 bg-[#0e0f13]">
               {candidates.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6">
-                  <Sparkles className="w-8 h-8 text-slate-600 mb-2" />
-                  <p className="text-sm font-medium text-slate-300">No map candidates scanned</p>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <Sparkles className="w-8 h-8 text-zinc-600 mb-2.5" />
+                  <p className="text-sm font-medium text-zinc-300">No map candidates scanned</p>
+                  <p className="text-xs text-zinc-500 mt-1 max-w-xs">
                     Configure word width &amp; endianness above, then click Scan BIN.
                   </p>
                 </div>
@@ -485,42 +521,50 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     <button
                       key={cand.id}
                       type="button"
-                      onClick={() => setSelectedCandId(cand.id)}
-                      className={`w-full text-left p-3 rounded-xl border transition-all ${
+                      onClick={() => {
+                        setSelectedCandId(cand.id);
+                        setHoveredTile(null);
+                      }}
+                      className={`w-full text-left p-3.5 rounded-xl border transition-all cursor-pointer ${
                         isSel
-                          ? 'bg-[#2589ff]/15 border-[#2589ff]/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
-                          : 'bg-[#141821]/80 border-white/10 hover:border-white/20'
+                          ? 'bg-[#0a84ff]/[0.12] border-[#0a84ff]/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+                          : 'bg-[#17181d] border-white/[0.065] hover:border-white/[0.14] hover:bg-[#1c1d24]'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           <span className="text-xs font-mono tabular-nums font-semibold text-white">
                             {formatHex(cand.address)}
                           </span>
-                          <span className="text-[11px] font-mono tabular-nums px-1.5 py-0.5 rounded bg-white/[0.07] text-slate-300">
+                          <span className="text-[10.5px] font-mono tabular-nums px-1.5 py-0.5 rounded bg-white/[0.06] text-zinc-300">
                             {cand.rows}×{cand.cols}
                           </span>
                           {cand.hasHeaderProof && (
-                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#f59e0b]/15 text-[#fbbf24] border border-[#f59e0b]/35">
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
                               Header Proof
+                            </span>
+                          )}
+                          {cand.hasDiff && (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                              Diff
                             </span>
                           )}
                         </div>
                         <span
-                          className={`text-xs font-mono tabular-nums font-semibold px-1.5 py-0.5 rounded ${
+                          className={`text-[11px] font-mono tabular-nums font-semibold px-1.5 py-0.5 rounded shrink-0 ${
                             pct >= 90
-                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-[#f59e0b]/15 text-[#fbbf24] border border-[#f59e0b]/30'
+                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
+                              : 'bg-amber-500/15 text-amber-300 border border-amber-500/25'
                           }`}
                         >
                           {pct}%
                         </span>
                       </div>
-                      <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-400">
+                      <div className="mt-1.5 flex items-center justify-between text-[11px] text-zinc-400">
                         <span className="truncate">
                           {cand.patternLabel ?? `Bosch ${cand.rows}×${cand.cols} + Axes`}
                         </span>
-                        <span className="font-mono tabular-nums text-slate-500 shrink-0 ml-2">
+                        <span className="font-mono tabular-nums text-zinc-500 shrink-0 ml-2">
                           {cand.bits}b {cand.lsbFirst ? 'LE' : 'BE'}
                         </span>
                       </div>
@@ -530,21 +574,21 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
               )}
             </div>
 
-            {/* Right Live Thermal Heatmap Preview */}
-            <div className="col-span-7 overflow-y-auto p-5 flex flex-col">
+            {/* Right Live Jewel-Tile Heatmap Preview */}
+            <div className="col-span-7 overflow-y-auto p-5 flex flex-col bg-[#0c0d10]">
               {selectedCandidate && previewMatrix ? (
-                <div className="rounded-xl bg-[#141821] border border-white/10 p-4 flex flex-col flex-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                  <div className="flex items-start justify-between gap-3 pb-3 border-b border-white/10">
+                <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 flex flex-col flex-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                  <div className="flex items-start justify-between gap-3 pb-3.5 border-b border-white/[0.065]">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-white">
+                        <h3 className="text-sm font-semibold tracking-[-0.01em] text-white">
                           {selectedCandidate.domainHint ?? 'Detected Calibration Map'}
                         </h3>
-                        <span className="text-xs font-mono tabular-nums text-[#6ab0ff]">
+                        <span className="text-xs font-mono tabular-nums text-[#5ac8fa]">
                           {formatHex(selectedCandidate.address)}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400 mt-0.5 font-mono tabular-nums">
+                      <p className="text-[11.5px] text-zinc-400 mt-0.5 font-mono tabular-nums">
                         {selectedCandidate.rows}×{selectedCandidate.cols} · {selectedCandidate.bits}-bit{' '}
                         {selectedCandidate.signed ? 'signed' : 'unsigned'}{' '}
                         {selectedCandidate.lsbFirst ? 'LSB' : 'MSB'} · Range [{previewMatrix.min} ..{' '}
@@ -555,15 +599,15 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                       <button
                         type="button"
                         onClick={() => onShowInHex(selectedCandidate.address)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.11] border border-white/10 text-xs font-medium text-slate-200 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
                       >
-                        <Binary className="w-3.5 h-3.5 text-[#2589ff]" />
+                        <Binary className="w-3.5 h-3.5 text-[#0a84ff]" />
                         <span>Show in Hex</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => onAddCandidateToXdf(selectedCandidate)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2589ff] hover:bg-[#1d78e8] text-xs font-semibold text-white transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-xs font-semibold text-white shadow-[0_2px_10px_rgba(10,132,255,0.3)] transition-colors cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Add to XDF</span>
@@ -571,24 +615,30 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Thermal Heatmap Grid */}
-                  <div className="flex-1 mt-4 overflow-auto">
+                  {/* Jewel-Tile Heatmap Grid */}
+                  <div className="flex-1 mt-4 overflow-auto rounded-lg bg-[#0c0d10] border border-white/[0.06] p-2.5">
                     <div
-                      className="grid gap-0.5"
+                      className="grid gap-1"
                       style={{
-                        gridTemplateColumns: `repeat(${selectedCandidate.cols}, minmax(26px, 1fr))`,
+                        gridTemplateColumns: `repeat(${selectedCandidate.cols}, minmax(28px, 1fr))`,
                       }}
                     >
                       {previewMatrix.grid.map((row, rIdx) =>
                         row.map((val, cIdx) => {
                           const span = Math.max(1, previewMatrix.max - previewMatrix.min);
                           const t = (val - previewMatrix.min) / span;
+                          const isHovered =
+                            hoveredTile?.r === rIdx && hoveredTile?.c === cIdx;
                           return (
                             <div
                               key={`${rIdx}-${cIdx}`}
+                              onMouseEnter={() => setHoveredTile({ r: rIdx, c: cIdx, val })}
+                              onMouseLeave={() => setHoveredTile(null)}
                               title={`[${rIdx}, ${cIdx}] = ${val}`}
-                              className="h-7 rounded-[3px] flex items-center justify-center text-[10px] font-mono tabular-nums text-white/95 font-medium select-none"
-                              style={{ backgroundColor: heatColor(t) }}
+                              className={`h-7 rounded-[4px] border flex items-center justify-center text-[10px] font-mono tabular-nums text-white/95 font-medium select-none transition-transform ${
+                                isHovered ? 'scale-105 ring-1 ring-white/70 z-10' : ''
+                              }`}
+                              style={jewelTileStyle(t)}
                             >
                               {val}
                             </div>
@@ -597,11 +647,34 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                       )}
                     </div>
                   </div>
+
+                  {/* Jewel Scale Footer */}
+                  <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex items-center justify-between gap-3 text-[11px] font-mono tabular-nums text-zinc-400">
+                    <div className="flex items-center gap-2">
+                      <span>{previewMatrix.min}</span>
+                      <div
+                        className="h-2 w-28 rounded-full border border-white/10"
+                        style={{
+                          background:
+                            'linear-gradient(90deg, rgb(24,64,168) 0%, rgb(14,148,196) 28%, rgb(16,168,114) 52%, rgb(224,154,18) 78%, rgb(217,56,68) 100%)',
+                        }}
+                      />
+                      <span>{previewMatrix.max}</span>
+                    </div>
+                    {hoveredTile ? (
+                      <span className="text-zinc-200">
+                        Cell [{hoveredTile.r}, {hoveredTile.c}] ={' '}
+                        <span className="text-[#5ac8fa] font-semibold">{hoveredTile.val}</span>
+                      </span>
+                    ) : (
+                      <span className="text-zinc-500">Hover any jewel tile to inspect raw cell</span>
+                    )}
+                  </div>
                 </div>
               ) : (
-                <div className="h-full flex flex-col items-center justify-center text-center text-slate-500">
-                  <Radar className="w-9 h-9 text-slate-600 mb-2" />
-                  <p className="text-xs">Select a map candidate to inspect its live thermal heatmap.</p>
+                <div className="h-full flex flex-col items-center justify-center text-center text-zinc-500">
+                  <Radar className="w-9 h-9 text-zinc-700 mb-2.5" />
+                  <p className="text-xs">Select a map candidate to inspect its jewel-tile heatmap.</p>
                 </div>
               )}
             </div>
@@ -611,78 +684,115 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
 
       {/* DTC TABLES */}
       {subTab === 'dtc' && (
-        <div className="flex-1 overflow-y-auto p-5">
-          <div className="flex items-center justify-between mb-4">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 flex items-center justify-between gap-4 flex-wrap shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div>
-              <h2 className="text-sm font-semibold text-white">Bosch OBD-II P-Code Table Scanner</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
+                Bosch OBD-II P-Code Table Scanner
+              </h2>
+              <p className="text-xs text-zinc-400 mt-0.5">
                 Scans binary for contiguous 16-bit BCD P0xxx / P1xxx / P2xxx fault code arrays (0x0000–0x2FFF).
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleScanDtcs}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#2589ff] hover:bg-[#1d78e8] text-white text-xs font-semibold transition-colors"
-            >
-              <ScanSearch className="w-3.5 h-3.5" />
-              <span>Scan DTC Tables</span>
-            </button>
-          </div>
-
-          {dtcResults === null ? (
-            <div className="rounded-xl bg-[#141821] border border-white/10 p-12 text-center">
-              <FileWarning className="w-10 h-10 text-slate-500 mx-auto mb-3" />
-              <h3 className="text-sm font-semibold text-slate-200">Ready to scan DTC tables</h3>
-              <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-4">
-                Detect OBD-II P-code definitions and jump directly to their flash offset in the Hex Editor.
-              </p>
+            <div className="flex items-center gap-2.5">
+              {dtcResults && dtcResults.length > 0 && (
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={dtcQuery}
+                    onChange={(e) => setDtcQuery(e.target.value)}
+                    placeholder="Filter P-code..."
+                    className="pl-8 pr-3 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#0a84ff] w-44"
+                  />
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleScanDtcs}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#2589ff] hover:bg-[#1d78e8] text-white text-xs font-semibold transition-colors"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_2px_10px_rgba(10,132,255,0.3)] transition-colors cursor-pointer"
               >
                 <ScanSearch className="w-3.5 h-3.5" />
                 <span>Scan DTC Tables</span>
               </button>
             </div>
-          ) : dtcResults.length === 0 ? (
-            <div className="rounded-xl bg-[#141821] border border-white/10 p-10 text-center">
-              <CheckCircle2 className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-              <p className="text-sm font-medium text-slate-200">No contiguous Bosch P-code tables found</p>
-              <p className="text-xs text-slate-400 mt-1">
-                This binary may use encrypted or non-BCD fault structures (e.g. VAG/DFC table).
+          </div>
+
+          {filteredDtcs === null ? (
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-12 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <FileWarning className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-zinc-200">Ready to scan DTC tables</h3>
+              <p className="text-xs text-zinc-400 max-w-md mx-auto mt-1 mb-4">
+                Detect OBD-II P-code definitions and jump directly to their flash offset in the Hex Editor.
+              </p>
+              <button
+                type="button"
+                onClick={handleScanDtcs}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold transition-colors cursor-pointer"
+              >
+                <ScanSearch className="w-3.5 h-3.5" />
+                <span>Scan DTC Tables</span>
+              </button>
+            </div>
+          ) : filteredDtcs.length === 0 ? (
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-10 text-center">
+              <CheckCircle2 className="w-8 h-8 text-zinc-500 mx-auto mb-2" />
+              <p className="text-sm font-medium text-zinc-200">
+                {dtcResults && dtcResults.length > 0
+                  ? 'No DTCs match your filter'
+                  : 'No contiguous Bosch P-code tables found'}
+              </p>
+              <p className="text-xs text-zinc-400 mt-1">
+                {dtcResults && dtcResults.length > 0
+                  ? 'Try clearing the search query above.'
+                  : 'This binary may use encrypted or non-BCD fault structures (e.g. VAG/DFC table).'}
               </p>
             </div>
           ) : (
-            <div className="rounded-xl bg-[#141821] border border-white/10 overflow-hidden">
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="px-4 py-2.5 border-b border-white/[0.065] flex items-center justify-between text-[11px] text-zinc-400">
+                <span className="font-semibold uppercase tracking-wider text-zinc-300">
+                  Detected Fault Code Array
+                </span>
+                <span className="font-mono tabular-nums">{filteredDtcs.length} entries</span>
+              </div>
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-white/10 bg-white/[0.02] text-[11px] uppercase tracking-wider text-slate-400">
+                  <tr className="border-b border-white/[0.065] bg-white/[0.02] text-[10.5px] uppercase tracking-wider text-zinc-500">
                     <th className="py-2.5 px-4 font-semibold">DTC Code</th>
                     <th className="py-2.5 px-4 font-semibold">Address</th>
                     <th className="py-2.5 px-4 font-semibold">Raw</th>
+                    <th className="py-2.5 px-4 font-semibold">Status</th>
                     <th className="py-2.5 px-4 font-semibold">Description</th>
                     <th className="py-2.5 px-4 font-semibold text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/[0.06] text-xs">
-                  {dtcResults.map((dtc) => (
-                    <tr key={`${dtc.code}-${dtc.address}`} className="hover:bg-white/[0.03]">
-                      <td className="py-2 px-4 font-mono tabular-nums font-semibold text-[#fbbf24]">
-                        {dtc.code}
+                <tbody className="divide-y divide-white/[0.05] text-xs">
+                  {filteredDtcs.map((dtc) => (
+                    <tr key={`${dtc.code}-${dtc.address}`} className="hover:bg-white/[0.025] transition-colors">
+                      <td className="py-2.5 px-4">
+                        <span className="inline-flex px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 font-mono tabular-nums font-semibold text-amber-300">
+                          {dtc.code}
+                        </span>
                       </td>
-                      <td className="py-2 px-4 font-mono tabular-nums text-slate-300">
+                      <td className="py-2.5 px-4 font-mono tabular-nums text-zinc-300">
                         {formatHex(dtc.address)}
                       </td>
-                      <td className="py-2 px-4 font-mono tabular-nums text-slate-400">
+                      <td className="py-2.5 px-4 font-mono tabular-nums text-zinc-400">
                         0x{dtc.rawValue.toString(16).toUpperCase().padStart(4, '0')}
                       </td>
-                      <td className="py-2 px-4 text-slate-300">{dtc.description}</td>
-                      <td className="py-2 px-4 text-right">
+                      <td className="py-2.5 px-4">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          {dtc.status}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-4 text-zinc-300">{dtc.description}</td>
+                      <td className="py-2.5 px-4 text-right">
                         <button
                           type="button"
                           onClick={() => onShowInHex(dtc.address)}
-                          className="px-2.5 py-1 rounded bg-white/[0.06] hover:bg-[#2589ff]/20 hover:text-[#6ab0ff] text-[11px] font-medium text-slate-300 border border-white/10 transition-colors"
+                          className="px-2.5 py-1 rounded-md bg-white/[0.05] hover:bg-[#0a84ff]/20 hover:text-[#5ac8fa] text-[11px] font-medium text-zinc-300 border border-white/[0.08] transition-colors cursor-pointer"
                         >
                           In Hex
                         </button>
@@ -699,14 +809,16 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
       {/* TUNE PORTING */}
       {subTab === 'porting' && (
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          <div className="rounded-xl bg-[#141821] border border-white/10 p-4 flex items-center justify-between gap-4 flex-wrap">
+          <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 flex items-center justify-between gap-4 flex-wrap shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div>
-              <h2 className="text-sm font-semibold text-white">Stage 1 vs Stock Tune Porting</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {changedMapsForPorting.length} modified XDF maps ready to port or export as a delta summary.
+              <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
+                Stage 1 vs Stock Tune Porting
+              </h2>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                {changedMapsForPorting.length} modified XDF maps ({totalChangedCells.toLocaleString()} changed cells) ready to port or export as a delta summary.
               </p>
               {portedMessage && (
-                <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1">
+                <p className="text-xs text-emerald-400 mt-1.5 flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   {portedMessage}
                 </p>
@@ -716,7 +828,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
               type="button"
               disabled={changedMapsForPorting.length === 0}
               onClick={handleExportPortSummary}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#2589ff] hover:bg-[#1d78e8] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] disabled:opacity-35 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-[0_2px_10px_rgba(10,132,255,0.3)] transition-colors cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Port &amp; Export Summary</span>
@@ -724,14 +836,14 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
           </div>
 
           {changedMapsForPorting.length === 0 ? (
-            <div className="rounded-xl bg-[#141821] border border-white/10 p-10 text-center text-xs text-slate-400">
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-10 text-center text-xs text-zinc-400">
               No changed maps detected between current BIN and baseline Stock BIN.
             </div>
           ) : (
-            <div className="rounded-xl bg-[#141821] border border-white/10 overflow-hidden">
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-white/10 bg-white/[0.02] text-[11px] uppercase tracking-wider text-slate-400">
+                  <tr className="border-b border-white/[0.065] bg-white/[0.02] text-[10.5px] uppercase tracking-wider text-zinc-500">
                     <th className="py-2.5 px-4 font-semibold">Map Name</th>
                     <th className="py-2.5 px-4 font-semibold">Address</th>
                     <th className="py-2.5 px-4 font-semibold">Changed Cells</th>
@@ -740,17 +852,17 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     <th className="py-2.5 px-4 font-semibold text-right">Inspect</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/[0.06] text-xs">
+                <tbody className="divide-y divide-white/[0.05] text-xs">
                   {changedMapsForPorting.map((entry) => (
-                    <tr key={entry.item.id} className="hover:bg-white/[0.03]">
-                      <td className="py-2.5 px-4 font-medium text-slate-100">{entry.item.title}</td>
-                      <td className="py-2.5 px-4 font-mono tabular-nums text-slate-400">
+                    <tr key={entry.item.id} className="hover:bg-white/[0.025] transition-colors">
+                      <td className="py-2.5 px-4 font-medium text-zinc-100">{entry.item.title}</td>
+                      <td className="py-2.5 px-4 font-mono tabular-nums text-zinc-400">
                         {formatHex(entry.item.data.address)}
                       </td>
-                      <td className="py-2.5 px-4 font-mono tabular-nums text-[#fbbf24]">
+                      <td className="py-2.5 px-4 font-mono tabular-nums text-amber-300">
                         {entry.changedCells} / {entry.totalCells}
                       </td>
-                      <td className="py-2.5 px-4 font-mono tabular-nums text-slate-200">
+                      <td className="py-2.5 px-4 font-mono tabular-nums text-zinc-200">
                         {entry.maxDelta >= 0 ? '+' : ''}
                         {entry.maxDelta.toFixed(entry.item.scaling.decimals)} {entry.item.scaling.units}
                       </td>
@@ -762,7 +874,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onShowInHex(entry.item.data.address)}
-                          className="px-2.5 py-1 rounded bg-white/[0.06] hover:bg-[#2589ff]/20 hover:text-[#6ab0ff] text-[11px] font-medium text-slate-300 border border-white/10 transition-colors"
+                          className="px-2.5 py-1 rounded-md bg-white/[0.05] hover:bg-[#0a84ff]/20 hover:text-[#5ac8fa] text-[11px] font-medium text-zinc-300 border border-white/[0.08] transition-colors cursor-pointer"
                         >
                           In Hex
                         </button>

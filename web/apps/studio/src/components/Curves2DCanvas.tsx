@@ -43,6 +43,28 @@ function sampleIndices(total: number, maxCount: number): number[] {
   return Array.from(new Set(out));
 }
 
+/** Trace a smooth Catmull-Rom spline through 2D points */
+function traceSmoothPath(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[]) {
+  if (pts.length === 0) return;
+  ctx.moveTo(pts[0].x, pts[0].y);
+  if (pts.length === 1) return;
+  if (pts.length === 2) {
+    ctx.lineTo(pts[1].x, pts[1].y);
+    return;
+  }
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+  }
+}
+
 export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
   values,
   compareValues = null,
@@ -81,9 +103,6 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
   const rows = values.length;
   const cols = rows > 0 ? values[0].length : 0;
 
-  // Determine which series indices to plot:
-  // - In 'curves' mode: each series is a row (plotted across X columns)
-  // - In 'slices' mode: each series is a column (plotted across Y rows)
   const activeIndices = useMemo(() => {
     const isCurves = mode === 'curves';
     const total = isCurves ? rows : cols;
@@ -108,7 +127,6 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
     return sampleIndices(total, 6);
   }, [mode, rows, cols, showAll, selectedKeys]);
 
-  // Compute Y-value range for the plotted series
   const { minY, maxY, spanY } = useMemo(() => {
     let min = Infinity;
     let max = -Infinity;
@@ -136,7 +154,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
       return { minY: 0, maxY: 1, spanY: 1 };
     }
     const rawSpan = max - min;
-    const pad = rawSpan > 1e-9 ? rawSpan * 0.08 : Math.max(1, Math.abs(min) * 0.1);
+    const pad = rawSpan > 1e-9 ? rawSpan * 0.09 : Math.max(1, Math.abs(min) * 0.1);
     const lo = min - pad;
     const hi = max + pad;
     return { minY: lo, maxY: hi, spanY: hi - lo };
@@ -162,7 +180,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
     const axisLabels = isCurves ? xLabels : yLabels;
 
     if (rows === 0 || cols === 0 || activeIndices.length === 0) {
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+      ctx.fillStyle = 'rgba(161, 161, 170, 0.6)';
       ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, monospace';
       ctx.textAlign = 'center';
       ctx.fillText('No curve data', W / 2, H / 2);
@@ -171,7 +189,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
 
     const padL = 52;
     const padR = 16;
-    const padT = 14;
+    const padT = 16;
     const padB = 26;
     const plotW = Math.max(20, W - padL - padR);
     const plotH = Math.max(20, H - padT - padB);
@@ -180,7 +198,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
       axisLen > 1 ? padL + (i / (axisLen - 1)) * plotW : padL + plotW * 0.5;
     const yFor = (v: number) => padT + (1 - (v - minY) / spanY) * plotH;
 
-    // Horizontal grid lines & Y-axis ticks
+    // Grid lines & Y-axis ticks
     ctx.save();
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.textAlign = 'right';
@@ -190,37 +208,37 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
       const frac = i / yTicks;
       const py = padT + frac * plotH;
       const val = maxY - frac * spanY;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.045)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(padL, py);
       ctx.lineTo(padL + plotW, py);
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.78)';
+      ctx.fillStyle = 'rgba(161, 161, 170, 0.72)';
       ctx.fillText(formatNum(val, decimals), padL - 7, py);
     }
 
     // Vertical grid lines & X-axis ticks
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    const xTickCount = Math.min(axisLen, Math.max(2, Math.floor(plotW / 62)));
+    const xTickCount = Math.min(axisLen, Math.max(2, Math.floor(plotW / 64)));
     for (let i = 0; i < xTickCount; i++) {
       const idx = xTickCount === 1 ? 0 : Math.round((i / (xTickCount - 1)) * (axisLen - 1));
       const px = xFor(idx);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(px, padT);
       ctx.lineTo(px, padT + plotH);
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.78)';
+      ctx.fillStyle = 'rgba(161, 161, 170, 0.72)';
       ctx.fillText(axisLabels[idx] ?? String(idx), px, padT + plotH + 7);
     }
 
     // Plot border axes
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.09)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(padL, padT);
@@ -231,82 +249,107 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
 
     const pickList: { r: number; c: number; sx: number; sy: number }[] = [];
 
-    // Draw comparison dashed curves first
+    // Draw comparison dashed smooth curves first
     if (showCompare && compareValues) {
       ctx.save();
       ctx.setLineDash([4, 4]);
       ctx.lineWidth = 1.25;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
       activeIndices.forEach((sIdx, seriesPos) => {
         const color = SERIES_COLORS[seriesPos % SERIES_COLORS.length];
-        ctx.strokeStyle = `${color}70`;
-        ctx.beginPath();
-        let started = false;
+        ctx.strokeStyle = `${color}66`;
+        let seg: { x: number; y: number }[] = [];
+        const flush = () => {
+          if (seg.length >= 2) {
+            ctx.beginPath();
+            traceSmoothPath(ctx, seg);
+            ctx.stroke();
+          }
+          seg = [];
+        };
         for (let i = 0; i < axisLen; i++) {
           const r = isCurves ? sIdx : i;
           const c = isCurves ? i : sIdx;
           const v = compareValues[r]?.[c];
           if (v === null || v === undefined || !Number.isFinite(v)) {
-            started = false;
+            flush();
             continue;
           }
-          const px = xFor(i);
-          const py = yFor(v);
-          if (!started) {
-            ctx.moveTo(px, py);
-            started = true;
-          } else {
-            ctx.lineTo(px, py);
-          }
+          seg.push({ x: xFor(i), y: yFor(v) });
         }
-        ctx.stroke();
+        flush();
       });
       ctx.restore();
     }
 
-    // Draw primary series
+    // Draw primary smooth series
     activeIndices.forEach((sIdx, seriesPos) => {
       const color = SERIES_COLORS[seriesPos % SERIES_COLORS.length];
       const isHoveredSeries =
         hoveredCell !== null && (isCurves ? hoveredCell.r === sIdx : hoveredCell.c === sIdx);
 
-      ctx.save();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = isHoveredSeries ? 2.4 : activeIndices.length > 10 ? 1.15 : 1.75;
-      ctx.globalAlpha = hoveredCell && !isHoveredSeries && activeIndices.length > 3 ? 0.55 : 0.95;
-
-      ctx.beginPath();
-      let started = false;
+      const segments: { x: number; y: number }[][] = [];
+      let curSeg: { x: number; y: number }[] = [];
       for (let i = 0; i < axisLen; i++) {
         const r = isCurves ? sIdx : i;
         const c = isCurves ? i : sIdx;
         const v = values[r]?.[c];
         if (v === null || v === undefined || !Number.isFinite(v)) {
-          started = false;
+          if (curSeg.length > 0) {
+            segments.push(curSeg);
+            curSeg = [];
+          }
           continue;
         }
         const px = xFor(i);
         const py = yFor(v);
         pickList.push({ r, c, sx: px, sy: py });
-        if (!started) {
-          ctx.moveTo(px, py);
-          started = true;
-        } else {
-          ctx.lineTo(px, py);
+        curSeg.push({ x: px, y: py });
+      }
+      if (curSeg.length > 0) segments.push(curSeg);
+
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Subtle luminous area fill under hovered series (or sole series)
+      if ((isHoveredSeries || activeIndices.length === 1) && segments.length > 0) {
+        for (const seg of segments) {
+          if (seg.length < 2) continue;
+          const grad = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+          grad.addColorStop(0, `${color}28`);
+          grad.addColorStop(1, `${color}00`);
+          ctx.beginPath();
+          traceSmoothPath(ctx, seg);
+          ctx.lineTo(seg[seg.length - 1].x, padT + plotH);
+          ctx.lineTo(seg[0].x, padT + plotH);
+          ctx.closePath();
+          ctx.fillStyle = grad;
+          ctx.fill();
         }
       }
-      ctx.stroke();
 
-      // Subtle data point nodes when few points
+      ctx.strokeStyle = color;
+      ctx.lineWidth = isHoveredSeries ? 2.5 : activeIndices.length > 10 ? 1.25 : 1.9;
+      ctx.globalAlpha = hoveredCell && !isHoveredSeries && activeIndices.length > 3 ? 0.42 : 0.96;
+
+      for (const seg of segments) {
+        if (seg.length < 2) continue;
+        ctx.beginPath();
+        traceSmoothPath(ctx, seg);
+        ctx.stroke();
+      }
+
+      // Refined data nodes when series count is moderate
       if (axisLen <= 24 && activeIndices.length <= 8) {
         ctx.fillStyle = color;
-        for (let i = 0; i < axisLen; i++) {
-          const r = isCurves ? sIdx : i;
-          const c = isCurves ? i : sIdx;
-          const v = values[r]?.[c];
-          if (v === null || v === undefined || !Number.isFinite(v)) continue;
-          ctx.beginPath();
-          ctx.arc(xFor(i), yFor(v), isHoveredSeries ? 2.8 : 2.0, 0, Math.PI * 2);
-          ctx.fill();
+        for (const seg of segments) {
+          for (const pt of seg) {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, isHoveredSeries ? 2.8 : 1.9, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
       }
       ctx.restore();
@@ -314,7 +357,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
 
     plottedPtsRef.current = pickList;
 
-    // Crosshair synced to hoveredCell (3-Way Crosshair Sync)
+    // Crosshair synced to hoveredCell
     if (
       hoveredCell &&
       hoveredCell.r >= 0 &&
@@ -327,8 +370,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
       const px = xFor(axisIdx);
 
       ctx.save();
-      // Vertical crosshair line
-      ctx.strokeStyle = 'rgba(34, 211, 238, 0.45)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
@@ -340,23 +382,20 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
       if (val !== null && val !== undefined && Number.isFinite(val)) {
         const py = yFor(val);
 
-        // Horizontal hairline
-        ctx.strokeStyle = 'rgba(34, 211, 238, 0.25)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
         ctx.beginPath();
         ctx.moveTo(padL, py);
         ctx.lineTo(padL + plotW, py);
         ctx.stroke();
 
-        // Glow ring
         ctx.beginPath();
         ctx.arc(px, py, 9, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(34, 211, 238, 0.25)';
+        ctx.fillStyle = 'rgba(10, 132, 255, 0.28)';
         ctx.fill();
 
-        // Crisp dot
         ctx.beginPath();
-        ctx.arc(px, py, 4.2, 0, Math.PI * 2);
-        ctx.fillStyle = '#22d3ee';
+        ctx.arc(px, py, 4.0, 0, Math.PI * 2);
+        ctx.fillStyle = '#0a84ff';
         ctx.fill();
         ctx.lineWidth = 1.6;
         ctx.strokeStyle = '#ffffff';
@@ -422,24 +461,26 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
   const legendLabels = isCurves ? yLabels : xLabels;
 
   return (
-    <div className="flex flex-col h-full min-h-[240px] rounded-xl bg-[#141821] border border-white/10 overflow-hidden select-none">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/10 bg-white/[0.02]">
-        <div className="flex items-center gap-2">
-          <Activity className="w-3.5 h-3.5 text-[#2589ff]" />
-          <span className="text-xs font-semibold tracking-wide text-slate-200">2D Curves</span>
+    <div className="flex flex-col h-full min-h-[240px] rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden select-none">
+      {/* Clean Airy Header */}
+      <div className="flex items-center justify-between gap-3 px-3.5 py-2 border-b border-white/[0.065]">
+        <div className="flex items-center gap-2 min-w-0">
+          <Activity className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+          <span className="text-xs font-semibold tracking-[-0.01em] text-zinc-100 shrink-0">
+            2D Curves
+          </span>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {/* Curves / Slices segmented toggle */}
-          <div className="inline-flex rounded-md bg-[#0d1016] p-0.5 border border-white/10">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Curves / Slices segmented pill */}
+          <div className="inline-flex rounded-md bg-white/[0.05] p-0.5">
             <button
               type="button"
               onClick={() => setMode('curves')}
-              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all cursor-pointer ${
                 mode === 'curves'
-                  ? 'bg-[#2589ff] text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-[#0a84ff] text-white shadow-[0_1px_5px_rgba(10,132,255,0.35)]'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               Curves
@@ -447,38 +488,37 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
             <button
               type="button"
               onClick={() => setMode('slices')}
-              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all cursor-pointer ${
                 mode === 'slices'
-                  ? 'bg-[#2589ff] text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-[#0a84ff] text-white shadow-[0_1px_5px_rgba(10,132,255,0.35)]'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               Slices
             </button>
           </div>
 
-          {/* Show All toggle */}
           <button
             type="button"
             onClick={() => setShowAll((v) => !v)}
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
               showAll
-                ? 'bg-[#2589ff]/20 text-sky-300 border-[#2589ff]/45'
-                : 'bg-white/[0.04] text-slate-400 border-white/10 hover:text-slate-200'
+                ? 'bg-white/[0.12] text-zinc-100'
+                : 'bg-white/[0.045] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200'
             }`}
           >
             <Eye className="w-3 h-3" />
-            Show All
+            All
           </button>
 
           {compareValues && (
             <button
               type="button"
               onClick={() => setShowCompare((v) => !v)}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
                 showCompare
-                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                  : 'bg-white/[0.04] text-slate-400 border-white/10 hover:text-slate-200'
+                  ? 'bg-amber-500/15 text-amber-300'
+                  : 'bg-white/[0.045] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200'
               }`}
               title="Toggle dashed comparison curves"
             >
@@ -489,8 +529,8 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
         </div>
       </div>
 
-      {/* Canvas Area */}
-      <div ref={containerRef} className="relative flex-1 min-h-0 w-full">
+      {/* Canvas Well */}
+      <div ref={containerRef} className="relative flex-1 min-h-0 w-full bg-[#0f1014]">
         <canvas
           ref={canvasRef}
           className="block w-full h-full cursor-crosshair"
@@ -500,12 +540,12 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
 
         {/* Floating crosshair readout */}
         {hoveredCell && hoveredVal !== null && (
-          <div className="pointer-events-none absolute top-2 right-2.5 px-2.5 py-1 rounded-lg bg-[#0d1016]/90 border border-cyan-400/35 backdrop-blur-md shadow-lg flex items-center gap-2 text-[11px] font-mono tabular-nums">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]" />
-            <span className="text-slate-400">
+          <div className="pointer-events-none absolute top-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-[#121317]/90 border border-white/[0.08] backdrop-blur-md shadow-lg flex items-center gap-2 text-[11px] font-mono tabular-nums">
+            <span className="w-2 h-2 rounded-full bg-[#0a84ff] shadow-[0_0_8px_rgba(10,132,255,0.8)]" />
+            <span className="text-zinc-400">
               {yLabels[hoveredCell.r] ?? hoveredCell.r} × {xLabels[hoveredCell.c] ?? hoveredCell.c}
             </span>
-            <span className="text-cyan-200 font-semibold">
+            <span className="text-zinc-100 font-semibold">
               {formatNum(hoveredVal, decimals)}
               {units ? ` ${units}` : ''}
             </span>
@@ -520,9 +560,9 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
       </div>
 
       {/* Row / Slice Legend */}
-      <div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-white/10 bg-[#0d1016]/50 overflow-x-auto">
-        <span className="text-[10px] uppercase tracking-wider text-slate-500 shrink-0 mr-1">
-          {isCurves ? 'Rows:' : 'Cols:'}
+      <div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-white/[0.065] bg-[#121317] overflow-x-auto">
+        <span className="text-[10px] uppercase tracking-wider text-zinc-500 shrink-0 mr-1">
+          {isCurves ? 'Rows' : 'Cols'}
         </span>
         {activeIndices.slice(0, 12).map((idx, pos) => {
           const color = SERIES_COLORS[pos % SERIES_COLORS.length];
@@ -531,20 +571,20 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
           return (
             <span
               key={idx}
-              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono tabular-nums shrink-0 border transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-md text-[10px] font-mono tabular-nums shrink-0 transition-colors ${
                 isHovered
-                  ? 'bg-white/10 text-white border-white/25'
-                  : 'bg-white/[0.03] text-slate-400 border-white/[0.06]'
+                  ? 'bg-white/[0.1] text-white'
+                  : 'bg-white/[0.03] text-zinc-400'
               }`}
             >
-              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
               {legendLabels[idx] ?? String(idx)}
             </span>
           );
         })}
         {activeIndices.length > 12 && (
-          <span className="text-[10px] font-mono text-slate-500 shrink-0">
-            +{activeIndices.length - 12} more
+          <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+            +{activeIndices.length - 12}
           </span>
         )}
       </div>

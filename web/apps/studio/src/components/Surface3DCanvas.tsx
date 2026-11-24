@@ -33,26 +33,28 @@ interface QuadFace {
   pts: [ProjectedPoint, ProjectedPoint, ProjectedPoint, ProjectedPoint];
   depth: number;
   t: number;
+  shade: number;
   isSelected: boolean;
   isHovered: boolean;
 }
 
-/** Smooth thermal color ramp: blue -> cyan -> green -> yellow -> orange -> red */
+/** Luminous jewel-tile thermal ramp matching MapEditorView */
+const THERMAL_STOPS: [number, number, number][] = [
+  [43, 100, 232],  // #2b64e8
+  [23, 168, 201],  // #17a8c9
+  [39, 176, 92],   // #27b05c
+  [217, 164, 22],  // #d9a416
+  [235, 110, 31],  // #eb6e1f
+  [224, 60, 72],   // #e03c48
+];
+
 function thermalRgb(tRaw: number): [number, number, number] {
   const t = Math.max(0, Math.min(1, Number.isFinite(tRaw) ? tRaw : 0.5));
-  const stops: [number, number, number][] = [
-    [30, 80, 210],   // 0.00 deep blue
-    [20, 184, 218],  // 0.22 cyan
-    [34, 197, 94],   // 0.45 green
-    [234, 179, 8],   // 0.68 yellow
-    [249, 115, 22],  // 0.85 orange
-    [239, 68, 68],   // 1.00 red
-  ];
-  const scaled = t * (stops.length - 1);
-  const idx = Math.min(stops.length - 2, Math.floor(scaled));
+  const scaled = t * (THERMAL_STOPS.length - 1);
+  const idx = Math.min(THERMAL_STOPS.length - 2, Math.floor(scaled));
   const frac = scaled - idx;
-  const a = stops[idx];
-  const b = stops[idx + 1];
+  const a = THERMAL_STOPS[idx];
+  const b = THERMAL_STOPS[idx + 1];
   return [
     Math.round(a[0] + (b[0] - a[0]) * frac),
     Math.round(a[1] + (b[1] - a[1]) * frac),
@@ -68,6 +70,9 @@ function formatNum(v: number, decimals: number): string {
 const DEFAULT_YAW = -0.72;
 const DEFAULT_PITCH = 0.54;
 const DEFAULT_ZOOM = 1.0;
+
+// Key light direction (normalized) for luminous 3D shading
+const LIGHT_DIR: Vec3 = { x: -0.35, y: 0.85, z: -0.39 };
 
 export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   values,
@@ -105,7 +110,6 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     startPitch: DEFAULT_PITCH,
   });
 
-  // Store projected vertices for pointer picking
   const projectedGridRef = useRef<{ r: number; c: number; sx: number; sy: number }[]>([]);
 
   useEffect(() => {
@@ -157,11 +161,9 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       const cosP = Math.cos(pitch);
       const sinP = Math.sin(pitch);
 
-      // Rotate around Y (vertical axis in 3D space is p.y)
       const rx = p.x * cosY - p.z * sinY;
       const rz1 = p.x * sinY + p.z * cosY;
 
-      // Rotate around X (pitch)
       const ry = p.y * cosP - rz1 * sinP;
       const rz = p.y * sinP + rz1 * cosP;
 
@@ -179,7 +181,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     [yaw, pitch, zoom],
   );
 
-  // Main render loop (runs whenever state or hoveredCell changes)
+  // Main render loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -194,16 +196,23 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     const W = size.w;
     const H = size.h;
 
-    // Background subtle radial glow
+    // Neutral obsidian canvas well with very subtle studio vignette
     ctx.clearRect(0, 0, W, H);
-    const bgGrad = ctx.createRadialGradient(W * 0.5, H * 0.45, 10, W * 0.5, H * 0.5, Math.max(W, H) * 0.65);
-    bgGrad.addColorStop(0, 'rgba(37, 137, 255, 0.06)');
-    bgGrad.addColorStop(1, 'rgba(13, 16, 22, 0)');
+    const bgGrad = ctx.createRadialGradient(
+      W * 0.5,
+      H * 0.42,
+      12,
+      W * 0.5,
+      H * 0.5,
+      Math.max(W, H) * 0.68,
+    );
+    bgGrad.addColorStop(0, 'rgba(255, 255, 255, 0.025)');
+    bgGrad.addColorStop(1, 'rgba(15, 16, 20, 0)');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, W, H);
 
     if (rows === 0 || cols === 0) {
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+      ctx.fillStyle = 'rgba(161, 161, 170, 0.6)';
       ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, monospace';
       ctx.textAlign = 'center';
       ctx.fillText('No table data', W / 2, H / 2);
@@ -223,9 +232,9 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       return yBase + t * yHeight;
     };
 
-    // Draw base floor grid
+    // Base floor grid
     ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
     ctx.lineWidth = 1;
     const gridSteps = 4;
     for (let i = 0; i <= gridSteps; i++) {
@@ -245,10 +254,10 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       ctx.stroke();
     }
 
-    // Draw Z (vertical) axis spine + ticks at back-left corner
+    // Z (vertical) axis spine + ticks
     const zAxisBase = projectPoint({ x: -xExtent, y: yBase, z: -zExtent }, W, H);
     const zAxisTop = projectPoint({ x: -xExtent, y: yBase + yHeight, z: -zExtent }, W, H);
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.28)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(zAxisBase.sx, zAxisBase.sy);
@@ -256,7 +265,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     ctx.stroke();
 
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
-    ctx.fillStyle = 'rgba(148, 163, 184, 0.75)';
+    ctx.fillStyle = 'rgba(161, 161, 170, 0.72)';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     for (let i = 0; i <= 3; i++) {
@@ -266,7 +275,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       ctx.fillText(formatNum(val, decimals), pt.sx - 6, pt.sy);
     }
 
-    // X-axis tick labels (along front edge z = +zExtent)
+    // X-axis tick labels
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const xTickCount = Math.min(cols, 4);
@@ -276,7 +285,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       ctx.fillText(xLabels[c] ?? String(c), pt.sx, pt.sy + 3);
     }
 
-    // Y-axis tick labels (along right edge x = +xExtent)
+    // Y-axis tick labels
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     const yTickCount = Math.min(rows, 4);
@@ -287,21 +296,26 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     }
     ctx.restore();
 
-    // Project all main surface vertices
+    // Project all main surface vertices and store world coords for normal lighting
+    const world: Vec3[][] = [];
     const proj: ProjectedPoint[][] = [];
     const pickList: { r: number; c: number; sx: number; sy: number }[] = [];
     for (let r = 0; r < rows; r++) {
+      const wRow: Vec3[] = [];
       const rowArr: ProjectedPoint[] = [];
       for (let c = 0; c < cols; c++) {
-        const pt = projectPoint({ x: toNormX(c), y: toNormY(values[r][c]), z: toNormZ(r) }, W, H);
+        const wPt: Vec3 = { x: toNormX(c), y: toNormY(values[r][c]), z: toNormZ(r) };
+        wRow.push(wPt);
+        const pt = projectPoint(wPt, W, H);
         rowArr.push(pt);
         pickList.push({ r, c, sx: pt.sx, sy: pt.sy });
       }
+      world.push(wRow);
       proj.push(rowArr);
     }
     projectedGridRef.current = pickList;
 
-    // Build and depth-sort surface quads (Painter's algorithm)
+    // Build and depth-sort surface quads with directional shading
     if (rows >= 2 && cols >= 2) {
       const faces: QuadFace[] = [];
       for (let r = 0; r < rows - 1; r++) {
@@ -310,6 +324,31 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
           const p01 = proj[r][c + 1];
           const p11 = proj[r + 1][c + 1];
           const p10 = proj[r + 1][c];
+
+          const w00 = world[r][c];
+          const w01 = world[r][c + 1];
+          const w10 = world[r + 1][c];
+
+          // Compute 3D surface normal via cross product (u × v)
+          const ux = w01.x - w00.x;
+          const uy = w01.y - w00.y;
+          const uz = w01.z - w00.z;
+          const vx = w10.x - w00.x;
+          const vy = w10.y - w00.y;
+          const vz = w10.z - w00.z;
+
+          let nx = uy * vz - uz * vy;
+          let ny = uz * vx - ux * vz;
+          let nz = ux * vy - uy * vx;
+          if (ny < 0) {
+            nx = -nx;
+            ny = -ny;
+            nz = -nz;
+          }
+          const nLen = Math.hypot(nx, ny, nz) || 1;
+          const ndotl = Math.max(0, (nx * LIGHT_DIR.x + ny * LIGHT_DIR.y + nz * LIGHT_DIR.z) / nLen);
+          // Luminous ambient + directional boost (0.76 .. 1.18)
+          const shade = 0.76 + ndotl * 0.42;
 
           const v00 = values[r][c] ?? minVal;
           const v01 = values[r][c + 1] ?? minVal;
@@ -340,17 +379,21 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             pts: [p00, p01, p11, p10],
             depth: (p00.depth + p01.depth + p11.depth + p10.depth) * 0.25,
             t,
+            shade,
             isSelected,
             isHovered,
           });
         }
       }
 
-      // Painter's sort: farthest depth first (larger depth = farther from camera)
       faces.sort((a, b) => b.depth - a.depth);
 
       for (const f of faces) {
-        const [red, green, blue] = thermalRgb(f.t);
+        const [baseR, baseG, baseB] = thermalRgb(f.t);
+        const red = Math.min(255, Math.round(baseR * f.shade));
+        const green = Math.min(255, Math.round(baseG * f.shade));
+        const blue = Math.min(255, Math.round(baseB * f.shade));
+
         ctx.beginPath();
         ctx.moveTo(f.pts[0].sx, f.pts[0].sy);
         ctx.lineTo(f.pts[1].sx, f.pts[1].sy);
@@ -358,19 +401,21 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
         ctx.lineTo(f.pts[3].sx, f.pts[3].sy);
         ctx.closePath();
 
-        ctx.fillStyle = `rgba(${red}, ${green}, ${blue}, ${f.isHovered ? 0.92 : f.isSelected ? 0.86 : 0.74})`;
+        ctx.fillStyle = `rgba(${red}, ${green}, ${blue}, ${
+          f.isHovered ? 0.96 : f.isSelected ? 0.94 : 0.88
+        })`;
         ctx.fill();
 
         ctx.strokeStyle = f.isHovered
-          ? 'rgba(56, 189, 248, 0.95)'
+          ? 'rgba(255, 255, 255, 0.92)'
           : f.isSelected
-            ? 'rgba(255, 255, 255, 0.55)'
-            : 'rgba(13, 16, 22, 0.55)';
-        ctx.lineWidth = f.isHovered ? 1.4 : 0.8;
+            ? 'rgba(255, 255, 255, 0.65)'
+            : 'rgba(15, 16, 20, 0.35)';
+        ctx.lineWidth = f.isHovered ? 1.4 : f.isSelected ? 1.1 : 0.7;
         ctx.stroke();
       }
     } else {
-      // 1D ribbon fallback (1×N or N×1)
+      // 1D ribbon fallback
       const isRow = rows === 1;
       const len = isRow ? cols : rows;
       for (let i = 0; i < len - 1; i++) {
@@ -407,7 +452,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     // Optional Comparison dashed wireframe overlay
     if (showCompare && compareValues && compareValues.length === rows) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(245, 158, 11, 0.68)';
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.65)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 3]);
 
@@ -443,7 +488,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       ctx.restore();
     }
 
-    // Glowing cyan beacon at hoveredCell (3-Way Crosshair Sync)
+    // Glowing beacon at hoveredCell (3-Way Crosshair Sync)
     if (
       hoveredCell &&
       hoveredCell.r >= 0 &&
@@ -457,9 +502,8 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       const basePt = projectPoint({ x: toNormX(hc), y: yBase, z: toNormZ(hr) }, W, H);
 
       ctx.save();
-      // Drop line to base plane
-      ctx.strokeStyle = 'rgba(34, 211, 238, 0.65)';
-      ctx.lineWidth = 1.25;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 1.15;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
       ctx.moveTo(basePt.sx, basePt.sy);
@@ -467,26 +511,23 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Base ring
       ctx.beginPath();
-      ctx.arc(basePt.sx, basePt.sy, 3.2, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(34, 211, 238, 0.45)';
+      ctx.arc(basePt.sx, basePt.sy, 2.8, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
       ctx.fill();
 
-      // Outer cyan halo
       const halo = ctx.createRadialGradient(pt.sx, pt.sy, 1, pt.sx, pt.sy, 14);
-      halo.addColorStop(0, 'rgba(34, 211, 238, 0.95)');
-      halo.addColorStop(0.45, 'rgba(34, 211, 238, 0.35)');
-      halo.addColorStop(1, 'rgba(34, 211, 238, 0)');
+      halo.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+      halo.addColorStop(0.45, 'rgba(10, 132, 255, 0.45)');
+      halo.addColorStop(1, 'rgba(10, 132, 255, 0)');
       ctx.fillStyle = halo;
       ctx.beginPath();
       ctx.arc(pt.sx, pt.sy, 14, 0, Math.PI * 2);
       ctx.fill();
 
-      // Crisp beacon core
       ctx.beginPath();
-      ctx.arc(pt.sx, pt.sy, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#22d3ee';
+      ctx.arc(pt.sx, pt.sy, 4.2, 0, Math.PI * 2);
+      ctx.fillStyle = '#0a84ff';
       ctx.fill();
       ctx.lineWidth = 1.75;
       ctx.strokeStyle = '#ffffff';
@@ -510,28 +551,25 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     projectPoint,
   ]);
 
-  const pickCellAt = useCallback(
-    (clientX: number, clientY: number): Cell | null => {
-      const canvas = canvasRef.current;
-      if (!canvas) return null;
-      const rect = canvas.getBoundingClientRect();
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
-      let best: Cell | null = null;
-      let bestDistSq = 18 * 18;
-      for (const pt of projectedGridRef.current) {
-        const dx = pt.sx - x;
-        const dy = pt.sy - y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < bestDistSq) {
-          bestDistSq = d2;
-          best = { r: pt.r, c: pt.c };
-        }
+  const pickCellAt = useCallback((clientX: number, clientY: number): Cell | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    let best: Cell | null = null;
+    let bestDistSq = 18 * 18;
+    for (const pt of projectedGridRef.current) {
+      const dx = pt.sx - x;
+      const dy = pt.sy - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestDistSq) {
+        bestDistSq = d2;
+        best = { r: pt.r, c: pt.c };
       }
-      return best;
-    },
-    [],
-  );
+    }
+    return best;
+  }, []);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -557,10 +595,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     }
     if (onHoverCell) {
       const picked = pickCellAt(e.clientX, e.clientY);
-      if (
-        picked?.r !== hoveredCell?.r ||
-        picked?.c !== hoveredCell?.c
-      ) {
+      if (picked?.r !== hoveredCell?.r || picked?.c !== hoveredCell?.c) {
         onHoverCell(picked);
       }
     }
@@ -587,30 +622,33 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       : null;
 
   return (
-    <div className="flex flex-col h-full min-h-[240px] rounded-xl bg-[#141821] border border-white/10 overflow-hidden select-none">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/[0.02]">
-        <div className="flex items-center gap-2">
-          <Box className="w-3.5 h-3.5 text-[#2589ff]" />
-          <span className="text-xs font-semibold tracking-wide text-slate-200">3D Surface</span>
-          <span className="text-[10px] font-mono text-slate-500 hidden xl:inline">
+    <div className="flex flex-col h-full min-h-[240px] rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden select-none">
+      {/* Clean Airy Header */}
+      <div className="flex items-center justify-between gap-3 px-3.5 py-2 border-b border-white/[0.065]">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Box className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+          <span className="text-xs font-semibold tracking-[-0.01em] text-zinc-100 shrink-0">
+            3D Surface
+          </span>
+          <span className="text-[10.5px] text-zinc-500 hidden xl:inline truncate">
             Drag to orbit · Scroll to zoom
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
+
+        <div className="flex items-center gap-1.5 shrink-0">
           {compareValues && (
             <button
               type="button"
               onClick={() => setShowCompare((v) => !v)}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
                 showCompare
-                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                  : 'bg-white/[0.04] text-slate-400 border-white/10 hover:text-slate-200'
+                  ? 'bg-amber-500/15 text-amber-300'
+                  : 'bg-white/[0.045] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200'
               }`}
               title="Toggle comparison wireframe overlay"
             >
               <Layers className="w-3 h-3" />
-              Comparison
+              Compare
             </button>
           )}
           <button
@@ -620,7 +658,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               setPitch(DEFAULT_PITCH);
               setZoom(DEFAULT_ZOOM);
             }}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/[0.04] text-slate-300 border border-white/10 hover:bg-white/[0.08] hover:text-white transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-white/[0.045] text-zinc-300 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
             title="Reset 3D camera"
           >
             <RotateCcw className="w-3 h-3" />
@@ -629,8 +667,8 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
         </div>
       </div>
 
-      {/* Canvas Viewport */}
-      <div ref={containerRef} className="relative flex-1 min-h-0 w-full">
+      {/* Canvas Well */}
+      <div ref={containerRef} className="relative flex-1 min-h-0 w-full bg-[#0f1014]">
         <canvas
           ref={canvasRef}
           className="block w-full h-full cursor-grab active:cursor-grabbing"
@@ -646,12 +684,12 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
 
         {/* Live Crosshair Readout Pill */}
         {hoveredCell && hoveredVal !== null && (
-          <div className="pointer-events-none absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-[#0d1016]/90 border border-cyan-400/35 backdrop-blur-md shadow-lg flex items-center gap-2 text-[11px] font-mono tabular-nums">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]" />
-            <span className="text-slate-400">
-              Y:{yLabels[hoveredCell.r] ?? hoveredCell.r} · X:{xLabels[hoveredCell.c] ?? hoveredCell.c}
+          <div className="pointer-events-none absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-[#121317]/90 border border-white/[0.08] backdrop-blur-md shadow-lg flex items-center gap-2 text-[11px] font-mono tabular-nums">
+            <span className="w-2 h-2 rounded-full bg-[#0a84ff] shadow-[0_0_8px_rgba(10,132,255,0.8)]" />
+            <span className="text-zinc-400">
+              {yLabels[hoveredCell.r] ?? hoveredCell.r} × {xLabels[hoveredCell.c] ?? hoveredCell.c}
             </span>
-            <span className="text-cyan-200 font-semibold">
+            <span className="text-zinc-100 font-semibold">
               {formatNum(hoveredVal, decimals)}
               {units ? ` ${units}` : ''}
             </span>
@@ -659,7 +697,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
         )}
 
         {/* Range badge */}
-        <div className="pointer-events-none absolute top-2 right-2.5 px-2 py-0.5 rounded bg-[#0d1016]/75 border border-white/10 text-[10px] font-mono tabular-nums text-slate-400">
+        <div className="pointer-events-none absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md bg-[#121317]/80 border border-white/[0.065] text-[10px] font-mono tabular-nums text-zinc-400">
           {formatNum(minVal, decimals)} – {formatNum(maxVal, decimals)}
           {units ? ` ${units}` : ''}
         </div>

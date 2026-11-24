@@ -25,8 +25,9 @@ import {
   findTwinMaps,
   fixChecksums,
   identifyECU,
+  importDefinition,
   layoutByteRange,
-  parseXDF,
+  parseBinaryFile,
   scanMaps,
   serializeXDF,
   verifyChecksums,
@@ -315,15 +316,16 @@ export default function App() {
     async (files: FileList | File[], asCompare = false) => {
       for (const file of Array.from(files)) {
         const lower = file.name.toLowerCase();
-        if (lower.endsWith('.xdf') || lower.endsWith('.xml')) {
+        if (lower.endsWith('.xdf') || lower.endsWith('.xml') || lower.endsWith('.a2l') || lower.endsWith('.csv')) {
           const text = await file.text();
-          const parsed = parseXDF(text);
+          const parsed = importDefinition(file.name, text);
           setXdf(parsed);
           setXdfName(file.name);
           setSelectedItemId(parsed.items[0]?.id ?? null);
-          showToast(`Loaded XDF: ${file.name} (${parsed.items.length} items)`);
+          showToast(`Loaded definition: ${file.name} (${parsed.items.length} items)`);
         } else {
-          const buf = new Uint8Array(await file.arrayBuffer());
+          const rawBuf = new Uint8Array(await file.arrayBuffer());
+          const buf = parseBinaryFile(file.name, rawBuf);
           if (asCompare) {
             setCompareBin(buf);
             setCompareName(file.name);
@@ -403,7 +405,7 @@ export default function App() {
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".bin,.ori,.mod,.hex,.xdf,.xml"
+        accept=".bin,.ori,.mod,.hex,.ihx,.s19,.s28,.s37,.srec,.xdf,.xml,.a2l,.csv"
         className="hidden"
         onChange={(e) => {
           if (e.target.files) void handleFiles(e.target.files, false);
@@ -422,38 +424,38 @@ export default function App() {
       />
 
       {/* Top Native-Style Title & Workbench Bar */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 bg-[#121620]/95 px-4 backdrop-blur-md">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-blue-600 shadow-lg shadow-sky-500/20">
-            <Cpu className="h-4 w-4 text-white" />
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.065] bg-[#131418]/95 px-4 backdrop-blur-xl">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-b from-[#2b95ff] to-[#0066dc] shadow-[0_2px_10px_rgba(10,132,255,0.35),inset_0_1px_0_rgba(255,255,255,0.28)]">
+            <Cpu className="h-3.5 w-3.5 text-white" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 leading-tight">
             <div className="flex items-center gap-2">
-              <span className="truncate text-xs font-semibold text-white">{binName}</span>
+              <span className="truncate text-[13px] font-semibold tracking-[-0.01em] text-white">{binName}</span>
               {undoStack.length > 0 && (
-                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
+                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9.5px] font-medium text-amber-300">
                   edited
                 </span>
               )}
             </div>
-            <div className="truncate text-[10px] text-slate-400">
-              {ecuIdentity.ecuFamily} · MacTuner Web
+            <div className="truncate text-[10.5px] text-zinc-400">
+              {ecuIdentity.ecuFamily} · MacTuner
             </div>
           </div>
         </div>
 
-        {/* Center 5-Mode Pill Navigation */}
-        <nav className="flex items-center gap-1 rounded-xl border border-white/10 bg-black/30 p-1">
+        {/* Center 5-Mode Apple Pro Segmented Navigation */}
+        <nav className="flex items-center gap-0.5 rounded-full border border-white/[0.07] bg-white/[0.035] p-0.5">
           {navItems.map((n) => {
             const active = section === n.id;
             return (
               <button
                 key={n.id}
                 onClick={() => setSection(n.id)}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-medium transition ${
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-medium transition-all ${
                   active
-                    ? 'bg-[#2589ff] text-white shadow-sm shadow-sky-500/30'
-                    : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                    ? 'bg-[#0a84ff] text-white shadow-[0_1px_8px_rgba(10,132,255,0.4)]'
+                    : 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100'
                 }`}
               >
                 {n.icon}
@@ -464,28 +466,28 @@ export default function App() {
         </nav>
 
         {/* Right Quick Actions */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setPaletteOpen(true)}
             title="Command Palette (⌘K)"
-            className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-white/10 hover:text-white"
+            className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-[11.5px] text-zinc-300 hover:bg-white/[0.09] hover:text-white transition"
           >
-            <Search className="h-3.5 w-3.5" />
-            <kbd className="font-mono text-[10px] text-slate-400">⌘K</kbd>
+            <Search className="h-3.5 w-3.5 text-zinc-400" />
+            <kbd className="font-mono text-[10px] text-zinc-400">⌘K</kbd>
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
             title="Open BIN or XDF"
-            className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-white/10"
+            className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-[11.5px] text-zinc-200 hover:bg-white/[0.09] transition"
           >
-            <FolderOpen className="h-3.5 w-3.5" />
+            <FolderOpen className="h-3.5 w-3.5 text-zinc-400" />
             <span className="hidden xl:inline">Open</span>
           </button>
           <button
             onClick={handleUndo}
             disabled={undoStack.length === 0}
             title="Undo (⌘Z)"
-            className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-30"
+            className="rounded-lg bg-white/[0.04] p-1.5 text-zinc-300 hover:bg-white/[0.09] disabled:opacity-25 transition"
           >
             <Undo2 className="h-3.5 w-3.5" />
           </button>
@@ -493,16 +495,16 @@ export default function App() {
             onClick={handleRedo}
             disabled={redoStack.length === 0}
             title="Redo (⇧⌘Z)"
-            className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-30"
+            className="rounded-lg bg-white/[0.04] p-1.5 text-zinc-300 hover:bg-white/[0.09] disabled:opacity-25 transition"
           >
             <Redo2 className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={handleExportXdf}
             title="Export XDF Definition"
-            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-white/10"
+            className="flex items-center gap-1 rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-[11.5px] text-zinc-200 hover:bg-white/[0.09] transition"
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className="h-3.5 w-3.5 text-zinc-400" />
             <span className="hidden xl:inline">XDF</span>
           </button>
         </div>
@@ -547,41 +549,41 @@ export default function App() {
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* Document Tab Strip */}
-          <div className="flex h-9 shrink-0 items-center justify-between border-b border-white/10 bg-[#0f131c] px-3">
-            <div className="flex items-center gap-2 overflow-x-auto">
+          <div className="flex h-8 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#101115] px-3">
+            <div className="flex items-center gap-1.5 overflow-x-auto">
               {xdf && (
-                <span className="flex items-center gap-1.5 rounded-md border border-purple-400/25 bg-purple-500/10 px-2.5 py-0.5 text-[11px] font-medium text-purple-200">
+                <span className="flex items-center gap-1.5 rounded-md bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-zinc-300">
                   <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
                   {xdfName}
                 </span>
               )}
-              <span className="flex items-center gap-1.5 rounded-md border border-sky-400/30 bg-sky-500/15 px-2.5 py-0.5 text-[11px] font-medium text-sky-200">
-                <span className="font-mono text-[10px] font-bold text-sky-400">L</span>
+              <span className="flex items-center gap-1.5 rounded-md bg-white/[0.07] px-2 py-0.5 text-[11px] font-medium text-zinc-100">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#0a84ff]" />
                 {binName}
               </span>
               {compareBin && (
-                <span className="flex items-center gap-1.5 rounded-md border border-amber-400/25 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-medium text-amber-200">
-                  <span className="font-mono text-[10px] font-bold text-amber-400">R</span>
+                <span className="flex items-center gap-1.5 rounded-md bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-zinc-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
                   {compareName}
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               {compareBin && (
                 <button
                   onClick={handleSwapBins}
                   title="Swap Active (L) and Comparison (R) BINs"
-                  className="rounded-md border border-white/10 bg-white/5 p-1 text-slate-300 hover:bg-white/10 hover:text-white"
+                  className="rounded-md p-1 text-zinc-400 hover:bg-white/[0.06] hover:text-white transition"
                 >
                   <ArrowLeftRight className="h-3.5 w-3.5" />
                 </button>
               )}
               <button
                 onClick={() => compareInputRef.current?.click()}
-                className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-slate-200 hover:bg-white/10"
+                className="flex items-center gap-1 rounded-md bg-white/[0.05] px-2 py-0.5 text-[11px] font-medium text-zinc-300 hover:bg-white/[0.09] hover:text-white transition"
               >
-                + Compare BIN
+                + BIN
               </button>
             </div>
           </div>
@@ -638,6 +640,11 @@ export default function App() {
                 xdf={xdf}
                 diffClusters={clusters}
                 onJumpToHex={handleJumpToHex}
+                onSelectMap={(id) => {
+                  setSelectedItemId(id);
+                  setSection('workspace');
+                  setWorkbenchMode('map');
+                }}
               />
             )}
 
@@ -648,9 +655,17 @@ export default function App() {
                 bytes={bin}
                 baselineBytes={compareBin}
                 fileName={binName}
+                compareName={compareName}
+                xdf={xdf}
                 blocks={uiChecksumBlocks}
                 tprotProtectedCount={checksumReport.tprotBlockCount}
                 onFixChecksums={handleFixChecksums}
+                onJumpToHex={handleJumpToHex}
+                onSelectMap={(id) => {
+                  setSelectedItemId(id);
+                  setSection('workspace');
+                  setWorkbenchMode('map');
+                }}
                 onReplaceBytes={(nextBytes, label) => {
                   setBin(nextBytes);
                   showToast(label);
@@ -662,7 +677,7 @@ export default function App() {
       </div>
 
       {/* Bottom Status Bar */}
-      <footer className="flex h-7 shrink-0 items-center justify-between border-t border-white/10 bg-[#0f131c] px-4 text-[11px] text-slate-400">
+      <footer className="flex h-7 shrink-0 items-center justify-between border-t border-white/[0.06] bg-[#101115] px-4 text-[11px] text-zinc-400">
         <div className="flex items-center gap-3 font-mono">
           <span className="font-semibold text-slate-200">{ecuIdentity.ecuFamily}</span>
           <span>·</span>
