@@ -23,6 +23,7 @@ import {
   verifyChecksums,
   type XDFDefinition,
 } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export interface PreSaveReviewModalProps {
   open: boolean;
@@ -73,6 +74,7 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
   onSaveInPlace,
   onSelectMap,
 }) => {
+  const { t } = useI18n();
   const effectiveBaseline = openedSnapshot ?? baselineBin;
 
   useEffect(() => {
@@ -241,7 +243,7 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
             </div>
             <div className="min-w-0">
               <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
-                Pre-Save Calibration Review
+                {t('Pre-Save Calibration Review')}
               </h2>
               <p className="text-[11px] font-mono text-zinc-400 truncate">
                 {fileName} · {Math.round(bin.length / 1024)} KB · {ecu.ecuFamily}
@@ -257,14 +259,14 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_2px_10px_rgba(10,132,255,0.35)] transition-colors cursor-pointer"
               >
                 <Wrench className="w-3.5 h-3.5" />
-                <span>Fix Checksums ({checksumSummary.invalidCount})</span>
+                <span>{t('Fix Checksums (%lld)', checksumSummary.invalidCount)}</span>
               </button>
             )}
             <button
               type="button"
               onClick={onClose}
               className="p-1.5 rounded-lg text-zinc-400 hover:bg-white/[0.06] hover:text-white transition-colors cursor-pointer"
-              title="Close"
+              title={t('Close')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -277,7 +279,7 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Changed Maps
+                {t('Changed Maps')}
               </div>
               <div className="mt-1 text-lg font-mono tabular-nums font-bold text-[#5ac8fa]">
                 {modifiedItems.length}
@@ -286,7 +288,7 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Modified Bytes
+                {t('Modified Bytes')}
               </div>
               <div className="mt-1 text-lg font-mono tabular-nums font-bold text-amber-400">
                 {modifiedByteCount.toLocaleString()} B
@@ -295,7 +297,7 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Checksums
+                {t('Checksums')}
               </div>
               <div
                 className={`mt-1 text-sm font-mono font-bold ${
@@ -303,23 +305,23 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
                 }`}
               >
                 {hasInvalidCs
-                  ? `${checksumSummary.invalidCount} Invalid`
-                  : `OK (${checksumSummary.totalBlocks})`}
+                  ? `${checksumSummary.invalidCount} ${t('Invalid')}`
+                  : `${t('OK')} (${checksumSummary.totalBlocks})`}
               </div>
             </div>
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                TPROT / RSA
+                {t('TPROT / RSA')}
               </div>
               <div className="mt-1 text-sm font-semibold flex items-center gap-1.5">
                 {ecu.hasTPROT ? (
                   <span className="text-amber-300 inline-flex items-center gap-1">
-                    <Lock className="w-3.5 h-3.5" /> Active
+                    <Lock className="w-3.5 h-3.5" /> {t('Active')}
                   </span>
                 ) : (
                   <span className="text-emerald-400 inline-flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Clear
+                    <CheckCircle2 className="w-3.5 h-3.5" /> {t('Clear')}
                   </span>
                 )}
               </div>
@@ -332,9 +334,8 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
               <div className="flex items-start gap-2.5 min-w-0">
                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                 <div className="text-xs text-rose-200/90 leading-relaxed">
-                  <strong>{checksumSummary.invalidCount} checksum block(s) invalid.</strong> Fix
-                  checksums before flashing, or ensure your flasher (KESS3 / Autotuner / Flex)
-                  recomputes checksums during write.
+                  <strong>{t('%lld checksum block(s) invalid.', checksumSummary.invalidCount)}</strong>{' '}
+                  {t('Fix checksums before flashing, or ensure your flasher (KESS3 / Autotuner / Flex) recomputes checksums during write.')}
                 </div>
               </div>
               {onFixChecksums && (
@@ -343,7 +344,7 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
                   onClick={onFixChecksums}
                   className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-semibold shrink-0 cursor-pointer"
                 >
-                  Fix Checksums
+                  {t('Fix Checksums')}
                 </button>
               )}
             </div>
@@ -353,11 +354,11 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                Change Summary
+                {t('Change Summary')}
               </h3>
               <span className="text-[11px] font-mono text-zinc-500">
-                {modifiedItems.length} map{modifiedItems.length === 1 ? '' : 's'}
-                {outsideByteCount > 0 ? ` + ${outsideByteCount} B outside XDF` : ''}
+                {modifiedItems.length} {t(modifiedItems.length === 1 ? 'map' : 'maps')}
+                {outsideByteCount > 0 ? ` + ${outsideByteCount} ${t('B outside XDF')}` : ''}
               </span>
             </div>
 
@@ -365,10 +366,10 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-8 text-center">
                 <CheckCircle2 className="w-7 h-7 text-emerald-400 mx-auto mb-2" />
                 <p className="text-xs font-medium text-zinc-200">
-                  No byte differences vs baseline binary
+                  {t('No byte differences vs baseline binary')}
                 </p>
                 <p className="text-[11px] text-zinc-500 mt-0.5">
-                  The exported .bin matches the comparison reference byte-for-byte.
+                  {t('The exported .bin matches the comparison reference byte-for-byte.')}
                 </p>
               </div>
             ) : (
@@ -424,10 +425,10 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
                       <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                       <div>
                         <div className="text-xs font-medium text-zinc-200">
-                          Changes Outside XDF Definition
+                          {t('Changes Outside XDF Definition')}
                         </div>
                         <div className="text-[10.5px] text-zinc-500">
-                          Includes checksum footers, undetected maps, or raw hex edits
+                          {t('Includes checksum footers, undetected maps, or raw hex edits')}
                         </div>
                       </div>
                     </div>
@@ -445,8 +446,8 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
         <div className="px-5 py-3.5 border-t border-white/[0.065] bg-[#17181d] flex items-center justify-between gap-3 flex-wrap">
           <span className="text-[11px] text-zinc-500">
             {openedSnapshot
-              ? 'Diffed against immutable opened baseline snapshot.'
-              : 'Non-destructive export — original baseline remains untouched.'}
+              ? t('Diffed against immutable opened baseline snapshot.')
+              : t('Non-destructive export — original baseline remains untouched.')}
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -454,7 +455,7 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
               onClick={onClose}
               className="px-3.5 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
             >
-              Cancel
+              {t('Cancel')}
             </button>
             {onSaveInPlace && (
               <button
@@ -466,7 +467,7 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.12] text-xs font-semibold text-white transition-all cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-[#5ac8fa]" />
-                <span>Save</span>
+                <span>{t('Save')}</span>
               </button>
             )}
             <button
@@ -482,7 +483,7 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
               }`}
             >
               <Download className="w-3.5 h-3.5" />
-              <span>{onSaveInPlace ? 'Save As…' : 'Confirm & Export .bin'}</span>
+              <span>{onSaveInPlace ? t('Save As…') : t('Confirm & Export .bin')}</span>
             </button>
           </div>
         </div>

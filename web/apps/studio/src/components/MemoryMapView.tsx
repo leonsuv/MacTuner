@@ -18,6 +18,7 @@ import {
   findSharedAxes,
   parsePflashPartitions,
 } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export interface FlashPartition {
   id: string;
@@ -102,6 +103,7 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
   onJumpToHex,
   onSelectMap,
 }) => {
+  const { t } = useI18n();
   const [subTab, setSubTab] = useState<MemorySubTab>('partitions');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [axisSearch, setAxisSearch] = useState<string>('');
@@ -199,7 +201,7 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
             }`}
           >
             <HardDrive className="w-3.5 h-3.5" />
-            <span>Flash Partitions</span>
+            <span>{t('Flash Partitions')}</span>
           </button>
           <button
             type="button"
@@ -211,7 +213,7 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
             }`}
           >
             <GitBranch className="w-3.5 h-3.5" />
-            <span>Shared-Axis Pool ({sharedAxes.length})</span>
+            <span>{t('Shared-Axis Pool')} ({sharedAxes.length})</span>
           </button>
         </div>
 
@@ -227,53 +229,53 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                <span>FLASH SIZE</span>
+                <span>{t('Flash Size')}</span>
                 <HardDrive className="w-3.5 h-3.5 text-[#0a84ff]" />
               </div>
               <div className="mt-2 text-xl font-mono tabular-nums font-bold text-white">
                 {formatSize(stats.totalSize)}
               </div>
               <div className="mt-0.5 text-[11px] font-mono tabular-nums text-zinc-500">
-                {stats.totalSize.toLocaleString()} bytes
+                {stats.totalSize.toLocaleString()} {t('bytes')}
               </div>
             </div>
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                <span>CALIBRATION</span>
+                <span>{t('Calibration')}</span>
                 <Layers className="w-3.5 h-3.5 text-emerald-400" />
               </div>
               <div className="mt-2 text-xl font-mono tabular-nums font-bold text-emerald-400">
                 {formatSize(stats.calBytes)}
               </div>
               <div className="mt-0.5 text-[11px] font-mono tabular-nums text-zinc-500">
-                {stats.totalSize > 0 ? ((stats.calBytes / stats.totalSize) * 100).toFixed(1) : '0.0'}% of flash
+                {stats.totalSize > 0 ? ((stats.calBytes / stats.totalSize) * 100).toFixed(1) : '0.0'}% {t('of flash')}
               </div>
             </div>
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                <span>MODIFIED BYTES</span>
+                <span>{t('Modified Bytes')}</span>
                 <Cpu className="w-3.5 h-3.5 text-amber-400" />
               </div>
               <div className="mt-2 text-xl font-mono tabular-nums font-bold text-amber-400">
                 {stats.modifiedBytes.toLocaleString()} B
               </div>
               <div className="mt-0.5 text-[11px] font-mono tabular-nums text-zinc-500">
-                {diffClusters.length} diff cluster{diffClusters.length === 1 ? '' : 's'}
+                {diffClusters.length} {t(diffClusters.length === 1 ? 'diff cluster' : 'diff clusters')}
               </div>
             </div>
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                <span>FREE SPACE</span>
+                <span>{t('Free Space')}</span>
                 <Database className="w-3.5 h-3.5 text-zinc-400" />
               </div>
               <div className="mt-2 text-xl font-mono tabular-nums font-bold text-zinc-200">
                 {formatSize(stats.freeBytes)}
               </div>
               <div className="mt-0.5 text-[11px] font-mono tabular-nums text-zinc-500">
-                0xFF / 0x00 padding
+                {t('0xFF / 0x00 padding')}
               </div>
             </div>
           </div>
@@ -283,10 +285,10 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div>
                 <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
-                  Flash Partition Layout
+                  {t('Flash Partition Layout')}
                 </h2>
                 <p className="text-xs text-zinc-400">
-                  Click any segment to jump directly to its start offset in the Hex Editor.
+                  {t('Click any segment to jump directly to its start offset in the Hex Editor.')}
                 </p>
               </div>
               {hoveredEntry ? (
@@ -368,7 +370,7 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
               ))}
               <div className="flex items-center gap-1.5 text-zinc-400 ml-auto">
                 <span className="w-3 h-1.5 rounded-sm bg-amber-400" />
-                <span className="text-[11px]">Modified region</span>
+                <span className="text-[11px]">{t('Modified region')}</span>
               </div>
             </div>
           </div>
@@ -377,21 +379,21 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
           <div className="rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div className="px-4 py-3 border-b border-white/[0.065] flex items-center justify-between">
               <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-                Sector / Partition Breakdown
+                {t('Sector / Partition Breakdown')}
               </h3>
               <span className="text-[11px] font-mono tabular-nums text-zinc-500">
-                {partitionMeta.length} regions
+                {partitionMeta.length} {t('regions')}
               </span>
             </div>
 
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-white/[0.065] bg-white/[0.02] text-[10.5px] uppercase tracking-wider text-zinc-500">
-                  <th className="py-2.5 px-4 font-semibold">Partition / Region</th>
-                  <th className="py-2.5 px-4 font-semibold">Address Range</th>
-                  <th className="py-2.5 px-4 font-semibold">Size</th>
-                  <th className="py-2.5 px-4 font-semibold">Status / Diff</th>
-                  <th className="py-2.5 px-4 font-semibold text-right">Action</th>
+                  <th className="py-2.5 px-4 font-semibold">{t('Partition / Region')}</th>
+                  <th className="py-2.5 px-4 font-semibold">{t('Address Range')}</th>
+                  <th className="py-2.5 px-4 font-semibold">{t('Size')}</th>
+                  <th className="py-2.5 px-4 font-semibold">{t('Status / Diff')}</th>
+                  <th className="py-2.5 px-4 font-semibold text-right">{t('Action')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.05] text-xs">
@@ -435,11 +437,11 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
                       {diffCount > 0 ? (
                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono tabular-nums text-[11px]">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                          {diffCount} B modified
+                          {diffCount} {t('B modified')}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/[0.04] text-zinc-400 border border-white/[0.065] text-[11px]">
-                          Unmodified
+                          {t('Unmodified')}
                         </span>
                       )}
                     </td>
@@ -450,7 +452,7 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.05] hover:bg-[#0a84ff]/20 hover:text-[#5ac8fa] text-zinc-200 border border-white/[0.08] text-[11px] font-medium transition-colors cursor-pointer"
                       >
                         <Binary className="w-3 h-3" />
-                        <span>In Hex</span>
+                        <span>{t('In Hex')}</span>
                       </button>
                     </td>
                   </tr>
@@ -471,11 +473,10 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
               </div>
               <div>
                 <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
-                  Shared-Axis Pool (COM_AXIS)
+                  {t('Shared-Axis Pool (COM_AXIS)')}
                 </h2>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  {sharedAxes.length} shared axis address{sharedAxes.length === 1 ? '' : 'es'} referenced by{' '}
-                  {totalSharedRefs} map axes. Editing a shared breakpoint updates every linked map simultaneously.
+                  {t('%lld shared axis addresses referenced by %lld map axes. Editing a shared breakpoint updates every linked map simultaneously.', sharedAxes.length, totalSharedRefs)}
                 </p>
               </div>
             </div>
@@ -486,14 +487,14 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
                   type="text"
                   value={axisSearch}
                   onChange={(e) => setAxisSearch(e.target.value)}
-                  placeholder="Filter address, unit, map..."
+                  placeholder={t('Filter address, unit, map...')}
                   className="pl-8 pr-3 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#0a84ff] w-56"
                 />
               </div>
               {sharedAxes.length > 0 && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-medium">
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  Coupled Breakpoints
+                  {t('Coupled Breakpoints')}
                 </span>
               )}
             </div>
@@ -504,15 +505,15 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
               <GitBranch className="w-9 h-9 text-zinc-600 mx-auto mb-3" />
               <h3 className="text-sm font-semibold text-zinc-200">
                 {sharedAxes.length > 0
-                  ? 'No shared axes match your search'
-                  : 'No shared COM_AXIS addresses found'}
+                  ? t('No shared axes match your search')
+                  : t('No shared COM_AXIS addresses found')}
               </h3>
               <p className="text-xs text-zinc-500 max-w-md mx-auto mt-1">
                 {sharedAxes.length > 0
-                  ? 'Try clearing the search query above.'
+                  ? t('Try clearing the search query above.')
                   : xdf
-                    ? 'All X/Y axes in the current XDF definition occupy distinct binary addresses.'
-                    : 'Load an XDF definition to analyze shared axis references across maps.'}
+                    ? t('All X/Y axes in the current XDF definition occupy distinct binary addresses.')
+                    : t('Load an XDF definition to analyze shared axis references across maps.')}
               </p>
             </div>
           ) : (
@@ -536,7 +537,7 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
                         </span>
                       )}
                       <span className="text-[11px] font-medium text-amber-300">
-                        {entry.referencingMaps.length} referencing maps
+                        {entry.referencingMaps.length} {t('referencing maps')}
                       </span>
                     </div>
 
@@ -546,13 +547,13 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.05] hover:bg-[#0a84ff]/20 hover:text-[#5ac8fa] text-zinc-200 border border-white/[0.08] text-[11px] font-medium transition-colors cursor-pointer"
                     >
                       <Binary className="w-3 h-3" />
-                      <span>Axis in Hex</span>
+                      <span>{t('Axis in Hex')}</span>
                     </button>
                   </div>
 
                   {/* Breakpoint Preview */}
                   <div className="px-3 py-2 rounded-lg bg-[#0c0d10] border border-white/[0.06] font-mono tabular-nums text-xs text-zinc-300 overflow-x-auto">
-                    <span className="text-zinc-500 mr-2 select-none">Breakpoints:</span>
+                    <span className="text-zinc-500 mr-2 select-none">{t('Breakpoints:')}</span>
                     {entry.preview}
                     {entry.units ? <span className="text-zinc-500 ml-1.5">{entry.units}</span> : null}
                   </div>

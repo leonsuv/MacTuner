@@ -21,6 +21,7 @@ import {
   type MapCandidate,
   type XDFItem,
 } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export type HeatmapPalette = CoreHeatmapPalette | 'thermal' | 'ocean' | 'grayscale';
 
@@ -156,6 +157,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
   onIgnoreCandidate,
   heatmapPalette = 'thermal',
 }) => {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const activeLayout = xdfItem ? xdfItem.data : candidate ? candidate.layout : null;
@@ -181,6 +183,27 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
     const values = new Float64Array(rows * cols);
     const diffs = new Uint8Array(rows * cols);
 
+    // Auto-detect two's-complement signed 16-bit candidate maps crossing zero
+    // (e.g. 0xFF78 = -136 next to 0x0089 = +137, which otherwise renders red + black as unsigned)
+    let effectiveLayout = activeLayout;
+    if (!xdfItem && activeLayout.bits === 16 && !activeLayout.signed && !activeLayout.isFloat) {
+      let hasHighNeg = false;
+      let hasLowPos = false;
+      let hasMidRange = false;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const raw = BinCodec.raw(activeLayout, { r, c }, bin);
+          if (raw === null) continue;
+          if (raw >= 0xe000 && raw <= 0xffff) hasHighNeg = true;
+          else if (raw > 0 && raw <= 0x2000) hasLowPos = true;
+          else if (raw > 0x4000 && raw < 0xc000) hasMidRange = true;
+        }
+      }
+      if (hasHighNeg && hasLowPos && !hasMidRange) {
+        effectiveLayout = { ...activeLayout, signed: true };
+      }
+    }
+
     let min = Infinity;
     let max = -Infinity;
     let sum = 0;
@@ -191,7 +214,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const idx = r * cols + c;
-        const raw = BinCodec.raw(activeLayout, { r, c }, bin);
+        const raw = BinCodec.raw(effectiveLayout, { r, c }, bin);
         const v =
           raw !== null && Number.isFinite(raw)
             ? xdfItem
@@ -208,7 +231,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
           values[idx] = 0;
         }
         if (compareBin) {
-          const craw = BinCodec.raw(activeLayout, { r, c }, compareBin);
+          const craw = BinCodec.raw(effectiveLayout, { r, c }, compareBin);
           if (craw !== null && raw !== null && craw !== raw) {
             diffs[idx] = 1;
             diffCells++;
@@ -442,7 +465,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
             <button
               type="button"
               onClick={onUnpin}
-              title="Unpin HUD"
+              title={t('Unpin HUD')}
               className="rounded p-0.5 text-zinc-400 hover:bg-white/[0.1] hover:text-white cursor-pointer"
             >
               <X className="h-3.5 w-3.5" />
@@ -456,17 +479,17 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
         {isXdf ? (
           <span className="inline-flex items-center gap-1 rounded-md border border-[#0a84ff]/30 bg-[#0a84ff]/15 px-1.5 py-0.5 text-[10px] font-medium text-sky-200">
             <Table2 className="h-3 w-3" />
-            XDF Map
+            {t('XDF Map')}
           </span>
         ) : hasHeaderProof ? (
           <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/25 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
             <CheckCircle2 className="h-3 w-3" />
-            Header Proof
+            {t('Header Proof')}
           </span>
         ) : (
           <span className="inline-flex items-center gap-1 rounded-md border border-white/[0.065] bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
             <Layers className="h-3 w-3 text-zinc-400" />
-            {candidate?.evidence ?? 'Pattern'}
+            {candidate?.evidence ? t(candidate.evidence) : t('Pattern')}
           </span>
         )}
         <span className="rounded-md border border-white/[0.065] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
@@ -491,15 +514,15 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
       {/* Min / Avg / Max stats */}
       <div className="mb-2 grid grid-cols-3 gap-1.5 rounded-lg border border-white/[0.065] bg-[#101115]/90 px-2.5 py-1.5 font-mono text-[10px] tabular-nums">
         <div>
-          <div className="text-[9px] uppercase tracking-wider text-zinc-500">Min</div>
+          <div className="text-[9px] uppercase tracking-wider text-zinc-500">{t('Min')}</div>
           <div className="font-semibold text-sky-300">{formatNum(stats.min, isFloat)}</div>
         </div>
         <div>
-          <div className="text-[9px] uppercase tracking-wider text-zinc-500">Avg</div>
+          <div className="text-[9px] uppercase tracking-wider text-zinc-500">{t('Avg')}</div>
           <div className="font-semibold text-zinc-100">{formatNum(stats.avg, isFloat)}</div>
         </div>
         <div>
-          <div className="text-[9px] uppercase tracking-wider text-zinc-500">Max</div>
+          <div className="text-[9px] uppercase tracking-wider text-zinc-500">{t('Max')}</div>
           <div className="font-semibold text-amber-300">{formatNum(stats.max, isFloat)}</div>
         </div>
       </div>
@@ -509,7 +532,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
         <div className="flex items-center justify-between">
           <span className="inline-flex items-center gap-1 text-zinc-500">
             <Compass className="h-3 w-3 text-[#0a84ff]" />
-            Data
+            {t('Data')}
           </span>
           <span className="text-zinc-200">{formatHex(activeLayout.address)}</span>
         </div>
@@ -518,13 +541,13 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
           <div className="space-y-0.5 text-[9.5px] text-zinc-400">
             {xdfAxesPreview.x ? (
               <div className="flex items-center justify-between gap-2">
-                <span className="text-zinc-500">X Axis</span>
+                <span className="text-zinc-500">{t('X Axis')}</span>
                 <span className="truncate text-zinc-200">{xdfAxesPreview.x}</span>
               </div>
             ) : null}
             {xdfAxesPreview.y ? (
               <div className="flex items-center justify-between gap-2">
-                <span className="text-zinc-500">Y Axis</span>
+                <span className="text-zinc-500">{t('Y Axis')}</span>
                 <span className="truncate text-zinc-200">{xdfAxesPreview.y}</span>
               </div>
             ) : null}
@@ -552,7 +575,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
           <div className="flex items-center justify-between border-t border-white/[0.065] pt-1.5">
             <span className="inline-flex items-center gap-1 text-zinc-400">
               <GitCompareArrows className="h-3 w-3 text-amber-400" />
-              Diff vs Compare
+              {t('Diff vs Compare')}
             </span>
             <span
               className={
@@ -560,8 +583,8 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
               }
             >
               {stats.diffCells > 0
-                ? `${stats.diffCells} / ${stats.totalCells} cells`
-                : 'Identical'}
+                ? `${stats.diffCells} / ${stats.totalCells} ${t('cells')}`
+                : t('Identical')}
             </span>
           </div>
         )}
@@ -582,7 +605,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
                   className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-[#0a84ff]/45 bg-[#0a84ff]/20 px-2 py-1 text-[10.5px] font-medium text-sky-100 hover:bg-[#0a84ff]/35 cursor-pointer"
                 >
                   <Table2 className="h-3 w-3" />
-                  Open Editor
+                  {t('Open in Editor')}
                 </button>
               ) : null}
               {onSetCols ? (
@@ -592,7 +615,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
                   className="inline-flex items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.05] px-2 py-1 font-mono text-[10px] text-zinc-200 hover:bg-white/[0.12] cursor-pointer"
                 >
                   <Columns3 className="h-3 w-3" />
-                  Cols={activeLayout.cols}
+                  {t('Cols')}={activeLayout.cols}
                 </button>
               ) : null}
             </>
@@ -608,7 +631,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
                   className="inline-flex items-center gap-1 rounded-md border border-amber-400/40 bg-amber-500/20 px-2 py-1 text-[10.5px] font-medium text-amber-200 hover:bg-amber-500/30 cursor-pointer"
                 >
                   <FilePlus2 className="h-3 w-3" />
-                  Add to XDF
+                  {t('Add to XDF')}
                 </button>
               ) : null}
               {onEditInXdf ? (
@@ -621,7 +644,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
                   className="inline-flex items-center gap-1 rounded-md border border-[#0a84ff]/40 bg-[#0a84ff]/20 px-2 py-1 text-[10.5px] font-medium text-sky-200 hover:bg-[#0a84ff]/30 cursor-pointer"
                 >
                   <SlidersHorizontal className="h-3 w-3" />
-                  Edit in XDF…
+                  {t('Edit XDF')}
                 </button>
               ) : null}
               {onSetCols ? (
@@ -631,7 +654,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
                   className="inline-flex items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.05] px-2 py-1 font-mono text-[10px] text-zinc-200 hover:bg-white/[0.12] cursor-pointer"
                 >
                   <Columns3 className="h-3 w-3" />
-                  Cols={candidate.cols}
+                  {t('Cols')}={candidate.cols}
                 </button>
               ) : null}
               {onIgnoreCandidate ? (
@@ -644,7 +667,7 @@ export const HexMiniHud: React.FC<HexMiniHudProps> = ({
                   className="inline-flex items-center gap-1 rounded-md border border-rose-400/30 bg-rose-500/15 px-2 py-1 text-[10.5px] font-medium text-rose-300 hover:bg-rose-500/25 cursor-pointer"
                 >
                   <EyeOff className="h-3 w-3" />
-                  Ignore
+                  {t('Hide Candidate (Ignore)')}
                 </button>
               ) : null}
             </>

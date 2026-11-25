@@ -13,6 +13,7 @@ import {
   type XDFDefinition,
   type XDFItem,
 } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export type HexWordFormat =
   | 'u8'
@@ -141,6 +142,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
   onSelectCandidate,
   signed = false,
 }) => {
+  const { t } = useI18n();
   const waveCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const overviewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -750,7 +752,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
       {/* Mini header strip with Zoom, Pan, Sync Slider, and Entropy Toggle */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.065] bg-[#17181d] px-3 py-1 text-[10px]">
         <div className="flex flex-wrap items-center gap-2 font-mono text-zinc-400 tabular-nums">
-          <span className="font-sans text-[11px] font-medium text-zinc-200">2D Waveform</span>
+          <span className="font-sans text-[11px] font-medium text-zinc-200">{t('2D Waveform')}</span>
           <span className="text-zinc-400">
             {formatHexAddr(windowStart)} – {formatHexAddr(windowEnd)}
           </span>
@@ -761,7 +763,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
               type="button"
               onClick={() => zoomBy(-1)}
               disabled={sampleCount <= ZOOM_STEPS[0]}
-              title="Zoom In (fewer elements)"
+              title={t('Zoom In')}
               className="rounded p-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white disabled:opacity-30 cursor-pointer"
             >
               <Plus className="h-3 w-3" />
@@ -771,7 +773,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
               type="button"
               onClick={() => zoomBy(1)}
               disabled={sampleCount >= ZOOM_STEPS[ZOOM_STEPS.length - 1]}
-              title="Zoom Out (more elements)"
+              title={t('Zoom Out')}
               className="rounded p-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white disabled:opacity-30 cursor-pointer"
             >
               <Minus className="h-3 w-3" />
@@ -784,7 +786,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
               <button
                 type="button"
                 onClick={() => panWindow(-1)}
-                title="Pan Left"
+                title={t('Pan Left')}
                 className="rounded p-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
               >
                 <ChevronLeft className="h-3 w-3" />
@@ -792,7 +794,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
               <button
                 type="button"
                 onClick={() => panWindow(1)}
-                title="Pan Right"
+                title={t('Pan Right')}
                 className="rounded p-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
               >
                 <ChevronRight className="h-3 w-3" />
@@ -803,7 +805,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
           {/* Manual Compare Sync slider */}
           {compareBin ? (
             <div className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.065] bg-[#101115] px-1.5 py-0.5">
-              <span className="text-[9.5px] text-zinc-500">Sync</span>
+              <span className="text-[9.5px] text-zinc-500">{t('Sync')}</span>
               <input
                 type="range"
                 min={-4096}
@@ -812,7 +814,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
                 value={Math.max(-4096, Math.min(4096, compareShift))}
                 onChange={(e) => setCompareShift(Number(e.target.value))}
                 className="h-1 w-20 accent-[#0a84ff] cursor-pointer"
-                title="Manual Compare Sync Offset (-4096..+4096 B)"
+                title={t('Manual Compare Sync Offset (-4096..+4096 B)')}
               />
               <span
                 className={`w-12 text-right text-[9.5px] ${
@@ -825,7 +827,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
                 <button
                   type="button"
                   onClick={() => setCompareShift(0)}
-                  title="Reset Sync to 0"
+                  title={t('Reset sync offset to 0')}
                   className="rounded px-1 text-[9.5px] text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
                 >
                   <RotateCcw className="h-2.5 w-2.5" />
@@ -844,7 +846,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
             <>
               <span className="inline-flex items-center gap-1">
                 <span className="h-0 w-2.5 border-t-[1.5px] border-dashed border-[#f59e0b]" />
-                Cmp
+                {t('Cmp')}
               </span>
               <span className="inline-flex items-center gap-1 text-rose-300/90">
                 <span className="h-2 w-2 rounded-[2px] bg-rose-500/45" />+
@@ -858,7 +860,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
           <button
             type="button"
             onClick={() => setEntropyMode((v) => !v)}
-            title="Toggle Entropy Map vs Activity/Diff Overview"
+            title={t('Toggle Entropy Map vs Activity/Diff Overview')}
             className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer ${
               entropyMode
                 ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300'
@@ -866,7 +868,7 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
             }`}
           >
             <Sparkles className="h-2.5 w-2.5" />
-            Entropy
+            {t('Entropy')}
           </button>
         </div>
       </div>
@@ -949,10 +951,10 @@ export const Waveform2D: React.FC<Waveform2DProps> = ({
         />
         {entropyMode ? (
           <div className="pointer-events-none absolute right-2 top-0.5 flex items-center gap-2 rounded bg-[#0c0d10]/80 px-1.5 text-[9px] text-zinc-400">
-            <span className="text-indigo-300">Code</span>
-            <span className="text-emerald-300">Calib</span>
+            <span className="text-indigo-300">{t('Code')}</span>
+            <span className="text-emerald-300">{t('Calibration')}</span>
             <span className="text-amber-300">ASCII</span>
-            <span className="text-zinc-500">Empty</span>
+            <span className="text-zinc-500">{t('Empty')}</span>
           </div>
         ) : null}
       </div>

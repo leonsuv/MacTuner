@@ -40,6 +40,8 @@ import {
 import { HexContextMenu } from './HexContextMenu';
 import { HexMiniHud, type HeatmapPalette } from './HexMiniHud';
 import { Waveform2D, wordFormatBytes, type HexWordFormat } from './Waveform2D';
+import { getHeatmapCellColors, type HeatmapPalette as ScientificPalette } from '../lib/theme';
+import { useI18n } from '../lib/i18n';
 
 export interface HexBookmark {
   id: string;
@@ -80,6 +82,7 @@ export interface HexDiffCanvasProps {
   cols?: number;
   onColsChange?: (cols: number) => void;
   jumpNonce?: number;
+  isVisible?: boolean;
 }
 
 type NumberBase = 'hex' | 'dec' | 'bin';
@@ -854,6 +857,7 @@ const HexSurface3D: React.FC<HexSurface3DProps> = ({
   signed,
   onExit,
 }) => {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [yaw, setYaw] = useState<number>(-0.62);
@@ -1041,7 +1045,7 @@ const HexSurface3D: React.FC<HexSurface3DProps> = ({
       />
       <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-lg border border-white/[0.08] bg-[#17181d]/90 px-2.5 py-1.5 font-mono text-[11px] text-zinc-200 backdrop-blur-md">
         <Box className="h-3.5 w-3.5 text-[#0a84ff]" />
-        <span>3D Hex Surface</span>
+        <span>{t('3D Surface')}</span>
         <span className="text-sky-300">0x{formatHexAddr(startAddress)}</span>
         <span className="text-zinc-400">
           {grid.rCount}×{grid.cCount} ({wordFormat})
@@ -1061,18 +1065,18 @@ const HexSurface3D: React.FC<HexSurface3DProps> = ({
           className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-[#17181d]/90 px-2 py-1 text-[11px] text-zinc-200 hover:bg-white/[0.1] cursor-pointer"
         >
           <RotateCcw className="h-3 w-3" />
-          Reset Orbit
+          {t('Reset')}
         </button>
         <button
           type="button"
           onClick={onExit}
           className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-[#17181d]/90 px-2 py-1 text-[11px] text-zinc-300 hover:bg-white/[0.1] cursor-pointer"
         >
-          Back to Hex
+          {t('Back to Hex')}
         </button>
       </div>
       <div className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-[#17181d]/80 px-2 py-1 text-[10px] text-zinc-400">
-        Drag to orbit · Scroll to zoom
+        {t('Adjust columns (M/W) & byte shift to align maps in 3D')}
       </div>
     </div>
   );
@@ -1106,7 +1110,9 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
   cols: controlledCols,
   onColsChange,
   jumpNonce,
+  isVisible = true,
 }) => {
+  const { t } = useI18n();
   const applyPatch = onPatchBytes ?? onApplyPatch;
 
   // Format, display, view mode & split state
@@ -1126,15 +1132,26 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
     }
   }, [controlledCols]);
 
+  const pendingAnchorAddrRef = useRef<number | null>(null);
+  const rowBytesRef = useRef<number>(16);
+
+  const captureAnchorAddr = useCallback(() => {
+    const rb = Math.max(1, rowBytesRef.current);
+    pendingAnchorAddrRef.current = topRowRef.current * rb;
+  }, []);
+
   const updateColCount = useCallback(
     (nextOrUpdater: number | ((prev: number) => number)) => {
       const prev = colCountRef.current;
       const raw = typeof nextOrUpdater === 'function' ? nextOrUpdater(prev) : nextOrUpdater;
       const clamped = Math.max(1, Math.min(32, Math.floor(raw)));
-      setColCount(clamped);
-      if (clamped !== prev) onColsChange?.(clamped);
+      if (clamped !== prev) {
+        captureAnchorAddr();
+        setColCount(clamped);
+        onColsChange?.(clamped);
+      }
     },
-    [onColsChange],
+    [onColsChange, captureAnchorAddr],
   );
   const [byteShift, setByteShift] = useState<number>(0);
   const [numberBase, setNumberBase] = useState<NumberBase>('hex');
@@ -1142,9 +1159,23 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
   const [compareShift, setCompareShift] = useState<number>(0);
   const [diffsOnly, setDiffsOnly] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<ViewMode>('text');
-  const [splitMode, setSplitMode] = useState<boolean>(true);
+  const [splitMode, setSplitMode] = useState<boolean>(() => compareBin !== null);
   const [rightPaneMode, setRightPaneMode] = useState<RightPaneMode>('val');
-  const [showBars, setShowBars] = useState<boolean>(false);
+  const [showBars, setShowBars] = useState<boolean>(true);
+
+  useEffect(() => {
+    setSplitMode(compareBin !== null);
+  }, [compareBin]);
+
+  const effectiveSplitMode = splitMode && compareBin !== null;
+  const showRightHeatmapBars = showBars;
+  const scientificPalette: ScientificPalette =
+    heatmapPalette === 'viridis' ||
+    heatmapPalette === 'cividis' ||
+    heatmapPalette === 'plasma' ||
+    heatmapPalette === 'high-contrast'
+      ? heatmapPalette
+      : 'classic';
 
   // Navigation, search, bookmarks
   const [gotoInput, setGotoInput] = useState<string>('');
@@ -1165,6 +1196,9 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
 
   // Virtual scroll, hover, pin, context menu, right column resize
   const [topRow, setTopRow] = useState<number>(0);
+  const topRowRef = useRef<number>(0);
+  topRowRef.current = topRow;
+  const savedScrollTopRef = useRef<number>(0);
   const [viewportHeight, setViewportHeight] = useState<number>(572);
   const [hover, setHover] = useState<HoverState | null>(null);
   const [pinnedHud, setPinnedHud] = useState<PinnedHudState | null>(null);
@@ -1198,7 +1232,8 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const wordBytes = wordFormatBytes(wordFormat);
-  const rowBytes = colCount * wordBytes;
+  const rowBytes = Math.max(1, colCount * wordBytes);
+  rowBytesRef.current = rowBytes;
 
   // Reset local rescanned candidates when binary changes
   useEffect(() => {
@@ -1448,14 +1483,48 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
       : 1;
 
   useEffect(() => {
+    if (!isVisible || viewMode !== 'text') return;
     const el = scrollContainerRef.current;
     if (!el) return;
-    const update = () => setViewportHeight(el.clientHeight || 572);
+    const update = () => {
+      if (el.clientHeight > 0) setViewportHeight(el.clientHeight);
+    };
     update();
+    // Restore exact scroll position when returning from 2D / 3D mode OR hidden→visible tab switch
+    const targetTop =
+      savedScrollTopRef.current > 0
+        ? savedScrollTopRef.current
+        : (topRowRef.current * ROW_HEIGHT) / Math.max(1, scrollScale);
+    el.scrollTop = targetTop;
+    const raf = requestAnimationFrame(() => {
+      if (scrollContainerRef.current && scrollContainerRef.current.clientHeight > 0) {
+        scrollContainerRef.current.scrollTop = targetTop;
+        update();
+      }
+    });
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [viewMode]);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [viewMode, isVisible, scrollScale]);
+
+  // Keep viewport anchored to the same byte address when colCount or wordFormat changes
+  useEffect(() => {
+    if (pendingAnchorAddrRef.current === null) return;
+    const anchor = pendingAnchorAddrRef.current;
+    pendingAnchorAddrRef.current = null;
+    const clampedAddr = Math.max(0, Math.min(Math.max(0, bin.length - 1), anchor));
+    const nextRow = Math.floor(clampedAddr / Math.max(1, rowBytes));
+    const clampedRow = Math.max(0, Math.min(totalDisplayRows - 1, nextRow));
+    setTopRow(clampedRow);
+    const targetTop = (clampedRow * ROW_HEIGHT) / Math.max(1, scrollScale);
+    savedScrollTopRef.current = targetTop;
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = targetTop;
+    }
+  }, [rowBytes, bin.length, totalDisplayRows, scrollScale]);
 
   const scrollToDisplayRow = useCallback(
     (displayRow: number) => {
@@ -1464,6 +1533,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
       const el = scrollContainerRef.current;
       if (el) {
         const targetScrollTop = (clamped * ROW_HEIGHT) / Math.max(1, scrollScale);
+        savedScrollTopRef.current = targetScrollTop;
         el.scrollTop = targetScrollTop;
       }
     },
@@ -1490,14 +1560,19 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
     [bin.length, rowBytes, diffsOnly, compareBin, diffStats.diffRows, scrollToDisplayRow],
   );
 
+  const scrollToAddressRef = useRef(scrollToAddress);
+  scrollToAddressRef.current = scrollToAddress;
+
   useEffect(() => {
     if (jumpAddress !== null && Number.isFinite(jumpAddress)) {
-      scrollToAddress(jumpAddress);
+      scrollToAddressRef.current(jumpAddress);
     }
-  }, [jumpAddress, jumpNonce, scrollToAddress]);
+  }, [jumpAddress, jumpNonce]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (!isVisible || e.currentTarget.clientHeight === 0) return;
     const st = e.currentTarget.scrollTop;
+    savedScrollTopRef.current = st;
     const nextTop = Math.floor((st * scrollScale) / ROW_HEIGHT);
     const maxTop = Math.max(0, totalDisplayRows - 1);
     setTopRow(Math.max(0, Math.min(maxTop, nextTop)));
@@ -1932,12 +2007,14 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
       } else if (k === 'w') {
         e.preventDefault();
         updateColCount((c) => Math.min(32, c + 1));
-      } else if (e.key === '[') {
+      } else if (e.key === '[' || e.key === '{') {
         e.preventDefault();
-        setByteShift((s) => (s - 1 + rowBytes) % Math.max(1, rowBytes));
-      } else if (e.key === ']') {
+        const step = e.shiftKey || e.key === '{' ? 1 : wordBytes;
+        setByteShift((s) => (s - step + rowBytes) % Math.max(1, rowBytes));
+      } else if (e.key === ']' || e.key === '}') {
         e.preventDefault();
-        setByteShift((s) => (s + 1) % Math.max(1, rowBytes));
+        const step = e.shiftKey || e.key === '}' ? 1 : wordBytes;
+        setByteShift((s) => (s + step) % Math.max(1, rowBytes));
       }
     };
     window.addEventListener('keydown', onKey);
@@ -1966,9 +2043,34 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
 
   const cellGapCls = colCount <= 8 ? 'gap-1.5' : 'gap-1';
 
-  const gridTemplateColumns = splitMode
-    ? `72px 1fr 28px 1fr ${rightColWidth}px`
-    : `72px 1fr ${rightColWidth}px`;
+  const gridTemplateColumns = effectiveSplitMode
+    ? showRightHeatmapBars
+      ? `72px 1fr 24px 1fr 144px ${rightColWidth}px`
+      : `72px 1fr 24px 1fr ${rightColWidth}px`
+    : showRightHeatmapBars
+      ? `72px minmax(360px, 1.45fr) minmax(140px, 0.55fr) ${rightColWidth}px`
+      : `72px 1fr ${rightColWidth}px`;
+
+  // Dynamic min/max across visible rows for Swift-style right-side 2D Heatmap bar-graph
+  const visibleValueRange = useMemo(() => {
+    if (!showRightHeatmapBars || visibleRawRows.length === 0) return { min: 0, span: 1 };
+    let visMin = Infinity;
+    let visMax = -Infinity;
+    for (let r = 0; r < visibleRawRows.length; r++) {
+      const base = visibleRawRows[r].address + byteShift;
+      for (let c = 0; c < colCount; c++) {
+        const v = readWordNumeric(bin, base + c * wordBytes, wordFormat, isSigned);
+        if (v !== null && Number.isFinite(v)) {
+          if (v < visMin) visMin = v;
+          if (v > visMax) visMax = v;
+        }
+      }
+    }
+    if (!Number.isFinite(visMin) || !Number.isFinite(visMax) || visMax <= visMin) {
+      return { min: 0, span: 1 };
+    }
+    return { min: visMin, span: visMax - visMin };
+  }, [showRightHeatmapBars, visibleRawRows, bin, byteShift, colCount, wordBytes, wordFormat, isSigned]);
 
   // Compute 3D preview params
   const surface3DParams = useMemo(() => {
@@ -1992,7 +2094,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
           <div className="inline-flex rounded-lg border border-white/[0.065] bg-[#101115] p-0.5 text-[11px] font-medium">
             {(
               [
-                ['text', 'Text'],
+                ['text', t('Text')],
                 ['2d', '2D'],
                 ['3d', '3D'],
               ] as const
@@ -2018,7 +2120,10 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
           {/* Data Format Selector (7 formats) */}
           <select
             value={wordFormat}
-            onChange={(e) => setWordFormat(e.target.value as HexWordFormat)}
+            onChange={(e) => {
+              captureAnchorAddr();
+              setWordFormat(e.target.value as HexWordFormat);
+            }}
             title="Word Data Format"
             className="rounded-lg border border-white/[0.065] bg-[#101115] px-2 py-1 font-mono text-[11px] text-zinc-100 outline-none focus:border-[#0a84ff] cursor-pointer"
           >
@@ -2084,7 +2189,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                 const v = parseInt(e.target.value, 10);
                 if (Number.isFinite(v)) updateColCount(Math.max(1, Math.min(32, v)));
               }}
-              className="w-7 bg-transparent text-center text-zinc-100 outline-none [appearance:textfield]"
+              className="w-7 bg-transparent text-center text-zinc-100 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <span className="pr-1 text-[10px] text-zinc-500">col</span>
             <button
@@ -2096,14 +2201,17 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             </button>
           </div>
 
-          {/* Byte Shift ([ / ]) */}
+          {/* Byte Shift ([ / ] = word-aligned, Shift+[ / ] = ±1B odd-byte align) */}
           <div
             className="inline-flex items-center rounded-lg border border-white/[0.065] bg-[#101115] p-0.5 font-mono text-[11px]"
-            title="Shift row start by bytes (shortcuts [ / ] · click value to reset)"
+            title={`Shift row start by ±${wordBytes}B (Shift-click or Shift+[ / ] for ±1B odd-byte align · click value to reset)`}
           >
             <button
               type="button"
-              onClick={() => setByteShift((s) => (s - 1 + rowBytes) % Math.max(1, rowBytes))}
+              onClick={(e) => {
+                const step = e.shiftKey ? 1 : wordBytes;
+                setByteShift((s) => (s - step + rowBytes) % Math.max(1, rowBytes));
+              }}
               className="rounded px-1 py-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
             >
               ◀
@@ -2114,13 +2222,16 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
               className={`px-1 py-0.5 tabular-nums cursor-pointer ${
                 byteShift !== 0 ? 'font-semibold text-amber-300' : 'text-zinc-400 hover:text-zinc-200'
               }`}
-              title="Click to reset shift to +0"
+              title="Click to reset shift to +0B"
             >
               +{byteShift}B
             </button>
             <button
               type="button"
-              onClick={() => setByteShift((s) => (s + 1) % Math.max(1, rowBytes))}
+              onClick={(e) => {
+                const step = e.shiftKey ? 1 : wordBytes;
+                setByteShift((s) => (s + step) % Math.max(1, rowBytes));
+              }}
               className="rounded px-1 py-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
             >
               ▶
@@ -2132,15 +2243,24 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             <button
               type="button"
               onClick={() => setSplitMode((v) => !v)}
-              title="Toggle Split / Single Pane"
-              className={`inline-flex items-center gap-1 rounded-[6px] px-1.5 py-0.5 cursor-pointer ${
-                splitMode ? 'bg-white/[0.1] text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+              disabled={!compareBin}
+              title={
+                compareBin
+                  ? 'Toggle Split / Single Pane'
+                  : 'Load a comparison BIN to enable Split Diff mode'
+              }
+              className={`inline-flex items-center gap-1 rounded-[6px] px-1.5 py-0.5 ${
+                !compareBin
+                  ? 'cursor-not-allowed text-zinc-500'
+                  : effectiveSplitMode
+                    ? 'bg-white/[0.1] text-zinc-100 cursor-pointer'
+                    : 'text-zinc-400 hover:text-zinc-200 cursor-pointer'
               }`}
             >
-              {splitMode ? <Columns2 className="h-3 w-3" /> : <Square className="h-3 w-3" />}
-              {splitMode ? 'Split' : 'Single'}
+              {effectiveSplitMode ? <Columns2 className="h-3 w-3" /> : <Square className="h-3 w-3" />}
+              {effectiveSplitMode ? t('Split') : t('Single')}
             </button>
-            {splitMode && compareBin ? (
+            {effectiveSplitMode ? (
               <div className="ml-1 inline-flex border-l border-white/[0.08] pl-1 font-mono text-[10px]">
                 {(
                   [
@@ -2169,7 +2289,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
           <button
             type="button"
             onClick={() => setShowBars((v) => !v)}
-            title="Toggle inline cell value spark-bars"
+            title={t('2D Bars')}
             className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10.5px] font-medium transition-colors cursor-pointer ${
               showBars
                 ? 'border-[#0a84ff]/50 bg-[#0a84ff]/20 text-sky-200'
@@ -2177,7 +2297,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             }`}
           >
             <BarChart2 className="h-3 w-3" />
-            Bars
+            {t('Bars')}
           </button>
 
           {/* Auto-Sync + Shift Pill + Sync=0 Reset */}
@@ -2186,10 +2306,10 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
               <button
                 type="button"
                 onClick={handleAutoSyncCompare}
-                title="Auto-align comparison BIN offset (±32 KB window)"
+                title={t('Auto-Sync')}
                 className="rounded-lg border border-white/[0.065] bg-[#101115] px-2 py-1 font-mono text-[10.5px] text-zinc-300 hover:bg-white/[0.08] hover:text-white cursor-pointer"
               >
-                Sync
+                {t('Sync')}
               </button>
               {compareShift !== 0 ? (
                 <>
@@ -2199,7 +2319,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                   <button
                     type="button"
                     onClick={() => setCompareShift(0)}
-                    title="Reset compare offset to 0"
+                    title={t('Reset sync offset to 0')}
                     className="rounded-md border border-white/[0.08] bg-[#101115] px-1.5 py-0.5 font-mono text-[10px] text-zinc-300 hover:bg-white/[0.1] hover:text-white cursor-pointer"
                   >
                     Sync=0
@@ -2228,7 +2348,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             }`}
           >
             <Filter className="h-3 w-3" />
-            Diffs Only
+            {t('Diffs Only')}
           </button>
 
           {compareBin ? (
@@ -2237,7 +2357,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                 type="button"
                 onClick={() => jumpDiff(-1)}
                 disabled={diffStats.clusters.length === 0}
-                title="Previous Diff"
+                title={t('Previous Difference')}
                 className="rounded p-0.5 text-zinc-300 hover:bg-white/[0.08] disabled:opacity-35 cursor-pointer"
               >
                 <ChevronUp className="h-3.5 w-3.5" />
@@ -2249,7 +2369,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                 type="button"
                 onClick={() => jumpDiff(1)}
                 disabled={diffStats.clusters.length === 0}
-                title="Next Diff"
+                title={t('Next Difference')}
                 className="rounded p-0.5 text-zinc-300 hover:bg-white/[0.08] disabled:opacity-35 cursor-pointer"
               >
                 <ChevronDown className="h-3.5 w-3.5" />
@@ -2262,7 +2382,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             <button
               type="button"
               onClick={() => setBookmarksOpen((v) => !v)}
-              title="Bookmarks"
+              title={t('Bookmarks in Hex Dump')}
               className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
                 bookmarksOpen || effectiveBookmarks.length > 0
                   ? 'border-amber-400/35 bg-amber-500/15 text-amber-200'
@@ -2276,7 +2396,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             {bookmarksOpen ? (
               <div className="glass-popover absolute right-0 top-full z-40 mt-1.5 w-68 rounded-xl p-2.5 text-zinc-100 shadow-2xl">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-zinc-200">Hex Bookmarks</span>
+                  <span className="text-[11px] font-semibold text-zinc-200">{t('Bookmarks in Hex Dump')}</span>
                   <button
                     type="button"
                     onClick={() => setBookmarksOpen(false)}
@@ -2291,7 +2411,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                     type="text"
                     value={bookmarkLabelInput}
                     onChange={(e) => setBookmarkLabelInput(e.target.value)}
-                    placeholder="Label (optional)"
+                    placeholder={t('Label (optional)')}
                     className="min-w-0 flex-1 rounded-md border border-white/[0.08] bg-[#101115] px-2 py-1 text-[11px] text-zinc-100 placeholder-zinc-500 outline-none focus:border-[#0a84ff]"
                   />
                   <button
@@ -2309,7 +2429,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                 </div>
 
                 {effectiveBookmarks.length === 0 ? (
-                  <div className="py-3 text-center text-[11px] text-zinc-500">No bookmarks yet.</div>
+                  <div className="py-3 text-center text-[11px] text-zinc-500">{t('No Bookmarks')}</div>
                 ) : (
                   <div className="max-h-44 space-y-1 overflow-y-auto">
                     {effectiveBookmarks.map((bm) => (
@@ -2339,7 +2459,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                     className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 py-1 text-[10.5px] font-medium text-rose-300 hover:bg-rose-500/20 cursor-pointer"
                   >
                     <Trash2 className="h-3 w-3" />
-                    Clear All Bookmarks
+                    {t('Clear All')}
                   </button>
                 ) : null}
               </div>
@@ -2355,7 +2475,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                 openDrawerAt(selectedRange?.[0] ?? windowStartAddress, drawerTab);
               }
             }}
-            title="Toggle Code XREFs & Disassembler"
+            title={t('Code References (XREFs)')}
             className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
               drawerOpen
                 ? 'border-[#0a84ff]/60 bg-[#0a84ff]/25 text-sky-100'
@@ -2363,7 +2483,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             }`}
           >
             <Cpu className="h-3 w-3" />
-            Code
+            {t('Code')}
           </button>
 
           <form onSubmit={handleGotoSubmit} className="relative flex items-center">
@@ -2372,7 +2492,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
               type="text"
               value={gotoInput}
               onChange={(e) => setGotoInput(e.target.value)}
-              placeholder="Go To 0x…"
+              placeholder={t('Go To 0x...')}
               className="w-24 rounded-lg border border-white/[0.065] bg-[#101115] py-1 pr-2 pl-6 font-mono text-[11px] text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-[#0a84ff]"
             />
           </form>
@@ -2398,7 +2518,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                   jumpSearchMatch(e.shiftKey ? -1 : 1);
                 }
               }}
-              placeholder='Search Hex / ?? / "Text"'
+              placeholder={t('Search (Hex/??/"Text")')}
               className="w-48 rounded-lg border border-white/[0.065] bg-[#101115] py-0.5 pr-6 pl-6 font-mono text-[10.5px] text-zinc-100 placeholder-zinc-500 outline-none focus:border-[#0a84ff]"
             />
             {searchQuery ? (
@@ -2427,7 +2547,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                 type="button"
                 disabled={searchMatches.offsets.length === 0}
                 onClick={() => jumpSearchMatch(-1)}
-                title="Previous Match"
+                title={t('Previous Match')}
                 className="rounded p-0.5 text-zinc-300 hover:bg-white/[0.08] disabled:opacity-30 cursor-pointer"
               >
                 <ChevronLeft className="h-3 w-3" />
@@ -2436,7 +2556,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                 type="button"
                 disabled={searchMatches.offsets.length === 0}
                 onClick={() => jumpSearchMatch(1)}
-                title="Next Match"
+                title={t('Next Match')}
                 className="rounded p-0.5 text-zinc-300 hover:bg-white/[0.08] disabled:opacity-30 cursor-pointer"
               >
                 <ChevronRight className="h-3 w-3" />
@@ -2450,7 +2570,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
           <button
             type="button"
             onClick={() => setShowCandidates((v) => !v)}
-            title="Toggle Potential Maps highlight (⌥P)"
+            title={t('Map Finder')}
             className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10.5px] font-medium transition-colors cursor-pointer ${
               showCandidates
                 ? 'border-amber-400/45 bg-amber-500/15 text-amber-200'
@@ -2458,7 +2578,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             }`}
           >
             <Sparkles className="h-3 w-3" />
-            Maps
+            {t('Maps')}
             <span className="font-mono text-[9.5px] opacity-75">⌥P</span>
           </button>
 
@@ -2468,7 +2588,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
               type="button"
               disabled={filteredCandidates.length === 0}
               onClick={() => jumpCandidate(-1)}
-              title="Previous Potential Map"
+              title={t('Previous Recognized Map')}
               className="rounded p-0.5 text-zinc-300 hover:bg-white/[0.08] disabled:opacity-30 cursor-pointer"
             >
               <ChevronLeft className="h-3 w-3" />
@@ -2482,7 +2602,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
               type="button"
               disabled={filteredCandidates.length === 0}
               onClick={() => jumpCandidate(1)}
-              title="Next Potential Map"
+              title={t('Next Recognized Map')}
               className="rounded p-0.5 text-zinc-300 hover:bg-white/[0.08] disabled:opacity-30 cursor-pointer"
             >
               <ChevronRight className="h-3 w-3" />
@@ -2517,7 +2637,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
           <div className="inline-flex rounded-md border border-white/[0.065] bg-[#101115] p-0.5 text-[10px]">
             {(
               [
-                ['all', 'All'],
+                ['all', t('All')],
                 ['2d', '2D'],
                 ['1d', '1D'],
                 ['bosch', 'Bosch'],
@@ -2543,25 +2663,25 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
           <button
             type="button"
             onClick={() => setAutoColsOnJump((v) => !v)}
-            title="Automatically set hex columns & alignment when jumping to a map candidate"
+            title={t('Auto-align columns on jump')}
             className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium cursor-pointer ${
               autoColsOnJump
                 ? 'border-[#0a84ff]/45 bg-[#0a84ff]/15 text-sky-200'
                 : 'border-white/[0.065] bg-[#101115] text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            Auto-Cols
+            {t('Auto-Cols')}
           </button>
 
           {/* Rescan */}
           <button
             type="button"
             onClick={handleRescan}
-            title="Rescan binary for potential maps"
+            title={t('Rescan BIN')}
             className="inline-flex items-center gap-1 rounded-md border border-white/[0.065] bg-[#101115] px-1.5 py-0.5 text-[10px] text-zinc-300 hover:bg-white/[0.08] hover:text-white cursor-pointer"
           >
             <RefreshCw className="h-2.5 w-2.5" />
-            Rescan
+            {t('Rescan')}
           </button>
 
           {/* Restore Dismissed */}
@@ -2569,11 +2689,11 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             <button
               type="button"
               onClick={handleRestoreDismissed}
-              title="Restore ignored map candidates"
+              title={t('Restore Hidden (%lld)', dismissedCount)}
               className="inline-flex items-center gap-1 rounded-md border border-amber-400/35 bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-200 hover:bg-amber-500/25 cursor-pointer"
             >
               <RotateCcw className="h-2.5 w-2.5" />
-              Restore ({dismissedCount})
+              {t('Restore')} ({dismissedCount})
             </button>
           ) : null}
         </div>
@@ -2618,37 +2738,35 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             style={{ gridTemplateColumns }}
             className="grid shrink-0 items-center border-b border-white/[0.065] bg-[#17181d]/85 px-3 py-1.5 text-[11px] font-medium text-zinc-400"
           >
-            <div className="font-mono text-zinc-500">Address</div>
+            <div className="font-mono text-zinc-500">{t('Address')}</div>
             <div className="flex items-center gap-2 truncate pr-2">
               <span className="h-1.5 w-1.5 rounded-full bg-[#0a84ff] shadow-[0_0_6px_rgba(10,132,255,0.8)]" />
               <span className="truncate text-zinc-100">BIN · {binName}</span>
             </div>
-            {splitMode ? (
+            {effectiveSplitMode ? (
               <>
-                <div className="flex justify-center text-zinc-500" title="Click ← on changed rows to copy from Compare">
+                <div className="flex justify-center text-zinc-500" title={t('Copy Block from Compare (←)')}>
                   <GitCompareArrows className="h-3.5 w-3.5" />
                 </div>
                 <div className="flex items-center gap-2 truncate px-2">
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      compareBin
-                        ? 'bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.75)]'
-                        : 'bg-zinc-600'
-                    }`}
-                  />
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.75)]" />
                   <span className="truncate text-zinc-300">
-                    {compareBin
-                      ? `Comparison · ${compareName}${
-                          rightPaneMode === 'delta'
-                            ? ' (Δ)'
-                            : rightPaneMode === 'pct'
-                              ? ' (Δ%)'
-                              : ''
-                        }`
-                      : 'No Comparison Loaded'}
+                    {`${t('Comparison')} · ${compareName}${
+                      rightPaneMode === 'delta'
+                        ? ' (Δ)'
+                        : rightPaneMode === 'pct'
+                          ? ' (Δ%)'
+                          : ''
+                    }`}
                   </span>
                 </div>
               </>
+            ) : null}
+            {showRightHeatmapBars ? (
+              <div className="flex items-center gap-1.5 truncate border-l border-white/[0.04] px-2 text-zinc-400">
+                <BarChart2 className="h-3 w-3 text-amber-400" />
+                <span className="truncate">{t('2D Heatmap')}</span>
+              </div>
             ) : null}
             {/* Resizable Right Column Header */}
             <div className="relative flex items-center gap-1.5 pl-2.5 text-zinc-400">
@@ -2657,11 +2775,11 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                   e.preventDefault();
                   resizingRightColRef.current = { startX: e.clientX, startW: rightColWidth };
                 }}
-                title="Drag to resize XDF / Candidate column (140–340px)"
+                title={t('XDF Map / Detected')}
                 className="absolute inset-y-0 left-0 w-1.5 cursor-col-resize hover:bg-[#0a84ff]/50"
               />
               <Layers className="h-3 w-3 text-[#0a84ff]" />
-              <span className="truncate">XDF Map / Detected</span>
+              <span className="truncate">{t('XDF Map / Detected')}</span>
             </div>
           </div>
 
@@ -2675,7 +2793,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             >
               {totalDisplayRows === 0 ? (
                 <div className="flex h-full items-center justify-center text-xs text-zinc-500">
-                  {diffsOnly ? 'No differences between BIN and Comparison.' : 'Empty binary.'}
+                  {diffsOnly ? t('BIN and comparison BIN are byte-identical.') : t('Empty')}
                 </div>
               ) : (
                 <div style={{ height: virtualHeight, position: 'relative' }}>
@@ -2826,6 +2944,14 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                                   dragAnchorRef.current = off;
                                   onSelectRange([off, Math.min(bin.length, off + wordBytes)]);
                                 }}
+                                onDoubleClick={(e) => {
+                                  e.preventDefault();
+                                  if (xdfSpan?.item) {
+                                    onSelectXdfItem(xdfSpan.item.id);
+                                  } else if (span?.candidate) {
+                                    onAddCandidateToXdf(span.candidate, true);
+                                  }
+                                }}
                                 onMouseEnter={(e) => {
                                   setHover({
                                     address: off,
@@ -2858,20 +2984,14 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                                 }}
                                 className={`relative inline-flex h-[21px] cursor-pointer items-center justify-center overflow-hidden text-[11.5px] transition-colors ${cellWidthCls} ${cellCls}`}
                               >
-                                {showBars ? (
-                                  <span
-                                    style={{ width: `${barPct}%` }}
-                                    className="pointer-events-none absolute bottom-0 left-0 h-[2.5px] bg-sky-400/65"
-                                  />
-                                ) : null}
                                 {readWordFormatted(bin, off, wordFormat, numberBase, isSigned)}
                               </span>
                             );
                           })}
                         </div>
 
-                        {/* Center Diff 1-Click Transfer Gutter & Comparison Pane (Split mode) */}
-                        {splitMode ? (
+                        {/* Center Diff 1-Click Transfer Gutter & Comparison Pane (Split mode) OR Swift 2D Heatmap Bars (Single mode) */}
+                        {effectiveSplitMode ? (
                           <>
                             <div className="flex justify-center">
                               {rowHasDiff ? (
@@ -2998,13 +3118,45 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                                     </span>
                                   );
                                 })
-                              ) : (
-                                <span className="text-[11px] text-zinc-600 italic">
-                                  Load a comparison BIN to inspect byte diffs
-                                </span>
-                              )}
+                              ) : null}
                             </div>
                           </>
+                        ) : null}
+                        {showRightHeatmapBars ? (
+                          <div className="flex h-[20px] items-end gap-[1.5px] overflow-hidden border-l border-white/[0.04] px-2 py-[2px]">
+                            {Array.from({ length: colCount }, (_, colIdx) => {
+                              const off = address + byteShift + colIdx * wordBytes;
+                              const val =
+                                off + wordBytes <= bin.length
+                                  ? readWordNumeric(bin, off, wordFormat, isSigned)
+                                  : null;
+                              if (val === null || !Number.isFinite(val)) {
+                                return <span key={colIdx} className="h-[2px] flex-1 rounded-[1px] bg-white/[0.03]" />;
+                              }
+                              const norm = Math.max(
+                                0,
+                                Math.min(1, (val - visibleValueRange.min) / visibleValueRange.span),
+                              );
+                              const diff = isWordDiff(
+                                bin,
+                                compareBin,
+                                off,
+                                wordBytes,
+                                compareShift,
+                              );
+                              const heatBg = diff
+                                ? '#0a84ff'
+                                : getHeatmapCellColors(norm, scientificPalette).bg;
+                              const pct = Math.max(10, Math.round(norm * 100));
+                              return (
+                                <span
+                                  key={colIdx}
+                                  style={{ height: `${pct}%`, backgroundColor: heatBg }}
+                                  className="min-w-[2px] flex-1 rounded-t-[1.5px] opacity-90 transition-none"
+                                />
+                              );
+                            })}
+                          </div>
                         ) : null}
 
                         {/* Resizable Right XDF Map / Detected Candidate Annotation Column */}
@@ -3092,7 +3244,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                       }`}
                     >
                       <Cpu className="h-3 w-3" />
-                      Disassembler
+                      {t('Disassembler')}
                     </button>
                   </div>
 
@@ -3103,7 +3255,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                     <button
                       type="button"
                       onClick={() => setDrawerOpen(false)}
-                      title="Close drawer"
+                      title={t('Close')}
                       className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-zinc-100 cursor-pointer"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -3115,13 +3267,13 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                   <div className="flex min-h-0 flex-1 flex-col">
                     <div className="flex items-center justify-between border-b border-white/[0.065] bg-[#101115]/70 px-3 py-1.5 text-[11px] text-zinc-400">
                       <span>
-                        Code references to{' '}
+                        {t('Code References (XREFs)')}{' '}
                         <span className="font-mono font-medium text-zinc-200">
                           0x{formatHexAddr(drawerAddress)}
                         </span>
                       </span>
                       <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
-                        {xrefs.length} found
+                        {xrefs.length}
                       </span>
                     </div>
 
@@ -3130,10 +3282,10 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                         <div className="flex h-44 flex-col items-center justify-center rounded-xl border border-white/[0.065] bg-[#101115] px-4 text-center">
                           <Crosshair className="mb-2 h-5 w-5 text-zinc-600" />
                           <div className="text-xs font-medium text-zinc-300">
-                            No direct code references found
+                            {t('No direct code references found')}
                           </div>
                           <p className="mt-1 text-[11px] text-zinc-500">
-                            Try scanning a map start address or switch to the Disassembler tab.
+                            {t('Try scanning a map start address or switch to the Disassembler tab.')}
                           </p>
                         </div>
                       ) : (
@@ -3309,7 +3461,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
               ) : null}
             </>
           ) : (
-            <span className="text-zinc-500">Hover or drag to inspect bytes</span>
+            <span className="text-zinc-500">{t('Hover or drag to inspect bytes')}</span>
           )}
 
           {hasSelection && selectedRange ? (
@@ -3367,13 +3519,13 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
               className="inline-flex items-center gap-1 rounded-md border border-white/[0.065] bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-zinc-200 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35 cursor-pointer"
             >
               <Edit3 className="h-3 w-3" />
-              Edit…
+              {t('Edit…')}
             </button>
 
             {editPopoverOpen && hasSelection ? (
               <div className="glass-popover absolute bottom-full right-0 z-40 mb-2 w-64 rounded-xl p-2.5 text-zinc-100 shadow-2xl">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold">Edit / Fill Selection</span>
+                  <span className="text-[11px] font-semibold">{t('Edit / Fill Selection')}</span>
                   <button
                     type="button"
                     onClick={() => setEditPopoverOpen(false)}
@@ -3391,7 +3543,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleApplyInlineEdit();
                     }}
-                    placeholder={`Exact ${wordFormat} (${numberBase})`}
+                    placeholder={`${wordFormat} (${numberBase})`}
                     className="min-w-0 flex-1 rounded-md border border-white/[0.08] bg-[#101115] px-2 py-1 font-mono text-[11px] text-zinc-100 outline-none focus:border-[#0a84ff]"
                   />
                   <button
@@ -3399,12 +3551,12 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                     onClick={handleApplyInlineEdit}
                     className="rounded-md bg-[#0a84ff] px-2 py-1 text-[11px] font-medium text-white hover:bg-[#0a84ff]/85 cursor-pointer"
                   >
-                    Write
+                    {t('Apply')}
                   </button>
                 </div>
 
                 <div className="border-t border-white/[0.065] pt-2">
-                  <div className="mb-1 text-[10px] text-zinc-400">Quick Byte Fill</div>
+                  <div className="mb-1 text-[10px] text-zinc-400">{t('Fill:')}</div>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
@@ -3446,7 +3598,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                       }}
                       className="flex-1 rounded-md border border-amber-400/35 bg-amber-500/15 px-2 py-1 text-[10.5px] font-medium text-amber-200 hover:bg-amber-500/25 cursor-pointer"
                     >
-                      Fill
+                      {t('Fill')}
                     </button>
                   </div>
                 </div>
@@ -3461,7 +3613,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             className="inline-flex items-center gap-1 rounded-md border border-white/[0.065] bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-zinc-200 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35 cursor-pointer"
           >
             <Copy className="h-3 w-3" />
-            Copy Hex
+            {t('Copy Hex')}
           </button>
 
           <button
@@ -3471,7 +3623,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             className="inline-flex items-center gap-1 rounded-md border border-[#0a84ff]/35 bg-[#0a84ff]/15 px-2 py-1 text-[11px] font-medium text-sky-200 transition-colors hover:bg-[#0a84ff]/28 disabled:cursor-not-allowed disabled:opacity-35 cursor-pointer"
           >
             <ArrowLeft className="h-3 w-3" />
-            Cmp
+            {t('Cmp')}
           </button>
 
           {/* Inline Twins Results Popover */}
@@ -3486,13 +3638,13 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
               className="inline-flex items-center gap-1 rounded-md border border-white/[0.065] bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-zinc-200 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35 cursor-pointer"
             >
               <Search className="h-3 w-3" />
-              Twins
+              {t('Twins')}
             </button>
 
             {twinsPopoverOpen ? (
               <div className="glass-popover absolute bottom-full right-0 z-40 mb-2 w-64 rounded-xl p-2.5 text-zinc-100 shadow-2xl">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold">Twin Map Matches</span>
+                  <span className="text-[11px] font-semibold">{t('Parallel / Twin Maps (%lld)', twinMatches.length)}</span>
                   <button
                     type="button"
                     onClick={() => setTwinsPopoverOpen(false)}
@@ -3503,7 +3655,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                 </div>
                 {twinMatches.length === 0 ? (
                   <div className="py-3 text-center text-[11px] text-zinc-500">
-                    No twin blocks ≥ 86% found.
+                    {t('No identical or strongly correlated blocks found in the BIN.')}
                   </div>
                 ) : (
                   <div className="max-h-48 space-y-1 overflow-y-auto">
@@ -3538,7 +3690,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             className="inline-flex items-center gap-1 rounded-md border border-amber-400/35 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-200 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-35 cursor-pointer"
           >
             <PlusSquare className="h-3 w-3" />
-            Map from Selection…
+            {t('Map from Selection…')}
           </button>
         </div>
       </div>

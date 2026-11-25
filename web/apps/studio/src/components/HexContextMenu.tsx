@@ -23,6 +23,7 @@ import {
   Table2,
 } from 'lucide-react';
 import type { MapCandidate, XDFItem } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export interface HexContextMenuProps {
   x: number;
@@ -132,6 +133,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
   onResetByteShift,
   onAddBookmark,
 }) => {
+  const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number }>({ left: x, top: y });
 
@@ -213,7 +215,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onOpenXdfItem ? (
             <MenuItem
               icon={<Table2 className="h-3.5 w-3.5" />}
-              label={`Open ${xdfItem.title} in Editor`}
+              label={t('Open “%@” in Editor', xdfItem.title)}
               accent="blue"
               onClick={() => {
                 onOpenXdfItem(xdfItem);
@@ -224,7 +226,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onSelectXdfItemRange ? (
             <MenuItem
               icon={<Maximize2 className="h-3.5 w-3.5" />}
-              label="Select Entire Map"
+              label={t('Select Entire Map')}
               onClick={() => {
                 onSelectXdfItemRange(xdfItem);
                 onClose();
@@ -234,7 +236,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onCenterAddress ? (
             <MenuItem
               icon={<LocateFixed className="h-3.5 w-3.5" />}
-              label="Center in Hex"
+              label={t('Center in Hex Editor')}
               onClick={() => {
                 onCenterAddress(xdfItem.data.address);
                 onClose();
@@ -250,7 +252,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
         <>
           <MenuItem
             icon={<FilePlus2 className="h-3.5 w-3.5" />}
-            label="Add to XDF (1-Click)"
+            label={t('Add to XDF (1-Click)')}
             accent="amber"
             onClick={() => {
               onAddCandidateToXdf(candidate, false);
@@ -259,7 +261,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           />
           <MenuItem
             icon={<Table2 className="h-3.5 w-3.5" />}
-            label="Add to XDF & Open Editor"
+            label={t('Add to XDF & Open in Table Editor')}
             accent="blue"
             onClick={() => {
               onAddCandidateToXdf(candidate, true);
@@ -269,7 +271,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onCustomizeCandidateXdf ? (
             <MenuItem
               icon={<SlidersHorizontal className="h-3.5 w-3.5" />}
-              label="Customize & Save to XDF…"
+              label={t('Customize & Save as XDF Item …')}
               onClick={() => {
                 onCustomizeCandidateXdf(candidate);
                 onClose();
@@ -279,7 +281,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onSetCols ? (
             <MenuItem
               icon={<Columns3 className="h-3.5 w-3.5" />}
-              label={`Set Hex Columns to Width (cols=${candidate.cols})`}
+              label={t('Align Hex Columns to Map Width (Columns = %lld)', candidate.cols)}
               onClick={() => {
                 onSetCols(candidate.cols);
                 onClose();
@@ -288,7 +290,10 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           ) : null}
           <MenuItem
             icon={<Maximize2 className="h-3.5 w-3.5" />}
-            label="Select Whole Map"
+            label={t(
+              'Select whole map (%lld B)',
+              candidate.rows * candidate.cols * Math.max(1, Math.floor(candidate.bits / 8)),
+            )}
             onClick={() => {
               onSelectWholeMap(candidate);
               onClose();
@@ -298,7 +303,10 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           (candidate.xAxisAddress != null || candidate.yAxisAddress != null) ? (
             <MenuItem
               icon={<Layers className="h-3.5 w-3.5" />}
-              label="Select Map + Axes"
+              label={t(
+                'Select Map Including Axes (%lld B)',
+                candidate.rows * candidate.cols * Math.max(1, Math.floor(candidate.bits / 8)),
+              )}
               onClick={() => {
                 onSelectMapWithAxes(candidate);
                 onClose();
@@ -308,7 +316,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onPreview3D ? (
             <MenuItem
               icon={<Box className="h-3.5 w-3.5" />}
-              label="Preview in 3D Surface"
+              label={t('Open in 3D Surface Preview')}
               onClick={() => {
                 const eb = Math.max(1, Math.floor(candidate.bits / 8));
                 onPreview3D(
@@ -322,7 +330,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onFindTwins ? (
             <MenuItem
               icon={<Search className="h-3.5 w-3.5" />}
-              label="Find Twins"
+              label={t('Find Twins')}
               onClick={() => {
                 onSelectWholeMap(candidate);
                 onFindTwins();
@@ -333,7 +341,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onIgnoreCandidate ? (
             <MenuItem
               icon={<EyeOff className="h-3.5 w-3.5" />}
-              label="Ignore Candidate"
+              label={t('Hide Candidate (Ignore)')}
               accent="danger"
               onClick={() => {
                 onIgnoreCandidate(candidate);
@@ -352,7 +360,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onAnalyzeCreateXdfFromSelection ? (
             <MenuItem
               icon={<Sparkles className="h-3.5 w-3.5" />}
-              label="Analyze & Create XDF Map…"
+              label={t('Analyze Selection & Create XDF Map (%lld B) …', selBytes)}
               accent="amber"
               onClick={() => {
                 onAnalyzeCreateXdfFromSelection();
@@ -363,7 +371,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onSetColsToSelectionWidth ? (
             <MenuItem
               icon={<Columns3 className="h-3.5 w-3.5" />}
-              label="Set Columns to Selection Width"
+              label={t('Set Columns to Selection Width')}
               onClick={() => {
                 onSetColsToSelectionWidth();
                 onClose();
@@ -373,7 +381,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onPreview3D && selectedRange ? (
             <MenuItem
               icon={<Box className="h-3.5 w-3.5" />}
-              label="Preview Selection in 3D"
+              label={t('Preview selection in 3D')}
               onClick={() => {
                 onPreview3D(selectedRange);
                 onClose();
@@ -390,7 +398,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onFindXRefs ? (
             <MenuItem
               icon={<Crosshair className="h-3.5 w-3.5" />}
-              label="Find Code References (XREFs)"
+              label={t('Find Code References (XREFs)')}
               accent="blue"
               shortcut="X"
               onClick={() => {
@@ -402,7 +410,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
           {onDisassembleHere ? (
             <MenuItem
               icon={<Cpu className="h-3.5 w-3.5" />}
-              label="Disassemble Here"
+              label={t('Disassemble Here')}
               shortcut="D"
               onClick={() => {
                 onDisassembleHere();
@@ -417,7 +425,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
       {/* Selection & clipboard actions */}
       <MenuItem
         icon={<Copy className="h-3.5 w-3.5" />}
-        label="Copy Selection as Hex"
+        label={t('Copy Selection as Hex')}
         shortcut="⌘C"
         disabled={!hasSelection}
         onClick={() => {
@@ -427,7 +435,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
       />
       <MenuItem
         icon={<GitCompareArrows className="h-3.5 w-3.5" />}
-        label="Copy Selection from Compare"
+        label={t('Copy Selection from Compare')}
         accent="blue"
         disabled={!hasSelection || !hasCompare}
         onClick={() => {
@@ -439,7 +447,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
       {onFindTwins && !candidate ? (
         <MenuItem
           icon={<Search className="h-3.5 w-3.5" />}
-          label="Find Twin Maps"
+          label={t('Find Twins')}
           disabled={!hasSelection}
           onClick={() => {
             onFindTwins();
@@ -453,7 +461,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
       {/* Fill actions */}
       <MenuItem
         icon={<Eraser className="h-3.5 w-3.5" />}
-        label="Fill Selection with 0x00"
+        label={t('Fill Selection with 0x00')}
         disabled={!hasSelection}
         onClick={() => {
           onFillSelection(0x00);
@@ -462,7 +470,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
       />
       <MenuItem
         icon={<Sparkles className="h-3.5 w-3.5" />}
-        label="Fill Selection with 0xFF"
+        label={t('Fill Selection with 0xFF')}
         disabled={!hasSelection}
         onClick={() => {
           onFillSelection(0xff);
@@ -472,7 +480,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
       {onFillCustomByte ? (
         <MenuItem
           icon={<Pencil className="h-3.5 w-3.5" />}
-          label="Fill Custom Byte…"
+          label={t('Fill Custom Byte…')}
           disabled={!hasSelection}
           onClick={() => {
             onFillCustomByte();
@@ -487,7 +495,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
       {onAlignLeftAtAddress ? (
         <MenuItem
           icon={<AlignLeft className="h-3.5 w-3.5" />}
-          label={`Align Left at ${addrHex} (Shift)`}
+          label={t('Align left from %@ (column +0)', addrHex)}
           onClick={() => {
             onAlignLeftAtAddress(address);
             onClose();
@@ -497,7 +505,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
       {onResetByteShift && byteShift !== 0 ? (
         <MenuItem
           icon={<RotateCcw className="h-3.5 w-3.5" />}
-          label="Reset Byte Shift (+0)"
+          label={t('Reset Offset (+0)')}
           onClick={() => {
             onResetByteShift();
             onClose();
@@ -507,7 +515,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
       {onAddBookmark ? (
         <MenuItem
           icon={<BookmarkPlus className="h-3.5 w-3.5" />}
-          label={`Add Bookmark at ${addrHex}`}
+          label={t('Set Bookmark at %@', addrHex)}
           onClick={() => {
             onAddBookmark(address);
             onClose();
@@ -516,7 +524,7 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
       ) : null}
       <MenuItem
         icon={<Hash className="h-3.5 w-3.5" />}
-        label={`Copy Address (${addrHex})`}
+        label={t('Copy Address (%@)', addrHex)}
         onClick={() => {
           onCopyAddress();
           onClose();

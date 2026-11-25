@@ -34,6 +34,7 @@ import {
   scalingFormat,
   scalingValue,
 } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export interface XdfEditorModalProps {
   open: boolean;
@@ -179,6 +180,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
   xdfCategories,
   onAddCategory,
 }) => {
+  const { t } = useI18n();
   const [kind, setKind] = useState<EditorKind>('table');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -895,14 +897,14 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
             </div>
             <div className="min-w-0">
               <div className="text-[13.5px] font-semibold tracking-[-0.01em] text-zinc-100 truncate">
-                {item ? 'Edit XDF Item' : 'New XDF Item'}
+                {item ? t('Edit XDF Item') : t('New XDF Item')}
               </div>
               <div className="text-[11px] font-mono tabular-nums text-zinc-400">
                 {kind === 'patch'
-                  ? `${parsedPatchEntries.entries.length} patch ${parsedPatchEntries.entries.length === 1 ? 'entry' : 'entries'} · ${byteCount} bytes`
+                  ? `${parsedPatchEntries.entries.length} ${t('Patch')} · ${byteCount} B`
                   : parsedAddress !== null && byteCount > 0
-                    ? `${formatHex(parsedAddress)} – ${formatHex(parsedAddress + byteCount - 1)} · ${byteCount} bytes`
-                    : 'Enter a valid start address'}
+                    ? `${formatHex(parsedAddress)} – ${formatHex(parsedAddress + byteCount - 1)} · ${byteCount} B`
+                    : t('Enter a valid start address')}
               </div>
             </div>
           </div>
@@ -912,10 +914,10 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
             <div className="inline-flex rounded-lg bg-white/[0.05] p-0.5">
               {(
                 [
-                  ['table', 'Map / Table'],
-                  ['constant', 'Constant'],
-                  ['flag', 'Flag'],
-                  ['patch', 'Patch'],
+                  ['table', t('Table')],
+                  ['constant', t('Constant')],
+                  ['flag', t('Flag')],
+                  ['patch', t('Patch')],
                 ] as const
               ).map(([k, lbl]) => (
                 <button
@@ -941,10 +943,10 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                   else resetToBlank();
                 }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 transition-colors cursor-pointer"
-                title="Create a blank XDF item"
+                title={t('New XDF Item')}
               >
                 <FilePlus2 className="w-3.5 h-3.5 text-zinc-400" />
-                New
+                {t('New')}
               </button>
             )}
 
@@ -956,7 +958,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                   onClose();
                 }}
                 className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-colors cursor-pointer"
-                title="Delete item from XDF"
+                title={t('Delete')}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -966,7 +968,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
               type="button"
               onClick={onClose}
               className="p-1.5 rounded-lg text-zinc-400 hover:bg-white/[0.07] hover:text-white transition-colors cursor-pointer"
-              title="Close (Esc)"
+              title={t('Close')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -981,10 +983,10 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
             <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5 space-y-2.5">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
                 <Tag className="w-3.5 h-3.5 text-[#0a84ff]" />
-                General
+                {t('General')}
               </div>
               <div className="grid grid-cols-[88px_1fr] items-center gap-2">
-                <label className="text-[11.5px] text-zinc-400">Title</label>
+                <label className="text-[11.5px] text-zinc-400">{t('Title')}</label>
                 <input
                   type="text"
                   value={title}
@@ -993,16 +995,16 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                   className={inputCls}
                 />
 
-                <label className="text-[11.5px] text-zinc-400">Description</label>
+                <label className="text-[11.5px] text-zinc-400">{t('Description')}</label>
                 <input
                   type="text"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Optional calibration notes or function summary"
+                  placeholder={t('Optional calibration notes or function summary')}
                   className={inputCls}
                 />
 
-                <label className="text-[11.5px] text-zinc-400">Category</label>
+                <label className="text-[11.5px] text-zinc-400">{t('Category')}</label>
                 <div className="flex items-center gap-1.5">
                   {addingCategory ? (
                     <>
@@ -1018,7 +1020,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                             setNewCategoryName('');
                           }
                         }}
-                        placeholder="New category name…"
+                        placeholder={t('New Category…')}
                         className={`${inputCls} flex-1`}
                       />
                       <button
@@ -1026,7 +1028,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                         onClick={handleConfirmAddCategory}
                         className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-[#0a84ff] hover:bg-[#1e8fff] text-white cursor-pointer"
                       >
-                        Add
+                        {t('Add')}
                       </button>
                       <button
                         type="button"
@@ -1036,7 +1038,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                         }}
                         className="px-2 py-1.5 rounded-lg text-[11px] bg-white/[0.05] hover:bg-white/[0.1] text-zinc-400 cursor-pointer"
                       >
-                        Cancel
+                        {t('Cancel')}
                       </button>
                     </>
                   ) : (
@@ -1046,7 +1048,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                         onChange={(e) => setCategoryId(Number(e.target.value))}
                         className={`${inputCls} flex-1 cursor-pointer`}
                       >
-                        <option value={-1}>Uncategorized</option>
+                        <option value={-1}>{t('Uncategorized')}</option>
                         {sortedCategoryEntries.map(([id, name]) => (
                           <option key={id} value={id}>
                             {name}
@@ -1057,10 +1059,10 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                         type="button"
                         onClick={() => setAddingCategory(true)}
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white transition-colors cursor-pointer shrink-0"
-                        title="Create a new XDF category"
+                        title={t('New Category…')}
                       >
                         <FolderPlus className="w-3.5 h-3.5 text-[#0a84ff]" />
-                        New
+                        {t('New')}
                       </button>
                     </>
                   )}
@@ -1074,7 +1076,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
                     <Wrench className="w-3.5 h-3.5 text-[#0a84ff]" />
-                    Patch Entries (XDFPATCH)
+                    {t('Patch Data (Hex)')} (XDFPATCH)
                   </div>
                   <button
                     type="button"
@@ -1082,7 +1084,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 text-sky-300 border border-[#0a84ff]/30 transition-colors cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
-                    Add Entry
+                    {t('Add')}
                   </button>
                 </div>
 
@@ -1094,17 +1096,17 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[10.5px] font-mono font-semibold text-zinc-400">
-                          Entry #{idx + 1}
+                          #{idx + 1}
                         </span>
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => readBaseFromBin(draft)}
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10.5px] bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 transition-colors cursor-pointer"
-                            title="Populate Base Bytes from current BIN at this address"
+                            title={t('Read Base')}
                           >
                             <Download className="w-3 h-3 text-sky-400" />
-                            Read Base
+                            {t('Read Base')}
                           </button>
                           {patchDrafts.length > 1 && (
                             <button
@@ -1113,7 +1115,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                                 setPatchDrafts((prev) => prev.filter((d) => d.id !== draft.id))
                               }
                               className="p-1 rounded text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer"
-                              title="Remove patch entry"
+                              title={t('Delete')}
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
@@ -1123,7 +1125,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
 
                       <div className="grid grid-cols-[120px_1fr] gap-2">
                         <div>
-                          <label className="block text-[10px] text-zinc-500 mb-1">Hex Address</label>
+                          <label className="block text-[10px] text-zinc-500 mb-1">{t('Address (Hex)')}</label>
                           <input
                             type="text"
                             value={draft.addressText}
@@ -1133,7 +1135,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-zinc-500 mb-1">Label (Optional)</label>
+                          <label className="block text-[10px] text-zinc-500 mb-1">{t('Label (Optional)')}</label>
                           <input
                             type="text"
                             value={draft.name}
@@ -1146,7 +1148,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
 
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] text-zinc-500 mb-1">Base Bytes (Hex)</label>
+                          <label className="block text-[10px] text-zinc-500 mb-1">{t('Original Bytes (optional)')}</label>
                           <input
                             type="text"
                             value={draft.baseHex}
@@ -1156,7 +1158,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-zinc-500 mb-1">Patch Bytes (Hex)</label>
+                          <label className="block text-[10px] text-zinc-500 mb-1">{t('Patch Bytes (e.g. 90 90)')}</label>
                           <input
                             type="text"
                             value={draft.patchHex}
@@ -1177,11 +1179,11 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
               <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5 space-y-2.5">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
                   <Cpu className="w-3.5 h-3.5 text-[#0a84ff]" />
-                  Data Layout
+                  {t('Memory Layout')}
                 </div>
 
                 <div className="grid grid-cols-[88px_1fr] items-center gap-2.5">
-                  <label className="text-[11.5px] text-zinc-400">Hex Address</label>
+                  <label className="text-[11.5px] text-zinc-400">{t('Address (Hex)')}</label>
                   <div className="flex flex-wrap items-center gap-2">
                     <input
                       type="text"
@@ -1197,7 +1199,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                           type="button"
                           onClick={() => nudgeAddress(d)}
                           className="px-2 py-1 text-[10.5px] font-mono text-zinc-300 hover:bg-white/[0.08] hover:text-white transition-colors border-r last:border-r-0 border-white/[0.065] cursor-pointer"
-                          title={`Shift address by ${d > 0 ? `+${d}` : d} byte(s)`}
+                          title={t('Nudge start address in bytes (live preview below)')}
                         >
                           {d > 0 ? `+${d}` : d}
                         </button>
@@ -1230,10 +1232,10 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
 
                   {kind === 'table' && (
                     <>
-                      <label className="text-[11.5px] text-zinc-400">Dimensions</label>
+                      <label className="text-[11.5px] text-zinc-400">{t('Dimensions')}</label>
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] text-zinc-500">Rows</span>
+                          <span className="text-[11px] text-zinc-500">{t('Rows')}</span>
                           <input
                             type="number"
                             min={1}
@@ -1245,7 +1247,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                         </div>
                         <span className="text-zinc-500 text-xs">×</span>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] text-zinc-500">Cols</span>
+                          <span className="text-[11px] text-zinc-500">{t('Cols')}</span>
                           <input
                             type="number"
                             min={1}
@@ -1262,18 +1264,18 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                             setCols(rows);
                           }}
                           className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white transition-colors cursor-pointer"
-                          title="Swap rows and columns"
+                          title={t('Swap rows/columns')}
                         >
                           <ArrowLeftRight className="w-3 h-3" />
-                          Swap
+                          {t('Swap')}
                         </button>
                       </div>
                     </>
                   )}
 
-                  <label className="text-[11.5px] text-zinc-400">Encoding</label>
+                  <label className="text-[11.5px] text-zinc-400">{t('Encoding')}</label>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {kind !== 'flag' && pillToggle('Signed (±)', signed, () => setSigned((v) => !v))}
+                    {kind !== 'flag' && pillToggle(`${t('Signed')} (±)`, signed, () => setSigned((v) => !v))}
                     {pillToggle('LSB First (LE)', lsbFirst, () => setLsbFirst((v) => !v))}
                     {kind === 'table' &&
                       pillToggle('Column-Major', columnMajor, () => setColumnMajor((v) => !v))}
@@ -1295,11 +1297,11 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
               <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5 space-y-2.5">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
                   <FunctionSquare className="w-3.5 h-3.5 text-[#0a84ff]" />
-                  Scaling &amp; Physical Units
+                  {t('Scaling & Physical Units')}
                 </div>
 
                 <div className="grid grid-cols-[88px_1fr] items-center gap-2.5">
-                  <label className="text-[11.5px] text-zinc-400">Equation</label>
+                  <label className="text-[11.5px] text-zinc-400">{t('Equation')}</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -1310,7 +1312,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                         !parsedEquationValid ? 'border-rose-500/70' : ''
                       }`}
                     />
-                    <span className="text-[11px] text-zinc-500 shrink-0">Units</span>
+                    <span className="text-[11px] text-zinc-500 shrink-0">{t('Units')}</span>
                     <input
                       type="text"
                       value={units}
@@ -1320,7 +1322,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                     />
                   </div>
 
-                  <label className="text-[11.5px] text-zinc-400">Presets</label>
+                  <label className="text-[11.5px] text-zinc-400">{t('Presets')}</label>
                   <div className="flex flex-wrap gap-1.5">
                     {SCALING_PRESETS.map((p) => {
                       const active = equation.trim() === p.equation && units.trim() === p.units;
@@ -1342,13 +1344,13 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                     })}
                   </div>
 
-                  <label className="text-[11.5px] text-zinc-400">Format</label>
+                  <label className="text-[11.5px] text-zinc-400">{t('Format')}</label>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="inline-flex rounded-md bg-white/[0.05] p-0.5">
                       {(
                         [
                           [1, 'Float'],
-                          [2, 'Integer'],
+                          [2, t('Integer')],
                           [3, 'Hex'],
                         ] as const
                       ).map(([code, lbl]) => (
@@ -1368,7 +1370,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-zinc-500">Decimals</span>
+                      <span className="text-[11px] text-zinc-500">{t('Decimals:')}</span>
                       <div className="inline-flex items-center rounded-md bg-white/[0.04] border border-white/[0.065]">
                         <button
                           type="button"
@@ -1400,22 +1402,21 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
                     <SlidersHorizontal className="w-3.5 h-3.5 text-[#0a84ff]" />
-                    Axes Breakpoints
+                    {t('Axes (optional, empty = index)')}
                   </div>
-                  <span className="text-[10.5px] text-zinc-500">Leave address empty for 0…N index</span>
                 </div>
 
                 {/* X Axis */}
                 <div className="rounded-lg bg-[#121317] border border-white/[0.06] p-2.5 space-y-2">
                   <div className="text-[11px] font-semibold text-zinc-300">
-                    X-Axis (Columns · {cols})
+                    {t('X-Axis')} ({cols})
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <input
                       type="text"
                       value={xAddrText}
                       onChange={(e) => setXAddrText(e.target.value)}
-                      placeholder="0x… (index)"
+                      placeholder={t('Address 0x…')}
                       className={`${inputCls} w-28 font-mono`}
                     />
                     <select
@@ -1427,7 +1428,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                       <option value={16}>16-bit</option>
                       <option value={32}>32-bit</option>
                     </select>
-                    {pillToggle('Signed', xSigned, () => setXSigned((v) => !v))}
+                    {pillToggle(t('Signed'), xSigned, () => setXSigned((v) => !v))}
                     {pillToggle('Float', xIsFloat, () => setXIsFloat((v) => !v))}
                   </div>
                   <div className="flex items-center gap-2">
@@ -1435,7 +1436,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                       type="text"
                       value={xEq}
                       onChange={(e) => setXEq(e.target.value)}
-                      placeholder="Equation (e.g. X * 0.25)"
+                      placeholder="X * 0.25"
                       className={`${inputCls} flex-1 font-mono`}
                     />
                     <input
@@ -1451,14 +1452,14 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 {/* Y Axis */}
                 <div className="rounded-lg bg-[#121317] border border-white/[0.06] p-2.5 space-y-2">
                   <div className="text-[11px] font-semibold text-zinc-300">
-                    Y-Axis (Rows · {rows})
+                    {t('Y-Axis')} ({rows})
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <input
                       type="text"
                       value={yAddrText}
                       onChange={(e) => setYAddrText(e.target.value)}
-                      placeholder="0x… (index)"
+                      placeholder={t('Address 0x…')}
                       className={`${inputCls} w-28 font-mono`}
                     />
                     <select
@@ -1470,7 +1471,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                       <option value={16}>16-bit</option>
                       <option value={32}>32-bit</option>
                     </select>
-                    {pillToggle('Signed', ySigned, () => setYSigned((v) => !v))}
+                    {pillToggle(t('Signed'), ySigned, () => setYSigned((v) => !v))}
                     {pillToggle('Float', yIsFloat, () => setYIsFloat((v) => !v))}
                   </div>
                   <div className="flex items-center gap-2">
@@ -1478,7 +1479,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                       type="text"
                       value={yEq}
                       onChange={(e) => setYEq(e.target.value)}
-                      placeholder="Equation (e.g. X * 0.0234)"
+                      placeholder="X * 0.0234"
                       className={`${inputCls} flex-1 font-mono`}
                     />
                     <input
@@ -1498,10 +1499,10 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
               <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5 space-y-2.5">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
                   <ToggleLeft className="w-3.5 h-3.5 text-[#0a84ff]" />
-                  Bitmask Configuration
+                  {t('Bitmask')}
                 </div>
                 <div className="grid grid-cols-[88px_1fr] items-center gap-2.5">
-                  <label className="text-[11.5px] text-zinc-400">Mask</label>
+                  <label className="text-[11.5px] text-zinc-400">{t('Mask (e.g. 0x01, 0x04)')}</label>
                   <div className="flex flex-wrap items-center gap-2">
                     <input
                       type="text"
@@ -1527,7 +1528,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                                   ? 'bg-[#0a84ff] text-white'
                                   : 'bg-white/[0.06] text-zinc-400 hover:bg-white/[0.12]'
                               }`}
-                              title={`Toggle bit ${bit}`}
+                              title={`Bit ${bit}`}
                             >
                               {bit}
                             </button>
@@ -1537,7 +1538,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                     )}
                   </div>
 
-                  <label className="text-[11.5px] text-zinc-400">Logic</label>
+                  <label className="text-[11.5px] text-zinc-400">{t('Logic')}</label>
                   <label className="inline-flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
                     <input
                       type="checkbox"
@@ -1545,7 +1546,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                       onChange={(e) => setFlagInvert(e.target.checked)}
                       className="rounded accent-[#0a84ff]"
                     />
-                    Inverted (0 = Enabled, 1 = Disabled)
+                    {t('Inverted (0 = On)')}
                   </label>
                 </div>
               </section>
@@ -1557,7 +1558,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
                 <Eye className="w-3.5 h-3.5 text-[#0a84ff]" />
-                Live Preview
+                {t('Live Preview')}
               </div>
               {kind === 'patch' ? (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-[#0a84ff]/15 text-sky-300">
@@ -1576,23 +1577,23 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 <TriangleAlert className="w-5 h-5 text-amber-400 mx-auto" />
                 <div className="text-xs text-zinc-400">
                   {bin.length === 0
-                    ? 'No BIN file loaded.'
+                    ? t('No BIN file loaded.')
                     : kind === 'patch'
-                      ? 'Enter at least one valid address and hex patch bytes.'
-                      : 'Invalid address or offset outside BIN range.'}
+                      ? t('Enter at least one valid address and hex patch bytes.')
+                      : t('Invalid address or offset outside BIN range.')}
                 </div>
               </div>
             ) : preview.kind === 'patch' ? (
               <div className="space-y-2.5">
                 <div className="grid grid-cols-2 gap-1.5">
                   <div className="rounded-lg bg-[#17181d] border border-white/[0.065] px-2.5 py-2">
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">Entries</div>
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('Entries')}</div>
                     <div className="text-xs font-mono font-semibold text-zinc-100">
                       {preview.items.length} ({preview.totalBytes} B)
                     </div>
                   </div>
                   <div className="rounded-lg bg-[#17181d] border border-white/[0.065] px-2.5 py-2">
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">Applied</div>
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('Applied')}</div>
                     <div className="text-xs font-mono font-semibold text-emerald-300">
                       {preview.appliedCount} / {preview.items.length}
                     </div>
@@ -1622,12 +1623,12 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                           }`}
                         >
                           {it.status === 'applied'
-                            ? 'Applied'
+                            ? t('Applied')
                             : it.status === 'base'
-                              ? 'Base'
+                              ? t('Baseline')
                               : it.status === 'oob'
                                 ? 'OOB'
-                                : 'Custom'}
+                                : t('Custom')}
                         </span>
                       </div>
                       <div className="text-[10px] font-mono text-zinc-400 break-all">
@@ -1649,11 +1650,11 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                   <div className="flex items-center justify-between text-[10.5px] text-zinc-400">
                     <span>
                       {activeLayout && (activeLayout.rows === 1 || activeLayout.cols === 1)
-                        ? `1D Curve (${activeLayout.rows}×${activeLayout.cols})`
-                        : `2D Mini-Heatmap (${activeLayout?.rows}×${activeLayout?.cols})`}
+                        ? `${t('1D Curve')} (${activeLayout.rows}×${activeLayout.cols})`
+                        : `${t('2D Heatmap')} (${activeLayout?.rows}×${activeLayout?.cols})`}
                     </span>
                     {activeLayout && (activeLayout.rows > 24 || activeLayout.cols > 24) && (
-                      <span className="text-zinc-500">24×24 sample</span>
+                      <span className="text-zinc-500">24×24</span>
                     )}
                   </div>
                   <div className="rounded-xl overflow-hidden border border-white/[0.08] bg-[#0c0d10]">
@@ -1668,9 +1669,9 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 {/* Min / Avg / Max KPI Strip */}
                 <div className="grid grid-cols-3 gap-1.5">
                   {[
-                    ['Min', preview.min],
-                    ['Avg', preview.avg],
-                    ['Max', preview.max],
+                    [t('Min'), preview.min],
+                    [t('Avg'), preview.avg],
+                    [t('Max'), preview.max],
                   ].map(([lbl, val]) => (
                     <div
                       key={lbl as string}
@@ -1690,7 +1691,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 {/* Decoded First Cells (4×4 extract) */}
                 <div className="space-y-1.5">
                   <div className="text-[10.5px] font-medium text-zinc-400">
-                    Decoded First Cells ({preview.sampleCells.length}×
+                    {t('Decoded Cells (Sample)')} ({preview.sampleCells.length}×
                     {preview.sampleCells[0]?.length ?? 0})
                   </div>
                   <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-1.5 space-y-1">
@@ -1720,7 +1721,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 {(preview.xSummary || preview.ySummary) && (
                   <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-2.5 space-y-1">
                     <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                      Axis Preview
+                      {t('Axis Preview')}
                     </div>
                     {preview.xSummary && (
                       <div className="text-[11px] font-mono text-zinc-200 truncate">
@@ -1761,10 +1762,10 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                       preview.active ? 'bg-emerald-400' : 'bg-zinc-500'
                     }`}
                   />
-                  {preview.active ? 'ACTIVE (ON)' : 'INACTIVE (OFF)'}
+                  {preview.active ? t('ACTIVE (ON)') : t('INACTIVE (OFF)')}
                 </div>
                 <div className="text-[11px] font-mono text-zinc-400">
-                  Byte: 0x{preview.uval.toString(16).toUpperCase().padStart(2, '0')} · Mask:{' '}
+                  Byte: 0x{preview.uval.toString(16).toUpperCase().padStart(2, '0')} · {t('Bitmask')}:{' '}
                   {formatHex(preview.mask)}
                 </div>
               </div>
@@ -1778,31 +1779,31 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
             {!title.trim() ? (
               <span className="inline-flex items-center gap-1.5 text-amber-400">
                 <TriangleAlert className="w-3.5 h-3.5 shrink-0" />
-                Enter a title to save
+                {t('Enter a title to save')}
               </span>
             ) : kind === 'patch' && !parsedPatchEntries.valid ? (
               <span className="inline-flex items-center gap-1.5 text-rose-400">
                 <TriangleAlert className="w-3.5 h-3.5 shrink-0" />
-                Each patch entry requires a valid hex address and patch bytes
+                {t('Each patch entry requires a valid hex address and patch bytes')}
               </span>
             ) : kind !== 'patch' && parsedAddress === null ? (
               <span className="inline-flex items-center gap-1.5 text-rose-400">
                 <TriangleAlert className="w-3.5 h-3.5 shrink-0" />
-                Invalid hex address
+                {t('Invalid hex address')}
               </span>
             ) : kind !== 'patch' && !parsedEquationValid ? (
               <span className="inline-flex items-center gap-1.5 text-rose-400">
                 <TriangleAlert className="w-3.5 h-3.5 shrink-0" />
-                Invalid scaling equation syntax
+                {t('Invalid scaling equation syntax')}
               </span>
             ) : isOutOfBounds ? (
               <span className="inline-flex items-center gap-1.5 text-amber-400">
                 <TriangleAlert className="w-3.5 h-3.5 shrink-0" />
-                Byte range exceeds loaded BIN size ({bin.length} bytes)
+                {t('Byte range exceeds loaded BIN size')} ({bin.length} B)
               </span>
             ) : (
               <span className="text-zinc-500 truncate">
-                Changes apply immediately to the active XDF definition.
+                {t('Changes apply immediately to the active XDF definition.')}
               </span>
             )}
           </div>
@@ -1813,7 +1814,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
               onClick={onClose}
               className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white transition-colors cursor-pointer"
             >
-              Cancel
+              {t('Cancel')}
             </button>
             <button
               type="button"
@@ -1821,7 +1822,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
               onClick={handleSave}
               className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#0a84ff] hover:bg-[#1e8fff] disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-[0_1px_8px_rgba(10,132,255,0.4)] transition-colors cursor-pointer"
             >
-              {item ? 'Save Changes' : 'Create Item'}
+              {item ? t('Save') : t('Add')}
             </button>
           </div>
         </div>

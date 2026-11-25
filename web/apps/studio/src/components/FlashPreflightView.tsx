@@ -59,6 +59,7 @@ import {
   scalingValue,
   verifyChecksums,
 } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export interface ChecksumBlock {
   id: string;
@@ -341,6 +342,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
   onUpdateHistoryNote,
   onAutoFixDiagnostic,
 }) => {
+  const { t } = useI18n();
   const [subTab, setSubTab] = useState<FlashSubTab>('preflight');
   const [preset, setPreset] = useState<FlashToolPreset>('KESSv2 / KESS3');
   const [correctBeforeExport, setCorrectBeforeExport] = useState(true);
@@ -1093,35 +1095,35 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
             [
               {
                 id: 'preflight',
-                label: 'Preflight & Checksums',
+                label: t('Preflight & Checksums'),
                 icon: <ShieldCheck className="w-3.5 h-3.5" />,
                 badge: invalidFixableBlocks.length > 0 ? invalidFixableBlocks.length : null,
                 badgeTone: 'rose',
               },
               {
                 id: 'diagnostics',
-                label: 'Diagnostics & Lint',
+                label: t('Diagnostics & Lint'),
                 icon: <Stethoscope className="w-3.5 h-3.5" />,
                 badge: findings.length > 0 ? findings.length : null,
                 badgeTone: diagCounts.error > 0 ? 'rose' : 'amber',
               },
               {
                 id: 'snapshots',
-                label: 'Snapshots',
+                label: t('Snapshots'),
                 icon: <History className="w-3.5 h-3.5" />,
                 badge: snapshots.length > 0 ? snapshots.length : null,
                 badgeTone: 'zinc',
               },
               {
                 id: 'history',
-                label: 'Edit History',
+                label: t('Edit History'),
                 icon: <Clock className="w-3.5 h-3.5" />,
                 badge: historyEntries.length > 0 ? historyEntries.length : null,
                 badgeTone: 'zinc',
               },
               {
                 id: 'report',
-                label: 'Report Export',
+                label: t('Report Export'),
                 icon: <FileText className="w-3.5 h-3.5" />,
                 badge: null,
                 badgeTone: 'zinc',
@@ -1176,12 +1178,10 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 </div>
                 <div>
                   <h2 className="text-sm font-bold tracking-[-0.01em] text-rose-200">
-                    Blocker found — do not flash without fixing!
+                    {t('Blocker found — do not flash without fixing!')}
                   </h2>
                   <p className="text-xs text-rose-200/75 mt-0.5">
-                    {invalidFixableBlocks.length} checksum block
-                    {invalidFixableBlocks.length === 1 ? '' : 's'} out of sync after calibration edits.
-                    Flashing an uncorrected binary can brick the ECU.
+                    {t('%lld checksum block(s) out of sync after calibration edits. Flashing an uncorrected binary can brick the ECU.', invalidFixableBlocks.length)}
                   </p>
                 </div>
               </div>
@@ -1191,7 +1191,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-bold shadow-[0_4px_18px_rgba(10,132,255,0.4)] transition-all cursor-pointer"
               >
                 <Wrench className="w-4 h-4" />
-                <span>Fix Checksums ({invalidFixableBlocks.length})</span>
+                <span>{t('Fix Checksums (%lld)', invalidFixableBlocks.length)}</span>
               </button>
             </div>
           ) : (
@@ -1202,17 +1202,16 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 </div>
                 <div>
                   <h2 className="text-sm font-bold tracking-[-0.01em] text-emerald-200">
-                    Ready to Flash — All checksum blocks valid
+                    {t('Ready to Flash — All checksum blocks valid')}
                   </h2>
                   <p className="text-xs text-emerald-200/75 mt-0.5">
-                    All {validBlocksCount} checksum blocks verified and aligned. Safe to export for{' '}
-                    {preset}.
+                    {t('All %lld checksum blocks valid.', validBlocksCount)} {t('Safe to export for %@.', preset)}
                   </p>
                 </div>
               </div>
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/35 text-emerald-300 text-xs font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                Preflight Passed
+                {t('Preflight Passed')}
               </span>
             </div>
           )}
@@ -1221,7 +1220,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                CHECKSUM BLOCKS
+                {t('Checksum Blocks')}
               </div>
               <div className="mt-2 text-xl font-mono tabular-nums font-bold text-white">
                 <span className={allValid ? 'text-emerald-400' : 'text-rose-400'}>
@@ -1231,14 +1230,14 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               </div>
               <div className="mt-0.5 text-[11px] text-zinc-500">
                 {invalidFixableBlocks.length === 0
-                  ? 'All regions verified'
-                  : `${invalidFixableBlocks.length} fixable mismatch`}
+                  ? t('All regions verified')
+                  : `${invalidFixableBlocks.length} ${t('fixable mismatch')}`}
               </div>
             </div>
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                CVN / COMPTEST
+                {t('CVN / COMPTEST')}
               </div>
               <div className="mt-2 text-xl font-mono tabular-nums font-bold text-[#5ac8fa]">
                 0x{cvnHex}
@@ -1248,23 +1247,23 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                   type="text"
                   value={targetCvnInput}
                   onChange={(e) => setTargetCvnInput(e.target.value)}
-                  placeholder="Target CVN"
+                  placeholder={t('Target CVN')}
                   className="min-w-0 flex-1 w-20 px-1.5 py-0.5 rounded bg-[#0c0d10] border border-white/[0.08] font-mono text-[10.5px] text-zinc-200 focus:outline-none focus:border-[#0a84ff]"
                 />
                 <button
                   type="button"
                   onClick={handleFixCvnInPlace}
                   className="px-2 py-0.5 rounded bg-[#0a84ff]/20 hover:bg-[#0a84ff]/35 border border-[#0a84ff]/40 text-[10px] font-semibold text-[#5ac8fa] whitespace-nowrap shrink-0 cursor-pointer"
-                  title="In-place GF(2) CVN recovery"
+                  title={t('In-place GF(2) CVN recovery')}
                 >
-                  Fix CVN In-Place
+                  {t('Fix CVN In-Place')}
                 </button>
               </div>
             </div>
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                TPROT / 3-WAY TRIAGE
+                {t('TPROT / 3-Way Triage')}
               </div>
               <div className="mt-2 text-xl font-mono tabular-nums font-bold text-zinc-200 flex items-center gap-2">
                 <Lock className="w-4 h-4 text-indigo-400" />
@@ -1272,25 +1271,25 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               </div>
               <div className="mt-1 flex items-center gap-1.5 flex-wrap text-[10px] font-mono">
                 <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">
-                  {invalidFixableBlocks.length} Fixable
+                  {invalidFixableBlocks.length} {t('Fixable')}
                 </span>
                 <span className="px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300">
                   {tprotProtectedCount} TPROT
                 </span>
                 <span className="px-1.5 py-0.5 rounded bg-zinc-500/15 text-zinc-400">
-                  {triageReport.uncheckedBytes}B Unchecked
+                  {triageReport.uncheckedBytes}B {t('Unchecked')}
                 </span>
               </div>
             </div>
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                MODIFIED BYTES
+                {t('Modified Bytes')}
               </div>
               <div className="mt-2 text-xl font-mono tabular-nums font-bold text-amber-400">
                 {modifiedBytes.toLocaleString()} B
               </div>
-              <div className="mt-0.5 text-[11px] text-zinc-500">Delta vs stock baseline</div>
+              <div className="mt-0.5 text-[11px] text-zinc-500">{t('Delta vs stock baseline')}</div>
             </div>
           </div>
 
@@ -1302,7 +1301,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               </div>
               <div>
                 <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-400">
-                  ECU / TCU Checksum Profile
+                  {t('ECU / TCU Checksum Profile')}
                 </div>
                 <div className="text-[11px] text-zinc-400 mt-0.5">
                   <span className="text-zinc-200 font-medium">{activeProfile.algorithm}</span>
@@ -1321,10 +1320,10 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 border border-[#0a84ff]/35 text-[11px] font-semibold text-[#5ac8fa] cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Auto-Detect</span>
+                <span>{t('Auto-Detect')}</span>
               </button>
               <label className="text-[11px] text-zinc-400" htmlFor="ecu-profile-select">
-                Profile
+                {t('Profile')}
               </label>
               <select
                 id="ecu-profile-select"
@@ -1351,7 +1350,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden flex flex-col shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="px-4 py-3 border-b border-white/[0.065] flex items-center justify-between">
                 <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-                  Checksum Blocks
+                  {t('Checksum Blocks')}
                 </h3>
                 {invalidFixableBlocks.length > 0 && (
                   <button
@@ -1359,7 +1358,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                     onClick={onFixChecksums}
                     className="text-xs font-semibold text-[#5ac8fa] hover:text-white transition-colors cursor-pointer"
                   >
-                    Fix All ({invalidFixableBlocks.length})
+                    {t('Fix All')} ({invalidFixableBlocks.length})
                   </button>
                 )}
               </div>
@@ -1368,11 +1367,11 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-white/[0.065] bg-white/[0.02] text-[10.5px] uppercase tracking-wider text-zinc-500">
-                      <th className="py-2.5 px-3.5 font-semibold">Block</th>
-                      <th className="py-2.5 px-3.5 font-semibold">Algo</th>
-                      <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">Address Range</th>
-                      <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">Expected / Actual</th>
-                      <th className="py-2.5 px-3.5 font-semibold text-right whitespace-nowrap">Status</th>
+                      <th className="py-2.5 px-3.5 font-semibold">{t('Block')}</th>
+                      <th className="py-2.5 px-3.5 font-semibold">{t('Algo')}</th>
+                      <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">{t('Address Range')}</th>
+                      <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">{t('Expected / Actual')}</th>
+                      <th className="py-2.5 px-3.5 font-semibold text-right whitespace-nowrap">{t('Status')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/[0.05] text-xs">
@@ -1394,19 +1393,19 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                         <td className="py-2.5 px-3.5 text-right">
                           {blk.protected || blk.triageStatus === 'tprot' ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-[11px] font-medium">
-                              <Lock className="w-3 h-3" /> TPROT-Protected
+                              <Lock className="w-3 h-3" /> {t('TPROT-Protected')}
                             </span>
                           ) : blk.triageStatus === 'unchecked' ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-500/15 text-zinc-300 border border-zinc-500/30 text-[11px] font-medium">
-                              Unchecked
+                              {t('Unchecked')}
                             </span>
                           ) : blk.valid ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-semibold">
-                              <CheckCircle2 className="w-3 h-3" /> OK
+                              <CheckCircle2 className="w-3 h-3" /> {t('OK')}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px] font-semibold">
-                              <AlertTriangle className="w-3 h-3" /> Fixable
+                              <AlertTriangle className="w-3 h-3" /> {t('Fixable')}
                             </span>
                           )}
                         </td>
@@ -1432,14 +1431,14 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                     )}
                     <Sliders className="w-3.5 h-3.5 text-[#5ac8fa]" />
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-200">
-                      Manual Range Patcher
+                      {t('Manual Range Patcher')}
                     </span>
                     <span className="px-2 py-0.5 rounded-full bg-white/[0.05] font-mono text-[10px] text-zinc-400">
                       CRC32 GF(2) / ADD32 / ADD16
                     </span>
                   </div>
                   <span className="text-[11px] text-zinc-500">
-                    {patcherOpen ? 'Hide' : 'Expand'}
+                    {patcherOpen ? t('Hide') : t('Expand')}
                   </span>
                 </button>
 
@@ -1447,7 +1446,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                   <div className="px-4 pb-4 pt-2 border-t border-white/[0.065] space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <div>
-                        <label className="block text-[10.5px] text-zinc-400 mb-1">Algorithm</label>
+                        <label className="block text-[10.5px] text-zinc-400 mb-1">{t('Algorithm')}</label>
                         <select
                           value={patchAlgo}
                           onChange={(e) => setPatchAlgo(e.target.value as ManualPatchAlgo)}
@@ -1460,7 +1459,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-[10.5px] text-zinc-400 mb-1">Byte Order</label>
+                        <label className="block text-[10.5px] text-zinc-400 mb-1">{t('Byte Order')}</label>
                         <div className="grid grid-cols-2 gap-1.5">
                           <button
                             type="button"
@@ -1471,7 +1470,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                                 : 'bg-[#0c0d10] border-white/[0.07] text-zinc-400'
                             }`}
                           >
-                            Little-Endian
+                            {t('Little-Endian')}
                           </button>
                           <button
                             type="button"
@@ -1482,7 +1481,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                                 : 'bg-[#0c0d10] border-white/[0.07] text-zinc-400'
                             }`}
                           >
-                            Big-Endian
+                            {t('Big-Endian')}
                           </button>
                         </div>
                       </div>
@@ -1491,7 +1490,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                     <div className="grid grid-cols-3 gap-2">
                       <div>
                         <label className="block text-[10.5px] text-zinc-400 mb-1">
-                          Range Start (Hex)
+                          {t('Range Start (Hex)')}
                         </label>
                         <input
                           type="text"
@@ -1503,7 +1502,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                       </div>
                       <div>
                         <label className="block text-[10.5px] text-zinc-400 mb-1">
-                          Range End (Hex)
+                          {t('Range End (Hex)')}
                         </label>
                         <input
                           type="text"
@@ -1515,7 +1514,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                       </div>
                       <div>
                         <label className="block text-[10.5px] text-zinc-400 mb-1">
-                          Store Address (Hex)
+                          {t('Store Address (Hex)')}
                         </label>
                         <input
                           type="text"
@@ -1531,13 +1530,13 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                       <div className="rounded-lg bg-[#0c0d10] border border-white/[0.07] p-3 flex items-center justify-between gap-3 flex-wrap">
                         <div className="font-mono text-[11px] space-y-0.5">
                           <div>
-                            <span className="text-zinc-500">Computed: </span>
+                            <span className="text-zinc-500">{t('Computed:')} </span>
                             <span className="text-emerald-400 font-semibold">
                               0x{manualPatchPreview.computedHex}
                             </span>
                           </div>
                           <div>
-                            <span className="text-zinc-500">Stored @ {formatHex(manualPatchPreview.store)}: </span>
+                            <span className="text-zinc-500">{t('Stored')} @ {formatHex(manualPatchPreview.store)}: </span>
                             <span
                               className={
                                 manualPatchPreview.matches ? 'text-zinc-300' : 'text-amber-300'
@@ -1554,13 +1553,12 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                           className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold cursor-pointer"
                         >
                           <Wrench className="w-3.5 h-3.5" />
-                          <span>Patch Store Address</span>
+                          <span>{t('Patch Store Address')}</span>
                         </button>
                       </div>
                     ) : (
                       <div className="text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/25 rounded-lg px-3 py-2">
-                        Invalid hex range or store offset exceeds binary length (0x
-                        {bytes.length.toString(16).toUpperCase()}).
+                        {t('Invalid hex range or store offset exceeds binary length (0x%@).', bytes.length.toString(16).toUpperCase())}
                       </div>
                     )}
                   </div>
@@ -1573,12 +1571,12 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               {/* Flash-Tool Export Card */}
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 space-y-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                 <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-                  Flash-Tool Export
+                  {t('Flash-Tool Export')}
                 </h3>
 
                 <div>
                   <label className="block text-[11px] text-zinc-400 mb-1.5">
-                    Target Flasher Preset
+                    {t('Flash Tool Preset')}
                   </label>
                   <div className="flex flex-wrap gap-1.5">
                     {ALL_FLASH_PRESETS.map((p) => (
@@ -1607,7 +1605,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                       onChange={(e) => setCorrectBeforeExport(e.target.checked)}
                       className="accent-[#0a84ff]"
                     />
-                    <span>Correct Checksum Before Export</span>
+                    <span>{t('Correct Checksum Before Export')}</span>
                   </label>
 
                   <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
@@ -1617,7 +1615,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                       onChange={(e) => setAttachChangeList(e.target.checked)}
                       className="accent-[#0a84ff]"
                     />
-                    <span>Attach Change List (.txt)</span>
+                    <span>{t('Attach Change List (.txt)')}</span>
                   </label>
                 </div>
 
@@ -1627,14 +1625,14 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-bold shadow-[0_4px_16px_rgba(10,132,255,0.35)] transition-all cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Export &amp; Download .bin</span>
+                  <span>{t('Export & Download .bin')}</span>
                 </button>
               </div>
 
               {/* BIN Utilities Card */}
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 space-y-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                 <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-                  BIN Utilities
+                  {t('BIN Utilities')}
                 </h3>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -1644,7 +1642,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                     className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/[0.07] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
                   >
                     <ArrowLeftRight className="w-3.5 h-3.5 text-[#0a84ff]" />
-                    <span>16-Bit Swap</span>
+                    <span>{t('16-Bit Swap')}</span>
                   </button>
                   <button
                     type="button"
@@ -1652,12 +1650,12 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                     className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/[0.07] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
                   >
                     <ArrowLeftRight className="w-3.5 h-3.5 text-[#0a84ff]" />
-                    <span>32-Bit Swap</span>
+                    <span>{t('32-Bit Swap')}</span>
                   </button>
                 </div>
 
                 <div className="pt-2 border-t border-white/[0.065] space-y-2">
-                  <div className="text-[11px] text-zinc-400">Extract Slice (Hex Range)</div>
+                  <div className="text-[11px] text-zinc-400">{t('Extract Slice (Hex Range)')}</div>
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
@@ -1680,13 +1678,13 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                     className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
                   >
                     <Scissors className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Extract Slice</span>
+                    <span>{t('Extract Slice')}</span>
                   </button>
                 </div>
 
                 {/* Padding Utility */}
                 <div className="pt-2 border-t border-white/[0.065] space-y-2">
-                  <div className="text-[11px] text-zinc-400">Pad Binary to Target Size</div>
+                  <div className="text-[11px] text-zinc-400">{t('Pad Binary to Target Size')}</div>
                   <div className="grid grid-cols-3 gap-2">
                     <select
                       value={padTargetSize}
@@ -1713,7 +1711,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                     className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 cursor-pointer"
                   >
                     <Layers className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Pad Binary</span>
+                    <span>{t('Pad Binary')}</span>
                   </button>
                 </div>
 
@@ -1730,7 +1728,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                       e.target.value = '';
                     }}
                   />
-                  <div className="text-[11px] text-zinc-400">Inject Segment at Offset</div>
+                  <div className="text-[11px] text-zinc-400">{t('Inject Segment at Offset')}</div>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -1745,7 +1743,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                       className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 cursor-pointer"
                     >
                       <Upload className="w-3.5 h-3.5 text-[#5ac8fa]" />
-                      <span>Inject .bin at {injectOffsetHex}</span>
+                      <span>{t('Inject .bin at')} {injectOffsetHex}</span>
                     </button>
                   </div>
                 </div>
@@ -1765,16 +1763,16 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="px-4 py-3 border-b border-white/[0.065] flex items-center justify-between">
                 <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-                  Forgotten Twins (Sync Blocks)
+                  {t('Forgotten Twins')} ({t('Sync Blocks')})
                 </h3>
                 <span className="text-[11px] font-mono text-amber-300">
-                  {forgottenTwins.length} found
+                  {forgottenTwins.length} {t('found')}
                 </span>
               </div>
               {forgottenTwins.length === 0 ? (
                 <div className="p-5 text-xs text-zinc-500 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>All parallel / twin calibration maps are in sync.</span>
+                  <span>{t('All parallel / twin calibration maps are in sync.')}</span>
                 </div>
               ) : (
                 <div className="divide-y divide-white/[0.05]">
@@ -1788,7 +1786,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                           {tw.editedItem.title} → <span className="text-amber-300">{tw.untouchedItem.title}</span>
                         </div>
                         <div className="text-[10.5px] font-mono text-zinc-500">
-                          {Math.round(tw.similarity * 100)}% twin · untouched @ {formatHex(tw.untouchedItem.data.address)}
+                          {Math.round(tw.similarity * 100)}% {t('twin · untouched')} @ {formatHex(tw.untouchedItem.data.address)}
                         </div>
                       </div>
                       <button
@@ -1796,7 +1794,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                         onClick={() => handleCopyToTwin(tw.editedItem, tw.untouchedItem)}
                         className="px-2.5 py-1 rounded-md bg-[#0a84ff]/15 hover:bg-[#0a84ff]/30 border border-[#0a84ff]/35 text-[#5ac8fa] text-[11px] font-semibold shrink-0 cursor-pointer"
                       >
-                        Copy to Twin
+                        {t('Copy to Twin')}
                       </button>
                     </div>
                   ))}
@@ -1808,15 +1806,15 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="px-4 py-3 border-b border-white/[0.065] flex items-center justify-between">
                 <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-                  Physics Invariants (Boost / Lambda / Timing / Torque)
+                  {t('Physics Invariants')}
                 </h3>
                 <span className="text-[11px] font-mono text-zinc-400">
-                  {physicsInvariants.length} checks
+                  {physicsInvariants.length} {t('checks')}
                 </span>
               </div>
               {physicsInvariants.length === 0 ? (
                 <div className="p-5 text-xs text-zinc-500">
-                  Load an XDF with boost, lambda, timing, or torque maps to verify physical safety envelopes.
+                  {t('Load an XDF with boost, lambda, timing, or torque maps to verify physical safety envelopes.')}
                 </div>
               ) : (
                 <div className="divide-y divide-white/[0.05]">
@@ -1842,7 +1840,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                           onClick={() => onSelectMap(chk.itemId)}
                           className="px-2 py-1 rounded-md bg-white/[0.05] hover:bg-[#0a84ff]/20 text-zinc-200 hover:text-[#5ac8fa] border border-white/[0.08] text-[11px] shrink-0 cursor-pointer"
                         >
-                          Open Map
+                          {t('Open Map')}
                         </button>
                       )}
                     </div>
@@ -1860,20 +1858,20 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
           <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 flex items-center justify-between gap-4 flex-wrap shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div>
               <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
-                Calibration Diagnostics &amp; Structural Lint
+                {t('Calibration Diagnostics & Structural Lint')}
               </h2>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Checks non-monotonic axes, &gt;3.5σ outlier spikes, clipped curves, dead 0xFF/0x00 maps, and forgotten twin maps.
+                {t('Checks non-monotonic axes, >3.5σ outlier spikes, clipped curves, dead 0xFF/0x00 maps, and forgotten twin maps.')}
               </p>
             </div>
 
             <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#0c0d10] border border-white/[0.065]">
               {(
                 [
-                  { id: 'all', label: `All (${findings.length})` },
-                  { id: 'error', label: `Errors (${diagCounts.error})` },
-                  { id: 'warning', label: `Warnings (${diagCounts.warning})` },
-                  { id: 'info', label: `Info (${diagCounts.info})` },
+                  { id: 'all', label: `${t('All')} (${findings.length})` },
+                  { id: 'error', label: `${t('Errors')} (${diagCounts.error})` },
+                  { id: 'warning', label: `${t('Warnings')} (${diagCounts.warning})` },
+                  { id: 'info', label: `${t('Info')} (${diagCounts.info})` },
                 ] as const
               ).map((f) => (
                 <button
@@ -1895,9 +1893,9 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
           {!xdf ? (
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-12 text-center">
               <Stethoscope className="w-9 h-9 text-zinc-600 mx-auto mb-3" />
-              <p className="text-sm font-semibold text-zinc-200">No XDF Definition Loaded</p>
+              <p className="text-sm font-semibold text-zinc-200">{t('No XDF Definition Loaded')}</p>
               <p className="text-xs text-zinc-500 mt-1">
-                Pass or load an XDF definition to lint calibration maps, axes, and twin structures.
+                {t('Pass or load an XDF definition to lint calibration maps, axes, and twin structures.')}
               </p>
             </div>
           ) : visibleFindings.length === 0 ? (
@@ -1905,11 +1903,11 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               <CheckCircle2 className="w-9 h-9 text-emerald-400 mx-auto mb-3" />
               <p className="text-sm font-semibold text-emerald-200">
                 {findings.length === 0
-                  ? 'Clean Calibration — 0 Lint Findings'
-                  : 'No findings match the selected severity filter'}
+                  ? t('Clean Calibration — 0 Lint Findings')
+                  : t('No findings match the selected severity filter')}
               </p>
               <p className="text-xs text-zinc-400 mt-1">
-                Scanned {xdf.items.length} XDF items across {(bytes.length / 1024).toFixed(0)} KB flash.
+                {t('Scanned %lld XDF items across %@ KB flash.', xdf.items.length, (bytes.length / 1024).toFixed(0))}
               </p>
             </div>
           ) : (
@@ -1966,7 +1964,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/35 text-[11px] font-semibold transition-colors cursor-pointer"
                       >
                         <Wrench className="w-3 h-3" />
-                        <span>Auto-Fix</span>
+                        <span>{t('Auto-Fix')}</span>
                       </button>
                     )}
                     {f.itemId !== undefined && onSelectMap && (
@@ -1976,7 +1974,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 text-[#5ac8fa] border border-[#0a84ff]/35 text-[11px] font-medium transition-colors cursor-pointer"
                       >
                         <Table2 className="w-3 h-3" />
-                        <span>Open Map</span>
+                        <span>{t('Open Map')}</span>
                       </button>
                     )}
                     {f.address !== undefined && onJumpToHex && (
@@ -2005,10 +2003,10 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
-                  Binary Checkpoints &amp; Snapshots
+                  {t('Binary Checkpoints & Snapshots')}
                 </h2>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Capture named in-memory checkpoints of the active BIN, compare any two snapshots, and restore instantly.
+                  {t('Capture named in-memory checkpoints of the active BIN, compare any two snapshots, and restore instantly.')}
                 </p>
               </div>
               <button
@@ -2022,7 +2020,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 text-xs font-semibold cursor-pointer"
               >
                 <Camera className="w-3.5 h-3.5" />
-                <span>Quick Snapshot</span>
+                <span>{t('Quick Snapshot')}</span>
               </button>
             </div>
 
@@ -2031,14 +2029,14 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 type="text"
                 value={snapshotName}
                 onChange={(e) => setSnapshotName(e.target.value)}
-                placeholder="Snapshot name (e.g. Stage 1 +2 deg timing)"
+                placeholder={t('Snapshot name (e.g. Stage 1 +2 deg timing)')}
                 className="md:col-span-5 px-3 py-2 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#0a84ff]"
               />
               <input
                 type="text"
                 value={snapshotNote}
                 onChange={(e) => setSnapshotNote(e.target.value)}
-                placeholder="Optional note..."
+                placeholder={t('Optional note...')}
                 className="md:col-span-4 px-3 py-2 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#0a84ff]"
               />
               <button
@@ -2047,7 +2045,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 className="md:col-span-3 flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_2px_10px_rgba(10,132,255,0.3)] transition-colors cursor-pointer"
               >
                 <Camera className="w-3.5 h-3.5" />
-                <span>Save Snapshot</span>
+                <span>{t('Save Snapshot')}</span>
               </button>
             </div>
           </div>
@@ -2056,7 +2054,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Total Snapshots
+                {t('Total Snapshots')}
               </div>
               <div className="mt-1 text-xl font-mono tabular-nums font-bold text-[#5ac8fa]">
                 {snapshots.length}
@@ -2064,15 +2062,15 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
             </div>
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Latest Checkpoint
+                {t('Latest Checkpoint')}
               </div>
               <div className="mt-1 text-xs font-semibold text-white truncate">
-                {snapshots[0]?.name ?? 'None'}
+                {snapshots[0]?.name ?? t('None')}
               </div>
             </div>
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Current Delta vs Stock
+                {t('Current Delta vs Stock')}
               </div>
               <div className="mt-1 text-xl font-mono tabular-nums font-bold text-amber-400">
                 {modifiedBytes.toLocaleString()} B
@@ -2080,7 +2078,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
             </div>
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Active Buffer
+                {t('Active Buffer')}
               </div>
               <div className="mt-1 text-xl font-mono tabular-nums font-bold text-zinc-200">
                 {(bytes.length / 1024).toFixed(0)} KB
@@ -2093,14 +2091,14 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5 flex items-center justify-between gap-3 flex-wrap text-xs">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                  Compare Two Snapshots:
+                  {t('Compare Two Snapshots:')}
                 </span>
                 <select
                   value={cmpSnapA}
                   onChange={(e) => setCmpSnapA(e.target.value)}
                   className="px-2.5 py-1 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
                 >
-                  <option value="">Select Snapshot A…</option>
+                  <option value="">{t('Select Snapshot A…')}</option>
                   {snapshots.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -2113,7 +2111,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                   onChange={(e) => setCmpSnapB(e.target.value)}
                   className="px-2.5 py-1 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
                 >
-                  <option value="">Select Snapshot B…</option>
+                  <option value="">{t('Select Snapshot B…')}</option>
                   {snapshots.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -2124,7 +2122,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               {snapshotComparison && (
                 <div className="font-mono text-[11px] px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300">
                   Δ {snapshotComparison.diffB.toLocaleString()} B · {snapshotComparison.clusterCount}{' '}
-                  cluster{snapshotComparison.clusterCount === 1 ? '' : 's'}
+                  {t(snapshotComparison.clusterCount === 1 ? 'cluster' : 'clusters')}
                 </div>
               )}
             </div>
@@ -2134,9 +2132,9 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
           {snapshots.length === 0 ? (
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-12 text-center">
               <History className="w-9 h-9 text-zinc-600 mx-auto mb-3" />
-              <p className="text-sm font-semibold text-zinc-200">No snapshots saved yet</p>
+              <p className="text-sm font-semibold text-zinc-200">{t('No Snapshots Yet')}</p>
               <p className="text-xs text-zinc-500 mt-1">
-                Save a snapshot above before making aggressive fuel, boost, or ignition changes.
+                {t('Save a snapshot above before making aggressive fuel, boost, or ignition changes.')}
               </p>
             </div>
           ) : (
@@ -2161,17 +2159,17 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                         </span>
                         {diffVsCurrent === 0 ? (
                           <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10.5px] font-medium text-emerald-300">
-                            Matches Current BIN
+                            {t('Matches Current BIN')}
                           </span>
                         ) : diffVsCurrent > 0 ? (
                           <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 font-mono tabular-nums text-[10.5px] text-amber-300">
-                            Δ {diffVsCurrent.toLocaleString()} B vs current
+                            Δ {diffVsCurrent.toLocaleString()} B {t('vs current')}
                           </span>
                         ) : null}
                       </div>
                       <div className="text-[11px] text-zinc-400 mt-1 flex items-center gap-3">
                         <span className="font-mono tabular-nums">
-                          {(snap.bytes.length / 1024).toFixed(0)} KB · {snap.changedBytes.toLocaleString()} B vs stock
+                          {(snap.bytes.length / 1024).toFixed(0)} KB · {snap.changedBytes.toLocaleString()} B {t('vs stock')}
                         </span>
                         {snap.note && <span className="text-zinc-500">· {snap.note}</span>}
                       </div>
@@ -2184,7 +2182,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                           onClick={() => onSetCompareFromSnapshot(snap)}
                           className="px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] font-medium text-zinc-200 cursor-pointer"
                         >
-                          Set Compare
+                          {t('Set Compare')}
                         </button>
                       )}
                       {onAddSnapshotToMultiCompare && (
@@ -2193,7 +2191,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                           onClick={() => onAddSnapshotToMultiCompare(snap)}
                           className="px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] font-medium text-zinc-200 cursor-pointer"
                         >
-                          Add to Multi-Compare
+                          {t('Add to Multi-File Comparison')}
                         </button>
                       )}
                       <button
@@ -2207,7 +2205,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] font-medium text-zinc-200 cursor-pointer"
                       >
                         <Download className="w-3 h-3" />
-                        <span>Export .bin</span>
+                        <span>{t('Export .bin')}</span>
                       </button>
                       <button
                         type="button"
@@ -2215,13 +2213,13 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 border border-[#0a84ff]/35 text-[11px] font-semibold text-[#5ac8fa] cursor-pointer"
                       >
                         <RotateCcw className="w-3 h-3" />
-                        <span>Restore</span>
+                        <span>{t('Restore')}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDeleteSnapshot(snap.id)}
                         className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-rose-500/20 hover:text-rose-300 border border-white/[0.07] text-zinc-400 transition-colors cursor-pointer"
-                        title="Delete Snapshot"
+                        title={t('Delete')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -2241,10 +2239,10 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
           <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 flex items-center justify-between gap-4 flex-wrap shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div>
               <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
-                Calibration Edit History &amp; Audit Timeline
+                {t('Calibration Edit History & Audit Timeline')}
               </h2>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Every map tweak, recipe application, and checksum repair recorded in chronological order.
+                {t('Every map tweak, recipe application, and checksum repair recorded in chronological order.')}
               </p>
             </div>
 
@@ -2255,7 +2253,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                   type="text"
                   value={historySearch}
                   onChange={(e) => setHistorySearch(e.target.value)}
-                  placeholder="Filter edits..."
+                  placeholder={t('Filter edits...')}
                   className="pl-8 pr-3 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#0a84ff]"
                 />
               </div>
@@ -2278,7 +2276,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                   className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] disabled:opacity-35 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-[0_2px_10px_rgba(10,132,255,0.3)] cursor-pointer"
                 >
                   <Undo2 className="w-3.5 h-3.5" />
-                  <span>Undo Last Edit</span>
+                  <span>{t('Undo Last Edit')}</span>
                 </button>
               )}
             </div>
@@ -2288,7 +2286,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                Logged Edits
+                {t('Logged Edits')}
               </div>
               <div className="mt-1.5 text-xl font-mono tabular-nums font-bold text-[#5ac8fa]">
                 {historyEntries.length}
@@ -2296,7 +2294,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
             </div>
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                Cumulative Patched
+                {t('Cumulative Patched')}
               </div>
               <div className="mt-1.5 text-xl font-mono tabular-nums font-bold text-amber-400">
                 {totalHistoryBytes.toLocaleString()} B
@@ -2304,7 +2302,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
             </div>
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                Net Delta vs Stock
+                {t('Net Delta vs Stock')}
               </div>
               <div className="mt-1.5 text-xl font-mono tabular-nums font-bold text-emerald-400">
                 {modifiedBytes.toLocaleString()} B
@@ -2312,12 +2310,12 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
             </div>
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                Latest Action
+                {t('Latest Action')}
               </div>
               <div className="mt-1.5 text-xs font-medium text-zinc-200 truncate">
                 {historyEntries.length > 0
                   ? historyEntries[historyEntries.length - 1].label
-                  : 'No edits yet'}
+                  : t('No edits yet')}
               </div>
             </div>
           </div>
@@ -2328,11 +2326,11 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               <Clock className="w-9 h-9 text-zinc-600 mx-auto mb-3" />
               <p className="text-sm font-semibold text-zinc-200">
                 {historyEntries.length === 0
-                  ? 'No Calibration Edits Recorded Yet'
-                  : 'No history entries match your filter'}
+                  ? t('No Calibration Edits Recorded Yet')
+                  : t('No history entries match your filter')}
               </p>
               <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto">
-                Edit cells in Map Editor, run a Tuning Recipe, or repair checksums to see the full undoable audit timeline here.
+                {t('Edit cells in Map Editor, run a Tuning Recipe, or repair checksums to see the full undoable audit timeline here.')}
               </p>
             </div>
           ) : (
@@ -2405,7 +2403,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                               type="text"
                               value={editingNoteDraft}
                               onChange={(e) => setEditingNoteDraft(e.target.value)}
-                              placeholder="Add audit note…"
+                              placeholder={t('Add audit note…')}
                               className="flex-1 max-w-xs px-2 py-1 rounded bg-[#17181d] border border-[#0a84ff]/50 text-xs text-zinc-100 focus:outline-none"
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
@@ -2432,7 +2430,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                               }}
                               className="px-2 py-1 rounded bg-[#0a84ff] text-white text-[11px] font-semibold cursor-pointer"
                             >
-                              Save
+                              {t('Save')}
                             </button>
                           </div>
                         )}
@@ -2447,7 +2445,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                           setEditingNoteDraft(noteText);
                         }}
                         className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-zinc-400 hover:text-zinc-100 cursor-pointer"
-                        title="Edit Note"
+                        title={t('Edit Note')}
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
@@ -2461,7 +2459,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-[11px] font-medium text-zinc-200 cursor-pointer"
                         >
                           <Undo2 className="w-3 h-3" />
-                          <span>Undo</span>
+                          <span>{t('Undo')}</span>
                         </button>
                       )}
                     </div>
@@ -2483,10 +2481,10 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               </div>
               <div>
                 <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
-                  Standalone HTML Calibration Tune Report
+                  {t('Standalone HTML Calibration Tune Report')}
                 </h2>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Generates a self-contained dark-mode HTML dossier with ECU identity, modified scalars/flags, and interactive Tuned / Original / Delta heatmaps.
+                  {t('Generates a self-contained dark-mode HTML dossier with ECU identity, modified scalars/flags, and interactive Tuned / Original / Delta heatmaps.')}
                 </p>
               </div>
             </div>
@@ -2498,7 +2496,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
               >
                 <FileText className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Download TXT Changelog</span>
+                <span>{t('TXT Changelog')}</span>
               </button>
               <button
                 type="button"
@@ -2506,7 +2504,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
               >
                 {copiedMd ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
-                <span>{copiedMd ? 'Copied Markdown' : 'Copy Markdown'}</span>
+                <span>{copiedMd ? t('Copied Markdown') : t('Copy Markdown')}</span>
               </button>
               <button
                 type="button"
@@ -2514,7 +2512,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Print / Save PDF</span>
+                <span>{t('Print / PDF')}</span>
               </button>
               <button
                 type="button"
@@ -2522,7 +2520,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
               >
                 <ExternalLink className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Preview in Tab</span>
+                <span>{t('Preview')}</span>
               </button>
               <button
                 type="button"
@@ -2530,7 +2528,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_4px_16px_rgba(10,132,255,0.35)] transition-all cursor-pointer"
               >
                 <Download className="w-4 h-4" />
-                <span>Download HTML Tune Report</span>
+                <span>{t('HTML Report')}</span>
               </button>
             </div>
           </div>
@@ -2539,7 +2537,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                ECU Platform
+                {t('ECU Platform')}
               </div>
               <div className="mt-1.5 text-sm font-semibold text-white truncate">
                 {reportSummary.ecu.ecuFamily}
@@ -2551,65 +2549,65 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                Modified Maps
+                {t('Modified Maps')}
               </div>
               <div className="mt-1.5 text-xl font-mono tabular-nums font-bold text-[#5ac8fa]">
                 {reportSummary.modifiedMaps}
               </div>
               <div className="mt-0.5 text-[11px] text-zinc-500">
-                {xdf ? `of ${xdf.items.length} XDF items` : 'No XDF loaded'}
+                {xdf ? t('of %lld XDF items', xdf.items.length) : t('No XDF loaded')}
               </div>
             </div>
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                Binary Delta
+                {t('Binary Delta')}
               </div>
               <div className="mt-1.5 text-xl font-mono tabular-nums font-bold text-amber-400">
                 {modifiedBytes.toLocaleString()} B
               </div>
               <div className="mt-0.5 text-[11px] text-zinc-500">
-                {reportSummary.clusterCount} diff cluster{reportSummary.clusterCount === 1 ? '' : 's'}
+                {reportSummary.clusterCount} {t(reportSummary.clusterCount === 1 ? 'diff cluster' : 'diff clusters')}
               </div>
             </div>
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                Lint &amp; Checksums
+                {t('Lint & Checksums')}
               </div>
               <div className="mt-1.5 text-sm font-semibold text-zinc-100">
                 {allValid ? (
-                  <span className="text-emerald-400">Checksums Valid</span>
+                  <span className="text-emerald-400">{t('Checksums Valid')}</span>
                 ) : (
-                  <span className="text-rose-400">{invalidFixableBlocks.length} Invalid Block(s)</span>
+                  <span className="text-rose-400">{invalidFixableBlocks.length} {t('Invalid Block(s)')}</span>
                 )}
               </div>
               <div className="mt-0.5 text-[11px] text-zinc-500">
-                {findings.length} diagnostic finding{findings.length === 1 ? '' : 's'}
+                {findings.length} {t(findings.length === 1 ? 'diagnostic finding' : 'diagnostic findings')}
               </div>
             </div>
           </div>
 
           <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 space-y-2 text-xs text-zinc-400">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-              Included in Export
+              {t('Included in Export')}
             </div>
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-1.5 pt-1">
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>ECU identification header, SW/HW strings &amp; file metadata</span>
+                <span>{t('ECU identification header, SW/HW strings & file metadata')}</span>
               </li>
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Modified constants &amp; bit-flags comparison table</span>
+                <span>{t('Modified constants & bit-flags comparison table')}</span>
               </li>
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Interactive Tuned / Original / Delta thermal 2D map grids</span>
+                <span>{t('Interactive Tuned / Original / Delta thermal 2D map grids')}</span>
               </li>
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Zero external CDN dependencies — opens offline anywhere</span>
+                <span>{t('Zero external CDN dependencies — opens offline anywhere')}</span>
               </li>
             </ul>
           </div>

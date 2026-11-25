@@ -36,6 +36,7 @@ import {
   translateMapName,
   type TranslationMode,
 } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export type WorkbenchMode = 'hex' | 'map';
 export type SidebarTab = 'maps' | 'diffs' | 'detected' | 'markers';
@@ -73,6 +74,8 @@ export interface HexMarker {
 export interface SidebarProps {
   mode: WorkbenchMode;
   onModeChange: (mode: WorkbenchMode) => void;
+  /** True when the Workspace section is active (prevents Hex/Map from glowing on Overview/Compare/Flash/etc.) */
+  isWorkspaceActive?: boolean;
   xdf: XDFDefinition | null;
   selectedItemId: number | null;
   onSelectItem: (item: XDFItem) => void;
@@ -165,6 +168,7 @@ function renderMapKindIcon(item: XDFItem): React.ReactNode {
 export const Sidebar: React.FC<SidebarProps> = ({
   mode,
   onModeChange,
+  isWorkspaceActive = true,
   xdf,
   selectedItemId,
   onSelectItem,
@@ -203,6 +207,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onEditCandidateInXdfModal,
   onIgnoreCandidate,
 }) => {
+  const { t } = useI18n();
   const [internalTab, setInternalTab] = useState<SidebarTab>('maps');
   const [search, setSearch] = useState('');
   const [internalScope, setInternalScope] = useState<SidebarMapScope>('all');
@@ -355,10 +360,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const totalMaps = xdf?.items.length ?? 0;
 
   const tabs: { id: SidebarTab; label: string; count: number; icon: React.ReactNode }[] = [
-    { id: 'maps', label: 'Maps', count: totalMaps, icon: <Layers className="w-3.5 h-3.5" /> },
-    { id: 'diffs', label: 'Diffs', count: diffClusters.length, icon: <GitCompare className="w-3.5 h-3.5" /> },
-    { id: 'detected', label: 'Detected', count: detectedCandidates.length, icon: <Sparkles className="w-3.5 h-3.5" /> },
-    { id: 'markers', label: 'Markers', count: markers.length, icon: <Bookmark className="w-3.5 h-3.5" /> },
+    { id: 'maps', label: t('Maps'), count: totalMaps, icon: <Layers className="w-3.5 h-3.5" /> },
+    { id: 'diffs', label: t('Diffs'), count: diffClusters.length, icon: <GitCompare className="w-3.5 h-3.5" /> },
+    { id: 'detected', label: t('Detected'), count: detectedCandidates.length, icon: <Sparkles className="w-3.5 h-3.5" /> },
+    { id: 'markers', label: t('Markers'), count: markers.length, icon: <Bookmark className="w-3.5 h-3.5" /> },
   ];
 
   return (
@@ -370,38 +375,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             onClick={() => onModeChange('hex')}
             className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-medium transition-all cursor-pointer ${
-              mode === 'hex'
+              isWorkspaceActive && mode === 'hex'
                 ? 'bg-[#0a84ff] text-white shadow-[0_1px_8px_rgba(10,132,255,0.38)]'
                 : 'text-zinc-400 hover:text-zinc-100'
             }`}
           >
             <Binary className="w-3.5 h-3.5" />
-            <span>Hex Editor</span>
+            <span className="truncate">{t('Hex Editor')}</span>
           </button>
           <button
             type="button"
             onClick={() => onModeChange('map')}
             className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-medium transition-all cursor-pointer ${
-              mode === 'map'
+              isWorkspaceActive && mode === 'map'
                 ? 'bg-[#0a84ff] text-white shadow-[0_1px_8px_rgba(10,132,255,0.38)]'
                 : 'text-zinc-400 hover:text-zinc-100'
             }`}
           >
             <Table2 className="w-3.5 h-3.5" />
-            <span>Map Editor</span>
+            <span className="truncate">{t('Map Editor')}</span>
           </button>
         </div>
       </div>
 
       {/* 4 Nav Tabs with live counts */}
       <div className="grid grid-cols-4 gap-0.5 px-2 py-1.5 border-b border-white/[0.065]">
-        {tabs.map((t) => {
-          const isActive = activeTab === t.id;
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
           return (
             <button
-              key={t.id}
+              key={tab.id}
               type="button"
-              onClick={() => setActiveTab(t.id)}
+              onClick={() => setActiveTab(tab.id)}
               className={`flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg transition-colors cursor-pointer ${
                 isActive
                   ? 'bg-white/[0.08] text-zinc-100'
@@ -409,12 +414,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }`}
             >
               <div className="flex items-center gap-1">
-                <span className={isActive ? 'text-zinc-100' : 'text-zinc-500'}>{t.icon}</span>
+                <span className={isActive ? 'text-zinc-100' : 'text-zinc-500'}>{tab.icon}</span>
                 <span className="text-[10px] font-mono tabular-nums text-zinc-400">
-                  {t.count}
+                  {tab.count}
                 </span>
               </div>
-              <span className="text-[10px] font-medium tracking-tight">{t.label}</span>
+              <span className="text-[10px] font-medium tracking-tight truncate max-w-full">{tab.label}</span>
             </button>
           );
         })}
@@ -430,12 +435,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onChange={(e) => setSearch(e.target.value)}
             placeholder={
               activeTab === 'maps'
-                ? 'Search maps…'
+                ? t('Filter maps…')
                 : activeTab === 'diffs'
-                  ? 'Filter hex address…'
+                  ? t('Address 0x…')
                   : activeTab === 'detected'
-                    ? 'Filter candidates…'
-                    : 'Filter markers…'
+                    ? t('Filter')
+                    : t('Filter')
             }
             className="w-full pl-8 pr-7 py-1.5 text-xs bg-[#101115] text-zinc-100 placeholder:text-zinc-500 rounded-lg border border-white/[0.065] focus:outline-none focus:border-[#0a84ff]/70 transition-colors"
           />
@@ -444,7 +449,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               type="button"
               onClick={() => setSearch('')}
               className="absolute right-2 text-zinc-500 hover:text-zinc-200 cursor-pointer"
-              aria-label="Clear search"
+              aria-label={t('Clear All')}
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -463,7 +468,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]'
               }`}
             >
-              All <span className="font-mono tabular-nums ml-0.5 opacity-75">{totalMaps}</span>
+              {t('All')} <span className="font-mono tabular-nums ml-0.5 opacity-75">{totalMaps}</span>
             </button>
             <button
               type="button"
@@ -474,7 +479,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]'
               }`}
             >
-              Changed{' '}
+              {t('Changed')}{' '}
               <span className="font-mono tabular-nums ml-0.5 opacity-75">
                 {changedItemIds.size}
               </span>
@@ -487,7 +492,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   ? 'bg-amber-400/15 text-amber-300'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]'
               }`}
-              title="Favorites (⌘3)"
+              title={`${t('Favorites')} (⌘3)`}
             >
               <Star className="w-2.5 h-2.5 fill-current" />
               <span className="font-mono tabular-nums">{favoritesCount}</span>
@@ -498,7 +503,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Diff cluster gap selector (Diffs tab) */}
         {activeTab === 'diffs' && (
           <div className="flex items-center justify-between gap-1 mt-2">
-            <span className="text-[10px] font-medium text-zinc-500">Cluster gap</span>
+            <span className="text-[10px] font-medium text-zinc-500">{t('Cluster:')}</span>
             <div className="flex items-center gap-0.5">
               {DIFF_GAP_OPTIONS.map((g) => (
                 <button
@@ -529,7 +534,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span>Ptr: {detectedStats.countPtr}</span>
             </div>
             <div className="flex items-center justify-between gap-1">
-              <span className="text-[10px] font-medium text-zinc-500">Min conf</span>
+              <span className="text-[10px] font-medium text-zinc-500">{t('Confidence Threshold')}</span>
               <div className="flex items-center gap-0.5">
                 {CONFIDENCE_OPTIONS.map((thr) => (
                   <button
@@ -566,14 +571,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-1.5 text-xs font-medium text-amber-300">
                     <FileWarning className="w-3.5 h-3.5 shrink-0" />
-                    <span>Outside of XDF</span>
+                    <span>{t('Outside of XDF')}</span>
                   </span>
                   <span className="text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200">
                     {formatByteSize(outsideOfXdfBytes)}
                   </span>
                 </div>
                 <p className="mt-0.5 text-[10px] text-amber-200/70">
-                  Modified bytes outside defined XDF ranges — click to inspect
+                  {t('Outside-XDF Changes')}
                 </p>
               </button>
             )}
@@ -583,10 +588,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Layers className="w-5 h-5 text-zinc-600 mx-auto mb-2" />
                 <p className="text-xs text-zinc-500">
                   {mapFilter === 'changed'
-                    ? 'No modified maps match your filter.'
+                    ? t('No Changes')
                     : mapFilter === 'favorites'
-                      ? 'No favorite maps yet. Click ★ or press ⌘D.'
-                      : 'No maps found.'}
+                      ? t('Add maps with the star or by right-clicking (⌘D).')
+                      : t('No maps found.')}
                 </p>
               </div>
             ) : (
@@ -672,29 +677,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
                                   {isLocked && (
-                                    <span title="Locked">
+                                    <span title={t('Locked')}>
                                       <Lock className="w-3 h-3 text-amber-400" />
                                     </span>
                                   )}
                                   {isPinned && (
-                                    <span title="Pinned for Split View">
+                                    <span title={t('Pin for Split')}>
                                       <Pin className="w-3 h-3 text-sky-400" />
                                     </span>
                                   )}
                                   {isOutOfSafe && (
-                                    <span title="Out of Safe Range">
+                                    <span title={t('Outside safety range')}>
                                       <AlertTriangle className="w-3 h-3 text-rose-400" />
                                     </span>
                                   )}
                                   {hasDiagWarn && (
-                                    <span title="Diagnostic Warning">
+                                    <span title={t('Diagnostic notice (axis, outlier, or saturation)')}>
                                       <ShieldAlert className="w-3 h-3 text-amber-400" />
                                     </span>
                                   )}
                                   {alignConf !== undefined && (
                                     <span
                                       className="text-[9.5px] font-mono px-1 rounded bg-emerald-500/15 text-emerald-300"
-                                      title="Auto-Align match confidence"
+                                      title={t('Auto-Align Definition')}
                                     >
                                       {alignConf > 1 ? Math.round(alignConf) : Math.round(alignConf * 100)}%
                                     </span>
@@ -702,7 +707,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                   {isChanged && (
                                     <span
                                       className="w-1.5 h-1.5 rounded-full bg-amber-400"
-                                      title="Modified vs Stock"
+                                      title={t('Differs from comparison')}
                                     />
                                   )}
                                   {onToggleFavorite && (
@@ -712,7 +717,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                         e.stopPropagation();
                                         onToggleFavorite(item);
                                       }}
-                                      title={isFav ? 'Remove from Favorites' : 'Add to Favorites'}
+                                      title={isFav ? t('Remove from Favorites') : t('Add to Favorites')}
                                       className={`p-0.5 rounded transition cursor-pointer ${
                                         isFav
                                           ? 'text-amber-400 opacity-100'
@@ -753,7 +758,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {filteredDiffs.length === 0 ? (
               <div className="text-center py-10 px-4">
                 <GitCompare className="w-5 h-5 text-zinc-600 mx-auto mb-2" />
-                <p className="text-xs text-zinc-500">No diff clusters vs baseline.</p>
+                <p className="text-xs text-zinc-500">{t('No Byte Differences')}</p>
               </div>
             ) : (
               filteredDiffs.map((cluster, idx) => {
@@ -786,7 +791,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </div>
                     <div className="mt-0.5 flex items-center justify-between text-[10.5px] text-zinc-400">
                       <span className="truncate">
-                        {matchingMap ? matchingMap.title : 'Unmapped region'}
+                        {matchingMap ? matchingMap.title : t('Not in XDF')}
                       </span>
                       <span className="font-mono tabular-nums text-zinc-500 shrink-0 ml-2">
                         → {formatHex(cluster.end)}
@@ -806,7 +811,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="text-center py-10 px-4">
                 <Sparkles className="w-5 h-5 text-zinc-600 mx-auto mb-2" />
                 <p className="text-xs text-zinc-500">
-                  No detected map candidates match threshold ({Math.round(minConfidence * 100)}%).
+                  {t('No Recognized Maps')} ({Math.round(minConfidence * 100)}%)
                 </p>
               </div>
             ) : (
@@ -866,7 +871,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           e.stopPropagation();
                           onAddCandidateToXdf?.(cand);
                         }}
-                        title="Quick-add to XDF"
+                        title={t('Add to XDF (1-Click)')}
                         className="w-6 h-6 rounded-md flex items-center justify-center bg-white/[0.05] hover:bg-[#0a84ff] text-zinc-400 hover:text-white transition-colors shrink-0 cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -893,11 +898,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="text-center py-10 px-4">
                 <Bookmark className="w-5 h-5 text-zinc-600 mx-auto mb-2" />
                 <p className="text-xs text-zinc-500">
-                  No bookmarks saved. Press{' '}
-                  <kbd className="px-1 py-0.5 rounded bg-white/[0.07] font-mono text-[10px] text-zinc-300">
-                    M
-                  </kbd>{' '}
-                  in Hex Editor to bookmark an offset.
+                  {t('No Bookmarks')}. {t('Add bookmarks in Hex-Diff via right-click or the bookmark menu.')}
                 </p>
               </div>
             ) : (
@@ -944,7 +945,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         e.stopPropagation();
                         onDeleteMarker(marker.id);
                       }}
-                      title="Delete marker"
+                      title={t('Delete')}
                       className="p-1 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition-all shrink-0 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -975,7 +976,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
               >
                 <Table2 className="w-3.5 h-3.5 text-sky-400" />
-                <span>Edit Map</span>
+                <span>{t('Open in Editor')}</span>
               </button>
               {onTogglePin && (
                 <button
@@ -987,7 +988,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
                 >
                   <Pin className="w-3.5 h-3.5 text-sky-400" />
-                  <span>{pinnedItemId === contextMenu.item.id ? 'Unpin Split' : 'Pin for Split'}</span>
+                  <span>{pinnedItemId === contextMenu.item.id ? t('Close split view') : t('Pin for Split')}</span>
                 </button>
               )}
               {onToggleFavorite && (
@@ -1001,7 +1002,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <Star className="w-3.5 h-3.5 text-amber-400" />
                   <span>
-                    {favoriteIds?.has(String(contextMenu.item.id)) ? 'Remove Favorite' : 'Toggle Favorite'}
+                    {favoriteIds?.has(String(contextMenu.item.id)) ? t('Remove from Favorites') : t('Add to Favorites')}
                   </span>
                 </button>
               )}
@@ -1019,7 +1020,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   ) : (
                     <Lock className="w-3.5 h-3.5 text-amber-400" />
                   )}
-                  <span>{lockedItemIds?.has(contextMenu.item.id) ? 'Unlock Map' : 'Lock Map'}</span>
+                  <span>{lockedItemIds?.has(contextMenu.item.id) ? t('Unlock Map') : t('Lock Map')}</span>
                 </button>
               )}
               <div className="my-1 border-t border-white/[0.08]" />
@@ -1033,7 +1034,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
                 >
                   <Copy className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>Copy from Compare</span>
+                  <span>{t('Copy Selection from Compare')}</span>
                 </button>
               )}
               {onResetMap && (
@@ -1046,7 +1047,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>Reset Map</span>
+                  <span>{t('Reset Map')}</span>
                 </button>
               )}
               <button
@@ -1058,7 +1059,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
               >
                 <Binary className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Show in Hex</span>
+                <span>{t('Open Hex-Diff')}</span>
               </button>
               {onEditMapInXdfModal && (
                 <button
@@ -1070,7 +1071,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>Edit in XDF Modal…</span>
+                  <span>{t('Edit XDF Item…')}</span>
                 </button>
               )}
               {onDeleteMap && (
@@ -1085,7 +1086,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-rose-400 hover:bg-rose-500/15 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Map</span>
+                    <span>{t('Delete')}</span>
                   </button>
                 </>
               )}
@@ -1104,7 +1105,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Create XDF Map…</span>
+                  <span>{t('Create as XDF Map …')}</span>
                 </button>
               )}
               {onCopyDiffFromCompare && (
@@ -1117,7 +1118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
                 >
                   <Copy className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Copy from Compare</span>
+                  <span>{t('Copy Block from Compare (←)')}</span>
                 </button>
               )}
               <button
@@ -1129,7 +1130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
               >
                 <Binary className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Jump in Hex</span>
+                <span>{t('Open Hex-Diff')}</span>
               </button>
             </>
           )}
@@ -1146,7 +1147,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Add to XDF</span>
+                  <span>{t('Add to XDF')}</span>
                 </button>
               )}
               {onEditCandidateInXdfModal && (
@@ -1159,7 +1160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Edit in XDF Modal…</span>
+                  <span>{t('Customize & Save as XDF Item …')}</span>
                 </button>
               )}
               {onIgnoreCandidate && (
@@ -1174,7 +1175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-rose-400 hover:bg-rose-500/15 cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
-                    <span>Ignore Candidate</span>
+                    <span>{t('Hide Candidate (Ignore)')}</span>
                   </button>
                 </>
               )}
@@ -1192,7 +1193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
               >
                 <Binary className="w-3.5 h-3.5 text-sky-400" />
-                <span>Jump in Hex</span>
+                <span>{t('Open Hex-Diff')}</span>
               </button>
               {onDeleteMarker && (
                 <button
@@ -1204,7 +1205,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-rose-400 hover:bg-rose-500/15 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete Bookmark</span>
+                  <span>{t('Delete')}</span>
                 </button>
               )}
             </>

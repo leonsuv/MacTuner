@@ -35,6 +35,7 @@ import {
   scalingValue,
   verifyChecksums,
 } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export interface OverviewViewProps {
   bytes: Uint8Array;
@@ -160,6 +161,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   onJumpToHex,
   onSwitchSection,
 }) => {
+  const { t } = useI18n();
   const [copiedMd, setCopiedMd] = useState(false);
 
   const ecu = useMemo(() => identifyECU(bytes), [bytes]);
@@ -364,48 +366,48 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   const workbenchCards = [
     {
       id: 'hex',
-      title: 'Hex-Diff Workbench',
-      desc: 'Byte-exact hex editor, diff clusters, markers & structure inspector',
+      title: t('Hex-Diff Workbench'),
+      desc: t('Byte-exact hex editor, diff clusters, markers & structure inspector'),
       icon: <Binary className="w-4 h-4 text-[#5ac8fa]" />,
       accent: 'from-[#0a84ff]/15 to-transparent border-[#0a84ff]/25',
       action: () => onSwitchSection?.('workspace', 'hex'),
     },
     {
       id: 'map',
-      title: '2D / 3D Map Editor',
-      desc: 'Heatmap table, 3D WebGL surface, axis editor & interpolation tools',
+      title: t('2D / 3D Map Editor'),
+      desc: t('Heatmap table, 3D WebGL surface, axis editor & interpolation tools'),
       icon: <Table2 className="w-4 h-4 text-emerald-400" />,
       accent: 'from-emerald-500/15 to-transparent border-emerald-500/25',
       action: () => onSwitchSection?.('workspace', 'map'),
     },
     {
       id: 'discovery',
-      title: 'Discovery, DTC & Porting',
-      desc: 'Map finder, live DTC-Off switch patcher, cross-version & batch porting',
+      title: t('Discovery, DTC & Porting'),
+      desc: t('Map finder, live DTC-Off switch patcher, cross-version & batch porting'),
       icon: <Radar className="w-4 h-4 text-amber-400" />,
       accent: 'from-amber-500/15 to-transparent border-amber-500/25',
       action: () => onSwitchSection?.('discovery'),
     },
     {
       id: 'compare',
-      title: 'Multi-File Compare',
-      desc: 'Side-by-side Stock, Stage 1, Stage 2 & snapshot delta inspection',
+      title: t('Multi-File Compare'),
+      desc: t('Side-by-side Stock, Stage 1, Stage 2 & snapshot delta inspection'),
       icon: <FileDiff className="w-4 h-4 text-purple-400" />,
       accent: 'from-purple-500/15 to-transparent border-purple-500/25',
       action: () => onSwitchSection?.('compare'),
     },
     {
       id: 'datalog',
-      title: 'Datalog, Dyno & Auto-Tune',
-      desc: 'CSV/ADX telemetry, virtual dyno, anomaly alerts & live OBD-II stream',
+      title: t('Datalog, Dyno & Auto-Tune'),
+      desc: t('CSV/ADX telemetry, virtual dyno, anomaly alerts & live OBD-II stream'),
       icon: <Activity className="w-4 h-4 text-rose-400" />,
       accent: 'from-rose-500/15 to-transparent border-rose-500/25',
       action: () => onSwitchSection?.('datalog'),
     },
     {
       id: 'flash',
-      title: 'Flash Preflight & Checksums',
-      desc: '11 ECU/TCU checksums, CVN recovery, diagnostics, snapshots & export',
+      title: t('Flash Preflight & Checksums'),
+      desc: t('11 ECU/TCU checksums, CVN recovery, diagnostics, snapshots & export'),
       icon: <ShieldCheck className="w-4 h-4 text-sky-400" />,
       accent: 'from-sky-500/15 to-transparent border-sky-500/25',
       action: () => onSwitchSection?.('flash'),
@@ -418,12 +420,12 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-lg font-semibold tracking-[-0.015em] text-white">
-            Calibration Overview
+            {t('Calibration Overview')}
           </h1>
           <p className="text-xs font-mono text-zinc-400 mt-0.5">
             {fileName}
             {baselineBytes ? ` vs ${compareName}` : ''}
-            {xdf ? ` · ${xdf.title}` : ' · No XDF loaded'}
+            {xdf ? ` · ${xdf.title}` : ` · ${t('No XDF loaded')}`}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -433,7 +435,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 cursor-pointer"
           >
             <FileText className="w-3.5 h-3.5 text-zinc-400" />
-            <span>TXT Changelog</span>
+            <span>{t('TXT Changelog')}</span>
           </button>
           <button
             type="button"
@@ -441,7 +443,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-[#5ac8fa]" />
-            <span>HTML Report</span>
+            <span>{t('HTML Report')}</span>
           </button>
           <button
             type="button"
@@ -449,7 +451,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5 text-zinc-400" />
-            <span>Print / PDF</span>
+            <span>{t('Print / PDF')}</span>
           </button>
           <button
             type="button"
@@ -457,7 +459,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_2px_10px_rgba(10,132,255,0.3)] cursor-pointer"
           >
             {copiedMd ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copiedMd ? 'Copied Markdown' : 'Copy Markdown'}</span>
+            <span>{copiedMd ? t('Copied Markdown') : t('Copy Markdown')}</span>
           </button>
         </div>
       </div>
@@ -466,20 +468,20 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-            <span>XDF Maps</span>
+            <span>{t('XDF Maps')}</span>
             <Layers className="w-3.5 h-3.5 text-[#5ac8fa]" />
           </div>
           <div className="mt-2 text-2xl font-mono tabular-nums font-bold text-white">
             {xdf?.items.length ?? 0}
           </div>
           <div className="mt-0.5 text-[11px] text-zinc-500 truncate">
-            {xdf ? xdf.title : 'Load XDF / A2L / KP'}
+            {xdf ? xdf.title : t('Load XDF / A2L / KP')}
           </div>
         </div>
 
         <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-            <span>BIN Size</span>
+            <span>{t('BIN Size')}</span>
             <Binary className="w-3.5 h-3.5 text-indigo-400" />
           </div>
           <div className="mt-2 text-2xl font-mono tabular-nums font-bold text-white">
@@ -488,26 +490,26 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               : `${Math.round(bytes.length / 1024)} KB`}
           </div>
           <div className="mt-0.5 text-[11px] font-mono tabular-nums text-zinc-500">
-            {bytes.length.toLocaleString()} bytes
+            {bytes.length.toLocaleString()} {t('bytes')}
           </div>
         </div>
 
         <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-            <span>Changed Maps</span>
+            <span>{t('Changed Maps')}</span>
             <ArrowRightLeft className="w-3.5 h-3.5 text-amber-400" />
           </div>
           <div className="mt-2 text-2xl font-mono tabular-nums font-bold text-amber-400">
             {modifiedMaps.length}
           </div>
           <div className="mt-0.5 text-[11px] font-mono tabular-nums text-zinc-500">
-            {modifiedByteCount.toLocaleString()} B delta vs baseline
+            {modifiedByteCount.toLocaleString()} {t('B delta vs baseline')}
           </div>
         </div>
 
         <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-            <span>Checksum Status</span>
+            <span>{t('Checksum Status')}</span>
             {csStatus.invalid === 0 ? (
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
@@ -519,10 +521,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               csStatus.invalid === 0 ? 'text-emerald-400' : 'text-rose-400'
             }`}
           >
-            {csStatus.invalid === 0 ? 'Valid' : `${csStatus.invalid} Invalid`}
+            {csStatus.invalid === 0 ? t('Valid') : `${csStatus.invalid} ${t('Invalid')}`}
           </div>
           <div className="mt-0.5 text-[11px] text-zinc-500">
-            {csStatus.total} block{csStatus.total === 1 ? '' : 's'} verified
+            {csStatus.total} {t(csStatus.total === 1 ? 'block verified' : 'blocks verified')}
           </div>
         </div>
       </div>
@@ -536,13 +538,13 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm font-semibold text-white">ECU Identity &amp; Signatures</h2>
+                <h2 className="text-sm font-semibold text-white">{t('ECU Identity & Signatures')}</h2>
                 <span className="px-2 py-0.5 rounded-full bg-white/[0.06] text-[10.5px] font-mono text-zinc-300">
                   {ecu.architecture} · {ecu.endianness}
                 </span>
               </div>
               <p className="text-[11px] text-zinc-400">
-                Automatic binary signature extraction — click any hex offset pill to inspect in Hex-Diff
+                {t('Automatic binary signature extraction — click any hex offset pill to inspect in Hex-Diff')}
               </p>
             </div>
           </div>
@@ -550,23 +552,23 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           {ecu.hasTPROT ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/35 text-amber-300 text-xs font-semibold">
               <Lock className="w-3.5 h-3.5" />
-              TPROT / RSA Active
+              {t('TPROT / RSA Active')}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              No TPROT Detected
+              {t('No TPROT Detected')}
             </span>
           )}
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
           {[
-            { label: 'Manufacturer', value: manufacturer },
-            { label: 'ECU Family', value: ecu.ecuFamily },
-            { label: 'Hardware (HW)', value: ecu.hardwareNumber },
-            { label: 'Software (SW)', value: ecu.softwareNumber },
-            { label: 'EPK / OEM Part', value: epkInfo?.epk ?? ecu.oemPartNumber ?? '—' },
+            { label: t('Manufacturer'), value: manufacturer },
+            { label: t('ECU Family'), value: ecu.ecuFamily },
+            { label: t('Hardware (HW)'), value: ecu.hardwareNumber },
+            { label: t('Software (SW)'), value: ecu.softwareNumber },
+            { label: t('EPK / OEM Part'), value: epkInfo?.epk ?? ecu.oemPartNumber ?? '—' },
           ].map((field) => (
             <div
               key={field.label}
@@ -586,7 +588,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         {offsetPills.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap pt-1">
             <span className="text-[10.5px] uppercase tracking-wider text-zinc-500">
-              Signature Offsets:
+              {t('Signature Offsets:')}
             </span>
             {offsetPills.map((p) => (
               <button
@@ -607,7 +609,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
       {/* 6 Quick Workbench Cards */}
       <div>
         <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 mb-2.5">
-          Quick Workbenches
+          {t('Quick Workbenches')}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {workbenchCards.map((card) => (
@@ -639,29 +641,29 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="flex items-center gap-2">
               <Table2 className="w-4 h-4 text-[#5ac8fa]" />
               <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-200">
-                Modified Calibration Maps ({modifiedMaps.length})
+                {t('Modified Calibration Maps')} ({modifiedMaps.length})
               </h3>
             </div>
             <span className="text-[11px] font-mono text-zinc-500">
-              {modifiedByteCount.toLocaleString()} B total delta
+              {modifiedByteCount.toLocaleString()} {t('B total delta')}
             </span>
           </div>
 
           {modifiedMaps.length === 0 ? (
             <div className="p-10 text-center text-xs text-zinc-500">
               {baselineBytes
-                ? 'No modified XDF maps detected compared to baseline binary.'
-                : 'Load a comparison/stock baseline binary to track modified maps.'}
+                ? t('No modified XDF maps detected compared to baseline binary.')
+                : t('Load a comparison/stock baseline binary to track modified maps.')}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-white/[0.065] bg-white/[0.02] text-[10.5px] uppercase tracking-wider text-zinc-500">
-                    <th className="py-2.5 px-4 font-semibold">Map</th>
-                    <th className="py-2.5 px-4 font-semibold">Address</th>
-                    <th className="py-2.5 px-4 font-semibold">Delta Summary</th>
-                    <th className="py-2.5 px-4 font-semibold text-right">Action</th>
+                    <th className="py-2.5 px-4 font-semibold">{t('Map')}</th>
+                    <th className="py-2.5 px-4 font-semibold">{t('Address')}</th>
+                    <th className="py-2.5 px-4 font-semibold">{t('Delta Summary')}</th>
+                    <th className="py-2.5 px-4 font-semibold text-right">{t('Action')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.05]">
@@ -685,7 +687,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                           onClick={() => onSelectMap?.(row.item.id)}
                           className="px-2.5 py-1 rounded-md bg-[#0a84ff]/15 hover:bg-[#0a84ff]/30 text-[#5ac8fa] border border-[#0a84ff]/35 text-[11px] font-medium cursor-pointer"
                         >
-                          Open Map
+                          {t('Open Map')}
                         </button>
                       </td>
                     </tr>
@@ -704,13 +706,13 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               <div className="flex items-center gap-2">
                 <Star className="w-3.5 h-3.5 text-amber-400" />
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-200">
-                  Favorites ({favoriteItems.length})
+                  {t('Favorites')} ({favoriteItems.length})
                 </h3>
               </div>
             </div>
             {favoriteItems.length === 0 ? (
               <div className="p-5 text-center text-[11.5px] text-zinc-500">
-                Star frequently edited maps in the sidebar to pin them here.
+                {t('Star frequently edited maps in the sidebar to pin them here.')}
               </div>
             ) : (
               <div className="divide-y divide-white/[0.05]">
@@ -737,13 +739,13 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-200">
-                  Outside-XDF Changes ({outsideClusters.length})
+                  {t('Outside-XDF Changes')} ({outsideClusters.length})
                 </h3>
               </div>
             </div>
             {outsideClusters.length === 0 ? (
               <div className="p-5 text-center text-[11.5px] text-zinc-500">
-                All modified bytes fall cleanly inside defined XDF map ranges.
+                {t('All modified bytes fall cleanly inside defined XDF map ranges.')}
               </div>
             ) : (
               <div className="divide-y divide-white/[0.05] max-h-64 overflow-y-auto">

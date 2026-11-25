@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Cell, parseCellKey } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export interface Curves2DCanvasProps {
   values: (number | null)[][];
@@ -114,6 +115,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
   onJumpToHex,
   onOpenXdfEditor,
 }) => {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -712,7 +714,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
         <div className="flex items-center gap-2 min-w-0">
           <Activity className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
           <span className="text-xs font-semibold tracking-[-0.01em] text-zinc-100 shrink-0">
-            2D Curves
+            {t('2D Curves')}
           </span>
           {datalogActiveCell && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-mono text-emerald-300 shrink-0">
@@ -733,11 +735,11 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
           ) : isLocked ? (
             <span className="inline-flex items-center gap-1 text-[10.5px] text-amber-400/80 shrink-0">
               <Lock className="w-3 h-3" />
-              Locked
+              {t('Locked')}
             </span>
           ) : canEdit ? (
             <span className="text-[10.5px] text-zinc-500 hidden xl:inline truncate">
-              Drag points vertically to edit
+              {t('Drag point up/down')}
             </span>
           ) : null}
         </div>
@@ -754,7 +756,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              Curves
+              {t('Curves')}
             </button>
             <button
               type="button"
@@ -765,7 +767,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              Slices
+              {t('Slices')}
             </button>
           </div>
 
@@ -779,7 +781,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
             }`}
           >
             <Eye className="w-3 h-3" />
-            All
+            {t('All')}
           </button>
 
           {compareValues && (
@@ -791,10 +793,10 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
                   ? 'bg-amber-500/15 text-amber-300'
                   : 'bg-white/[0.045] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200'
               }`}
-              title="Toggle dashed comparison curves"
+              title={t('Comparison dashed')}
             >
               <Layers className="w-3 h-3" />
-              Cmp
+              {t('Cmp')}
             </button>
           )}
         </div>
@@ -850,7 +852,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
       {/* Row / Slice Legend */}
       <div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-white/[0.065] bg-[#121317] overflow-x-auto">
         <span className="text-[10px] uppercase tracking-wider text-zinc-500 shrink-0 mr-1">
-          {isCurves ? 'Rows' : 'Cols'}
+          {isCurves ? t('Rows') : t('Cols')}
         </span>
         {activeIndices.slice(0, 12).map((idx, pos) => {
           const color = SERIES_COLORS[pos % SERIES_COLORS.length];
@@ -894,7 +896,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
           >
             <span className="inline-flex items-center gap-2">
               <Eye className="w-3.5 h-3.5 text-zinc-400" />
-              Show All Curves
+              {t('Show All Curves (Clear Selection)')}
             </span>
             {showAll && <Check className="w-3.5 h-3.5 text-[#0a84ff]" />}
           </button>
@@ -910,7 +912,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
             >
               <span className="inline-flex items-center gap-2">
                 <Grid className="w-3.5 h-3.5 text-zinc-400" />
-                Select All
+                {t('Select All')}
               </span>
               <span className="text-[10px] font-mono text-zinc-500">⌘A</span>
             </button>
@@ -927,7 +929,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
               className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed text-left cursor-pointer"
             >
               <Sparkles className="w-3.5 h-3.5 text-zinc-400" />
-              Smooth Selection
+              {t('Smooth')}
             </button>
           )}
 
@@ -942,7 +944,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
               className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed text-left text-amber-300 cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              Reset to Original
+              {t('Reset to Original')}
             </button>
           )}
 
@@ -960,7 +962,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
               className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
             >
               <Binary className="w-3.5 h-3.5 text-zinc-400" />
-              Show in Hex
+              {t('Show in Hex')}
             </button>
           )}
 
@@ -974,7 +976,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
               className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
             >
               <Settings2 className="w-3.5 h-3.5 text-zinc-400" />
-              Edit in XDF…
+              {t('Edit XDF')}
             </button>
           )}
         </div>

@@ -24,6 +24,7 @@ import {
   type XDFItem,
 } from '@mactuner/core';
 import { Surface3DCanvas, type DatalogPoint3D } from './Surface3DCanvas';
+import { useI18n } from '../lib/i18n';
 
 export type BottomDrawerTab = 'surface3d' | 'datalog' | 'preflight';
 
@@ -104,6 +105,7 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
   onOpenFlashView,
   datalogSummary,
 }) => {
+  const { t } = useI18n();
   const [tab, setTab] = useState<BottomDrawerTab>('surface3d');
   const [height, setHeight] = useState<number>(260);
   const [hoveredCell, setHoveredCell] = useState<Cell | null>(null);
@@ -196,7 +198,7 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
       <div
         onPointerDown={onResizePointerDown}
         className="h-1.5 w-full cursor-ns-resize bg-transparent hover:bg-[#0a84ff]/40 transition-colors"
-        title="Drag to resize bottom drawer"
+        title={t('Drag to resize bottom drawer')}
       />
 
       {/* Drawer Tab Bar */}
@@ -212,7 +214,7 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
             }`}
           >
             <Box className="h-3.5 w-3.5" />
-            <span>3D Surface</span>
+            <span>{t('3D Surface')}</span>
             {item && <span className="text-[10px] text-zinc-500 max-w-[140px] truncate">· {item.title}</span>}
           </button>
           <button
@@ -225,7 +227,7 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
             }`}
           >
             <Activity className="h-3.5 w-3.5" />
-            <span>Datalog Trace</span>
+            <span>{t('Datalog Trace')}</span>
             {datalogSummary.enabled && (
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             )}
@@ -240,7 +242,7 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
             }`}
           >
             <HardDrive className="h-3.5 w-3.5" />
-            <span>Preflight & Atlas</span>
+            <span>{t('Preflight & Atlas')}</span>
             {effectiveInvalidCount > 0 && (
               <span className="rounded-full bg-rose-500/20 px-1.5 text-[10px] font-mono text-rose-300">
                 {effectiveInvalidCount}
@@ -252,7 +254,8 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
         <button
           type="button"
           onClick={onClose}
-          title="Close Bottom Drawer (⇧⌘Y)"
+          title={`${t('Close')} (⇧⌘Y)`}
+          aria-label={t('Close')}
           className="rounded-md p-1 text-zinc-400 hover:bg-white/[0.06] hover:text-white transition cursor-pointer"
         >
           <X className="h-3.5 w-3.5" />
@@ -284,7 +287,7 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
               />
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-zinc-500">
-                Select a 2D table map (at least 2×2) to preview its live 3D surface.
+                {t('3D requires a 2D map')}
               </div>
             )}
           </div>
@@ -302,31 +305,31 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
                   }`}
                 >
                   <Activity className="h-3 w-3" />
-                  {datalogSummary.enabled ? 'Overlay Active' : 'Overlay Idle'}
+                  {datalogSummary.enabled ? t('Active') : t('Inactive')}
                 </span>
                 <span className="font-mono text-xs text-zinc-400">
-                  Frame #{datalogSummary.frameIndex}
+                  {t('Frame')} #{datalogSummary.frameIndex}
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-3 text-xs">
                 <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-wider text-zinc-500">X Channel</div>
+                  <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('X Channel')}</div>
                   <div className="font-mono text-zinc-100 mt-0.5">
                     {datalogSummary.xChannel || 'RPM'}
                     {datalogSummary.xValue !== undefined ? ` = ${datalogSummary.xValue.toFixed(1)}` : ''}
                   </div>
                 </div>
                 <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-wider text-zinc-500">Y Channel</div>
+                  <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('Y Channel')}</div>
                   <div className="font-mono text-zinc-100 mt-0.5">
                     {datalogSummary.yChannel || 'Load'}
                     {datalogSummary.yValue !== undefined ? ` = ${datalogSummary.yValue.toFixed(1)}` : ''}
                   </div>
                 </div>
                 <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-wider text-zinc-500">Hit Cells</div>
+                  <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('Hits')}</div>
                   <div className="font-mono text-emerald-300 mt-0.5">
-                    {datalogSummary.hitCellCount} cells · {datalogSummary.points3d.length} 3D pts
+                    {t('%lld cells', datalogSummary.hitCellCount)} · {datalogSummary.points3d.length} 3D
                   </div>
                 </div>
               </div>
@@ -338,7 +341,7 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
               className="flex items-center gap-1.5 rounded-lg bg-[#0a84ff] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1e8fff] transition shrink-0 cursor-pointer"
             >
               <ExternalLink className="h-3.5 w-3.5" />
-              <span>Open Datalog & Dyno</span>
+              <span>{t('Datalog')}</span>
             </button>
           </div>
         )}
@@ -350,12 +353,12 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
                 {effectiveInvalidCount === 0 ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-300">
                     <CheckCircle2 className="h-3.5 w-3.5" />
-                    All Checksums Valid
+                    {t('Checksum OK')}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-3 py-1 text-xs font-semibold text-rose-300">
                     <ShieldAlert className="h-3.5 w-3.5" />
-                    {effectiveInvalidCount} Invalid Checksum Block(s)
+                    {t('Checksum Invalid (%lld)', effectiveInvalidCount)}
                   </span>
                 )}
                 {effectivePluginName && (
@@ -371,7 +374,7 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
                     className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/35 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/30 transition cursor-pointer"
                   >
                     <Wand2 className="h-3.5 w-3.5" />
-                    <span>Fix Checksums</span>
+                    <span>{t('Fix Checksums')}</span>
                   </button>
                 )}
                 <button
@@ -380,7 +383,7 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
                   className="flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-white/[0.1] transition cursor-pointer"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
-                  <span>Full Preflight</span>
+                  <span>{t('Checksums & Flash')}</span>
                 </button>
               </div>
             </div>
@@ -388,8 +391,8 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
             {/* Compact PFLASH Partition Bar */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-[10.5px] text-zinc-400">
-                <span className="font-medium uppercase tracking-wider">PFLASH Partition Atlas</span>
-                <span className="font-mono">{partitions.length} partitions · {Math.round(bin.length / 1024)} KB</span>
+                <span className="font-medium uppercase tracking-wider">{t('Flash Partitions')}</span>
+                <span className="font-mono">{partitions.length} · {Math.round(bin.length / 1024)} KB</span>
               </div>
               <div className="flex h-7 w-full overflow-hidden rounded-lg border border-white/[0.08] bg-[#0b0c0f]">
                 {partitions.map((p) => {

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   ArrowLeftRight,
+  Check,
   CheckCircle2,
   ChevronDown,
   Columns3,
@@ -104,7 +105,14 @@ import { WebMenuBar } from './components/WebMenuBar';
 import type { DatalogPoint3D } from './components/Surface3DCanvas';
 import type { HexWordFormat } from './components/Waveform2D';
 import { APP_VERSION, checkForUpdates, type UpdateInfo } from './lib/updater';
-import { AVAILABLE_LOCALES, getInitialLocale, saveLocale, translate, type LocaleCode } from './lib/i18n';
+import {
+  AVAILABLE_LOCALES,
+  I18nProvider,
+  getInitialLocale,
+  saveLocale,
+  translate,
+  type LocaleCode,
+} from './lib/i18n';
 import {
   HEATMAP_PALETTES,
   THEME_OPTIONS,
@@ -360,12 +368,21 @@ export default function App() {
   const [xdfEditorItem, setXdfEditorItem] = useState<XDFItem | null>(null);
   const [xdfModalDraft, setXdfModalDraft] = useState<Partial<XDFItem> | null>(null);
   const [exportDefMenuOpen, setExportDefMenuOpen] = useState(false);
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [exportReviewOpen, setExportReviewOpen] = useState(false);
   const [checksumProfileId, setChecksumProfileId] = useState<string>(
     () => detectChecksumPlugin(initialDemo.stage1Bin).id,
   );
 
-  const t = useCallback((key: string) => translate(locale, key), [locale]);
+  const handleLocaleChange = useCallback((next: LocaleCode) => {
+    setLocale(next);
+    saveLocale(next);
+  }, []);
+
+  const t = useCallback(
+    (key: string, ...args: (string | number)[]) => translate(locale, key, ...args),
+    [locale],
+  );
 
   useEffect(() => {
     applyTheme(themeId);
@@ -377,6 +394,7 @@ export default function App() {
   }, []);
 
   const exportDefRef = useRef<HTMLDivElement>(null);
+  const langMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const compareInputRef = useRef<HTMLInputElement>(null);
   const smartMergeInputRef = useRef<HTMLInputElement>(null);
@@ -401,14 +419,20 @@ export default function App() {
   }, [runUpdateCheck]);
 
   useEffect(() => {
-    if (!exportDefMenuOpen) return;
+    if (!exportDefMenuOpen && !langMenuOpen) return;
     const onDown = (e: MouseEvent) => {
-      if (exportDefRef.current && !exportDefRef.current.contains(e.target as Node)) {
+      if (exportDefMenuOpen && exportDefRef.current && !exportDefRef.current.contains(e.target as Node)) {
         setExportDefMenuOpen(false);
+      }
+      if (langMenuOpen && langMenuRef.current && !langMenuRef.current.contains(e.target as Node)) {
+        setLangMenuOpen(false);
       }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setExportDefMenuOpen(false);
+      if (e.key === 'Escape') {
+        setExportDefMenuOpen(false);
+        setLangMenuOpen(false);
+      }
     };
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
@@ -416,7 +440,7 @@ export default function App() {
       window.removeEventListener('mousedown', onDown);
       window.removeEventListener('keydown', onKey);
     };
-  }, [exportDefMenuOpen]);
+  }, [exportDefMenuOpen, langMenuOpen]);
 
   const ecuIdentity = useMemo(() => identifyECU(bin), [bin]);
 
@@ -810,11 +834,16 @@ export default function App() {
     [xdf?.categories],
   );
 
+  const undoStackRef = useRef(undoStack);
+  undoStackRef.current = undoStack;
+  const redoStackRef = useRef(redoStack);
+  redoStackRef.current = redoStack;
+
   const handleApplyPatches = useCallback(
     (patches: Patch[], label: string) => {
       if (patches.length === 0) return;
       updateActiveBinBytes((prev) => applyPatches(prev, patches));
-      setUndoStack((prev) => [...prev.slice(-49), { patches, label, timestamp: Date.now() }]);
+      setUndoStack((prev) => [...prev.slice(-199), { patches, label, timestamp: Date.now() }]);
       setRedoStack([]);
       showToast(label);
     },
@@ -892,36 +921,44 @@ export default function App() {
   );
 
   const handleUndo = useCallback(() => {
-    setUndoStack((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      const inv: Patch[] = last.patches.map((p) => ({ offset: p.offset, old: p.next, next: p.old }));
-      updateActiveBinBytes((cur) => {
-        if (inv.length === 1 && inv[0].offset === 0 && inv[0].next.length !== cur.length) {
-          return inv[0].next.slice();
-        }
-        return applyPatches(cur, inv);
-      });
-      setRedoStack((r) => [...r, last]);
-      showToast(`Undo: ${last.label}`);
-      return prev.slice(0, -1);
+    const stack = undoStackRef.current;
+    if (stack.length === 0) {
+      showToast('Nothing to undo');
+      return;
+    }
+    const last = stack[stack.length - 1];
+    const nextUndo = stack.slice(0, -1);
+    undoStackRef.current = nextUndo;
+    const inv: Patch[] = last.patches.map((p) => ({ offset: p.offset, old: p.next, next: p.old }));
+    setUndoStack(nextUndo);
+    updateActiveBinBytes((cur) => {
+      if (inv.length === 1 && inv[0].offset === 0 && inv[0].next.length !== cur.length) {
+        return inv[0].next.slice();
+      }
+      return applyPatches(cur, inv);
     });
+    setRedoStack((r) => [...r, last]);
+    showToast(`Undo: ${last.label}`);
   }, [updateActiveBinBytes, showToast]);
 
   const handleRedo = useCallback(() => {
-    setRedoStack((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      updateActiveBinBytes((cur) => {
-        if (last.patches.length === 1 && last.patches[0].offset === 0 && last.patches[0].next.length !== cur.length) {
-          return last.patches[0].next.slice();
-        }
-        return applyPatches(cur, last.patches);
-      });
-      setUndoStack((u) => [...u, last]);
-      showToast(`Redo: ${last.label}`);
-      return prev.slice(0, -1);
+    const stack = redoStackRef.current;
+    if (stack.length === 0) {
+      showToast('Nothing to redo');
+      return;
+    }
+    const last = stack[stack.length - 1];
+    const nextRedo = stack.slice(0, -1);
+    redoStackRef.current = nextRedo;
+    setRedoStack(nextRedo);
+    updateActiveBinBytes((cur) => {
+      if (last.patches.length === 1 && last.patches[0].offset === 0 && last.patches[0].next.length !== cur.length) {
+        return last.patches[0].next.slice();
+      }
+      return applyPatches(cur, last.patches);
     });
+    setUndoStack((u) => [...u, last]);
+    showToast(`Redo: ${last.label}`);
   }, [updateActiveBinBytes, showToast]);
 
   const handleSaveSnapshot = useCallback(
@@ -1566,7 +1603,36 @@ export default function App() {
     handleToggleLockSelected,
   ]);
 
-  // Native Tauri menu bar event listener
+  // Native Tauri menu bar event listener (mounted once via ref so edits never drop menu events!)
+  const menuDispatchRef = useRef<(payload: string) => void>(() => {});
+  menuDispatchRef.current = (payload: string) => {
+    switch (payload) {
+      case 'check-updates': setUpdateModalOpen(true); void runUpdateCheck(); break;
+      case 'open-file': fileInputRef.current?.click(); break;
+      case 'open-compare': compareInputRef.current?.click(); break;
+      case 'save-project': handleSaveProject(); break;
+      case 'export-bin': setExportReviewOpen(true); break;
+      case 'export-xdf': handleExportDefinition('xdf', 'xdf'); break;
+      case 'print-report': window.print(); break;
+      case 'edit-undo': handleUndo(); break;
+      case 'edit-redo': handleRedo(); break;
+      case 'view-overview': setSection('overview'); break;
+      case 'view-hex': setSection('workspace'); setWorkbenchMode('hex'); break;
+      case 'view-map': setSection('workspace'); setWorkbenchMode('map'); break;
+      case 'view-compare': setSection('compare'); break;
+      case 'view-memory': setSection('memory'); break;
+      case 'view-flash': setSection('flash'); break;
+      case 'toggle-bottom-drawer': setBottomDrawerOpen((v) => !v); break;
+      case 'toggle-inspector': setInspectorCollapsed((v) => !v); break;
+      case 'toggle-favorite': handleToggleFavoriteSelected(); break;
+      case 'next-changed-map': handleCycleChangedMap(1); break;
+      case 'prev-changed-map': handleCycleChangedMap(-1); break;
+      case 'command-palette': setPaletteOpen((v) => !v); break;
+      case 'fix-checksums': handleFixChecksums(); break;
+      case 'swap-bins': handleSwapBins(); break;
+    }
+  };
+
   useEffect(() => {
     const tauriGlobal = (window as unknown as {
       __TAURI__?: {
@@ -1576,50 +1642,21 @@ export default function App() {
       };
     }).__TAURI__;
     if (!tauriGlobal?.event?.listen) return;
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
     void tauriGlobal.event
       .listen('mactuner-menu', (ev) => {
-        switch (ev.payload) {
-          case 'check-updates': setUpdateModalOpen(true); void runUpdateCheck(); break;
-          case 'open-file': fileInputRef.current?.click(); break;
-          case 'open-compare': compareInputRef.current?.click(); break;
-          case 'save-project': handleSaveProject(); break;
-          case 'export-bin': setExportReviewOpen(true); break;
-          case 'export-xdf': handleExportDefinition('xdf', 'xdf'); break;
-          case 'print-report': window.print(); break;
-          case 'edit-undo': handleUndo(); break;
-          case 'edit-redo': handleRedo(); break;
-          case 'view-overview': setSection('overview'); break;
-          case 'view-hex': setSection('workspace'); setWorkbenchMode('hex'); break;
-          case 'view-map': setSection('workspace'); setWorkbenchMode('map'); break;
-          case 'view-compare': setSection('compare'); break;
-          case 'view-memory': setSection('memory'); break;
-          case 'view-flash': setSection('flash'); break;
-          case 'toggle-bottom-drawer': setBottomDrawerOpen((v) => !v); break;
-          case 'toggle-inspector': setInspectorCollapsed((v) => !v); break;
-          case 'toggle-favorite': handleToggleFavoriteSelected(); break;
-          case 'next-changed-map': handleCycleChangedMap(1); break;
-          case 'prev-changed-map': handleCycleChangedMap(-1); break;
-          case 'command-palette': setPaletteOpen((v) => !v); break;
-          case 'fix-checksums': handleFixChecksums(); break;
-          case 'swap-bins': handleSwapBins(); break;
-        }
+        menuDispatchRef.current(ev.payload);
       })
       .then((fn) => {
-        unlisten = fn;
+        if (cancelled) fn();
+        else unlisten = fn;
       });
-    return () => unlisten?.();
-  }, [
-    runUpdateCheck,
-    handleSaveProject,
-    handleExportDefinition,
-    handleUndo,
-    handleRedo,
-    handleFixChecksums,
-    handleSwapBins,
-    handleToggleFavoriteSelected,
-    handleCycleChangedMap,
-  ]);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   const navItems: Array<{ id: TopSection; label: string; icon: React.ReactNode }> = [
     { id: 'overview', label: t('Overview'), icon: <LayoutDashboard className="h-3.5 w-3.5" /> },
@@ -1644,7 +1681,15 @@ export default function App() {
     pinnedItem !== null &&
     pinnedItem.id !== selectedItem.id;
 
+  const shortLocaleCode =
+    locale === 'zh-Hans'
+      ? 'ZH'
+      : locale === 'zh-Hant'
+        ? 'TW'
+        : locale.slice(0, 2).toUpperCase();
+
   return (
+    <I18nProvider locale={locale} setLocale={handleLocaleChange}>
     <div
       className="flex h-screen w-screen flex-col overflow-hidden bg-[#0c0d10] text-[#e6eaf2]"
       onDragOver={(e) => {
@@ -1757,7 +1802,7 @@ export default function App() {
       />
 
       {/* Top Native-Style Title & Workbench Bar */}
-      <header className="flex h-11 shrink-0 items-center justify-between gap-1.5 border-b border-white/[0.065] bg-[#131418]/95 px-2.5 backdrop-blur-xl">
+      <header className="relative z-[60] flex h-11 shrink-0 items-center justify-between gap-1.5 border-b border-white/[0.065] bg-[#131418]/95 px-2.5 backdrop-blur-xl">
         <div className="flex items-center gap-2 min-w-0 shrink">
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-b from-[#2b95ff] to-[#0066dc] shadow-[0_2px_10px_rgba(10,132,255,0.35),inset_0_1px_0_rgba(255,255,255,0.28)]">
             <Cpu className="h-3.5 w-3.5 text-white" />
@@ -1769,7 +1814,7 @@ export default function App() {
               </span>
               {undoStack.length > 0 && (
                 <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-medium text-amber-300 shrink-0">
-                  edited
+                  {t('edited')}
                 </span>
               )}
             </div>
@@ -1806,7 +1851,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            title="Command Palette (⌘K)"
+            title={`${t('Command Palette…')} (⌘K)`}
             className="flex items-center gap-1 rounded-lg bg-white/[0.05] px-1.5 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.09] hover:text-white transition cursor-pointer"
           >
             <Search className="h-3.5 w-3.5 text-zinc-400" />
@@ -1815,17 +1860,17 @@ export default function App() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            title="Open BIN, XDF, A2L, CSV, WinOLS (.ols / .kp), .mtproj"
+            title={t('Open XDF, A2L/KP, BIN, Project, or Datalog')}
             className="flex items-center gap-1 rounded-lg bg-white/[0.05] px-2 py-1.5 text-[11px] text-zinc-200 hover:bg-white/[0.09] transition cursor-pointer"
           >
             <FolderOpen className="h-3.5 w-3.5 text-zinc-400" />
-            <span className="hidden 2xl:inline">Open</span>
+            <span className="hidden 2xl:inline">{t('Open')}</span>
           </button>
           <button
             type="button"
             onClick={handleUndo}
             disabled={undoStack.length === 0}
-            title="Undo (⌘Z)"
+            title={`${t('Undo')} (⌘Z)`}
             className="rounded-lg bg-white/[0.04] p-1.5 text-zinc-300 hover:bg-white/[0.09] disabled:opacity-25 transition cursor-pointer disabled:cursor-not-allowed"
           >
             <Undo2 className="h-3.5 w-3.5" />
@@ -1834,7 +1879,7 @@ export default function App() {
             type="button"
             onClick={handleRedo}
             disabled={redoStack.length === 0}
-            title="Redo (⇧⌘Z)"
+            title={`${t('Redo')} (⇧⌘Z)`}
             className="rounded-lg bg-white/[0.04] p-1.5 text-zinc-300 hover:bg-white/[0.09] disabled:opacity-25 transition cursor-pointer disabled:cursor-not-allowed"
           >
             <Redo2 className="h-3.5 w-3.5" />
@@ -1845,7 +1890,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setExportDefMenuOpen((v) => !v)}
-              title="Export Definition (.xdf, .a2l, .csv, .kp, .xml)"
+              title={t('Export Definition')}
               className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition cursor-pointer ${
                 exportDefMenuOpen
                   ? 'bg-white/[0.12] text-white'
@@ -1853,13 +1898,13 @@ export default function App() {
               }`}
             >
               <Download className="h-3.5 w-3.5 text-zinc-400" />
-              <span className="hidden 2xl:inline">Export Def</span>
+              <span className="hidden 2xl:inline">{t('Export Def')}</span>
               <ChevronDown className="h-3 w-3 opacity-60" />
             </button>
             {exportDefMenuOpen && (
               <div className="glass-popover absolute right-0 top-full mt-1.5 z-40 w-56 rounded-xl py-1">
                 <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500 border-b border-white/[0.06]">
-                  Export Definition
+                  {t('Export Definition')}
                 </div>
                 {DEF_EXPORT_OPTIONS.map((opt) => (
                   <button
@@ -1868,8 +1913,8 @@ export default function App() {
                     onClick={() => handleExportDefinition(opt.format, opt.ext)}
                     className="w-full px-3 py-2 text-left hover:bg-white/[0.08] transition-colors cursor-pointer"
                   >
-                    <div className="text-xs font-medium text-zinc-100">{opt.label}</div>
-                    <div className="text-[10px] text-zinc-400">{opt.desc}</div>
+                    <div className="text-xs font-medium text-zinc-100">{t(opt.label)}</div>
+                    <div className="text-[10px] text-zinc-400">{t(opt.desc)}</div>
                   </button>
                 ))}
               </div>
@@ -1880,12 +1925,68 @@ export default function App() {
           <button
             type="button"
             onClick={() => setExportReviewOpen(true)}
-            title="Review changes & export .bin (⌘S)"
+            title={`${t('Export BIN…')} (⌘S)`}
             className="flex items-center gap-1 rounded-lg bg-[#0a84ff] px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1e8fff] shadow-[0_1px_8px_rgba(10,132,255,0.35)] transition cursor-pointer"
           >
             <FileDown className="h-3.5 w-3.5" />
-            <span className="hidden xl:inline">Export</span>
+            <span className="hidden xl:inline">{t('Export')}</span>
           </button>
+
+          {/* Compact Top-Right Language Chooser */}
+          <div ref={langMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setLangMenuOpen((v) => !v)}
+              title={t('Language')}
+              aria-label={t('Language')}
+              aria-expanded={langMenuOpen}
+              className={`flex items-center gap-1 rounded-lg px-1.5 py-1.5 text-[10.5px] font-semibold tracking-wide transition cursor-pointer ${
+                langMenuOpen
+                  ? 'bg-[#0a84ff]/25 text-sky-200 border border-[#0a84ff]/40'
+                  : 'bg-white/[0.05] text-zinc-200 hover:bg-white/[0.09] hover:text-white'
+              }`}
+            >
+              <Globe className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+              <span className="font-mono text-[10px]">{shortLocaleCode}</span>
+            </button>
+            {langMenuOpen && (
+              <div
+                role="menu"
+                className="glass-popover absolute right-0 top-full mt-1.5 z-50 w-48 max-h-72 overflow-y-auto rounded-xl py-1 shadow-2xl border border-white/[0.1] bg-[#16181e]/95 backdrop-blur-xl"
+              >
+                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500 border-b border-white/[0.06]">
+                  {t('Language')}
+                </div>
+                {AVAILABLE_LOCALES.map((loc) => {
+                  const selected = loc.code === locale;
+                  return (
+                    <button
+                      key={loc.code}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        handleLocaleChange(loc.code);
+                        setLangMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs transition-colors cursor-pointer ${
+                        selected
+                          ? 'bg-[#0a84ff]/20 text-white font-medium'
+                          : 'text-zinc-200 hover:bg-white/[0.08] hover:text-white'
+                      }`}
+                    >
+                      <span className="truncate">{loc.name}</span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        <span className="font-mono text-[9.5px] uppercase text-zinc-500">
+                          {loc.code}
+                        </span>
+                        {selected && <Check className="h-3 w-3 text-[#0a84ff]" />}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* Right Inspector Toggle */}
           <button
@@ -1898,7 +1999,7 @@ export default function App() {
                 setInspectorCollapsed((v) => !v);
               }
             }}
-            title="Toggle Right Inspector (⌥⌘I)"
+            title={`${t('Toggle Inspector')} (⌥⌘I)`}
             className={`rounded-lg p-1.5 transition cursor-pointer ${
               section === 'workspace' && !inspectorCollapsed
                 ? 'bg-[#0a84ff]/20 text-sky-300 border border-[#0a84ff]/35'
@@ -1916,12 +2017,12 @@ export default function App() {
           <div className="flex items-center gap-2 min-w-0">
             <Sparkles className="h-3.5 w-3.5 text-sky-400 shrink-0" />
             <span className="truncate">
-              Auto-Align detected{' '}
-              <strong className="font-semibold text-white">{autoAlignBanner.shiftedCount} shifted map(s)</strong>
+              {t('Auto-Align Definition')}:{' '}
+              <strong className="font-semibold text-white">{autoAlignBanner.shiftedCount}</strong>
               {autoAlignBanner.dominantDelta !== 0 && (
                 <>
                   {' '}
-                  (dominant offset{' '}
+                  (
                   <code className="rounded bg-black/30 px-1 py-0.5 font-mono text-[10.5px] text-sky-300">
                     {autoAlignBanner.dominantDelta >= 0 ? '+' : '-'}0x
                     {Math.abs(autoAlignBanner.dominantDelta).toString(16).toUpperCase()}
@@ -1929,8 +2030,7 @@ export default function App() {
                   )
                 </>
               )}{' '}
-              · {autoAlignBanner.result.summary.highCount} high / {autoAlignBanner.result.summary.mediumCount} med
-              confidence
+              · {autoAlignBanner.result.summary.highCount} / {autoAlignBanner.result.summary.mediumCount}
             </span>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -1943,14 +2043,14 @@ export default function App() {
               }}
               className="rounded-md bg-[#0a84ff] px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-[#1e8fff] transition cursor-pointer"
             >
-              Apply Shift
+              {t('Apply')}
             </button>
             <button
               type="button"
               onClick={() => setAutoAlignBanner(null)}
               className="rounded-md bg-white/[0.07] px-2 py-0.5 text-[11px] text-zinc-300 hover:bg-white/[0.12] hover:text-white transition cursor-pointer"
             >
-              Dismiss
+              {t('Discard')}
             </button>
           </div>
         </div>
@@ -1961,6 +2061,7 @@ export default function App() {
         {layoutMode !== 'canvas' && (
           <Sidebar
             mode={workbenchMode}
+            isWorkspaceActive={section === 'workspace'}
             onModeChange={(m) => {
               setWorkbenchMode(m);
               setSection('workspace');
@@ -2123,7 +2224,7 @@ export default function App() {
                             return next;
                           });
                         }}
-                        title="Close BIN"
+                        title={t('Close from Workspace')}
                         className="ml-0.5 text-zinc-500 hover:text-rose-400 cursor-pointer"
                       >
                         <X className="h-3 w-3" />
@@ -2139,7 +2240,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleSwapBins}
-                  title="Swap Active (L) and Comparison (R) BINs"
+                  title={t('Swap Active & Comparison BIN')}
                   className="rounded-md p-1 text-zinc-400 hover:bg-white/[0.06] hover:text-white transition cursor-pointer"
                 >
                   <ArrowLeftRight className="h-3.5 w-3.5" />
@@ -2148,9 +2249,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => compareInputRef.current?.click()}
+                title={t('Add BIN…')}
                 className="flex items-center gap-1 rounded-md bg-white/[0.05] px-2 py-0.5 text-[11px] font-medium text-zinc-300 hover:bg-white/[0.09] hover:text-white transition cursor-pointer"
               >
-                + BIN
+                {t('+ BIN')}
               </button>
             </div>
           </div>
@@ -2199,10 +2301,15 @@ export default function App() {
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden flex flex-col">
-                {/* Workspace: Hex-Diff or Map Editor (with optional Split Pin View) */}
-                {section === 'workspace' && workbenchMode === 'hex' && (
-                  <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-                    <HexDiffCanvas
+                {/* Workspace: Hex-Diff (kept mounted so scroll position & view state survive tab/mode switches) */}
+                <div
+                  className={
+                    section === 'workspace' && workbenchMode === 'hex'
+                      ? 'flex-1 min-h-0 flex flex-col overflow-hidden'
+                      : 'hidden'
+                  }
+                >
+                  <HexDiffCanvas
                       bin={bin}
                       compareBin={compareBin}
                       binName={binName}
@@ -2267,9 +2374,9 @@ export default function App() {
                       }}
                       heatmapPalette={heatmapPalette}
                       onPatchBytes={handleApplySinglePatch}
+                      isVisible={section === 'workspace' && workbenchMode === 'hex'}
                     />
-                  </div>
-                )}
+                </div>
 
                 {section === 'workspace' && workbenchMode === 'map' && selectedItem && (
                   <div
@@ -2329,13 +2436,13 @@ export default function App() {
                         <div className="flex h-7 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#121319] px-3 text-[11px] text-sky-300">
                           <span className="flex items-center gap-1.5 font-medium truncate">
                             <Pin className="h-3 w-3 shrink-0" />
-                            <span>Pinned Split: {pinnedItem.title}</span>
+                            <span>{t('Pinned Split')}: {pinnedItem.title}</span>
                           </span>
                           <button
                             type="button"
                             onClick={() => setPinnedItemId(null)}
                             className="text-zinc-400 hover:text-white cursor-pointer"
-                            title="Close Split View"
+                            title={t('Close split view')}
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -2650,17 +2757,17 @@ export default function App() {
           {openBins.length > 1 && (
             <label
               className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0"
-              title="Quick-switch Comparison BIN (R)"
+              title={t('Comparison BIN / Reference (Right)')}
             >
               <ArrowLeftRight className="h-3 w-3 text-amber-400 shrink-0" />
               <select
                 value={compareBinId ?? ''}
                 onChange={(e) => setCompareBinId(e.target.value || null)}
-                aria-label="Compare BIN"
+                aria-label={t('Comparison')}
                 className="bg-transparent text-[10px] text-zinc-300 outline-none cursor-pointer truncate max-w-[110px]"
               >
                 <option value="" className="bg-[#17181d] text-zinc-100">
-                  No Compare
+                  {t('No Comparison')}
                 </option>
                 {openBins
                   .filter((b) => b.id !== activeBinId)
@@ -2676,36 +2783,36 @@ export default function App() {
           {/* Global Unit System Selector */}
           <label
             className="flex items-center gap-0.5 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0"
-            title="Global Unit System"
+            title={t('Units')}
           >
             <Scale className="h-3 w-3 shrink-0" />
             <select
               value={unitSystem}
               onChange={(e) => setUnitSystem(e.target.value as UnitSystem)}
-              aria-label="Unit System"
+              aria-label={t('Units')}
               className="bg-transparent text-[10px] text-zinc-300 outline-none cursor-pointer"
             >
-              <option value="original" className="bg-[#17181d] text-zinc-100">Orig</option>
-              <option value="metric" className="bg-[#17181d] text-zinc-100">Metric</option>
-              <option value="imperial" className="bg-[#17181d] text-zinc-100">Imp</option>
+              <option value="original" className="bg-[#17181d] text-zinc-100">{t('Original')}</option>
+              <option value="metric" className="bg-[#17181d] text-zinc-100">{t('Metric')}</option>
+              <option value="imperial" className="bg-[#17181d] text-zinc-100">{t('Imperial')}</option>
             </select>
           </label>
 
           {/* Scientific Heatmap Palette Selector */}
           <label
             className="flex items-center gap-0.5 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0"
-            title="Scientific Heatmap Palette"
+            title={t('Color Palette (Heatmap)')}
           >
             <Palette className="h-3 w-3 shrink-0 text-sky-400" />
             <select
               value={heatmapPalette}
               onChange={(e) => handleHeatmapPaletteChange(e.target.value as HeatmapPalette)}
-              aria-label="Heatmap Palette"
+              aria-label={t('Color Palette (Heatmap)')}
               className="bg-transparent text-[10px] text-zinc-300 outline-none cursor-pointer"
             >
               {HEATMAP_PALETTES.map((p) => (
                 <option key={p.id} value={p.id} className="bg-[#17181d] text-zinc-100">
-                  {p.label.split(' ')[0]}
+                  {t(p.label.split(' ')[0])}
                 </option>
               ))}
             </select>
@@ -2714,7 +2821,7 @@ export default function App() {
           {/* Layout Mode Switcher */}
           <label
             className="flex items-center gap-0.5 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0"
-            title="Workspace Layout Mode"
+            title={t('Layout Mode')}
           >
             <LayoutGrid className="h-3 w-3 shrink-0" />
             <select
@@ -2724,12 +2831,12 @@ export default function App() {
                 setLayoutMode(next);
                 if (next === 'ide') setBottomDrawerOpen(true);
               }}
-              aria-label="Layout Mode"
+              aria-label={t('Layout Mode')}
               className="bg-transparent text-[10px] text-zinc-300 outline-none cursor-pointer"
             >
-              <option value="studio" className="bg-[#17181d] text-zinc-100">Studio</option>
-              <option value="ide" className="bg-[#17181d] text-zinc-100">IDE</option>
-              <option value="canvas" className="bg-[#17181d] text-zinc-100">Canvas</option>
+              <option value="studio" className="bg-[#17181d] text-zinc-100">{t('Studio')}</option>
+              <option value="ide" className="bg-[#17181d] text-zinc-100">{t('IDE')}</option>
+              <option value="canvas" className="bg-[#17181d] text-zinc-100">{t('Canvas')}</option>
             </select>
           </label>
 
@@ -2737,7 +2844,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setBottomDrawerOpen((v) => !v)}
-            title="Toggle Bottom Drawer (⇧⌘Y)"
+            title={`${t('Bottom Drawer')} (⇧⌘Y)`}
             className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium transition cursor-pointer shrink-0 ${
               bottomDrawerOpen
                 ? 'bg-[#0a84ff]/20 text-sky-300'
@@ -2745,44 +2852,40 @@ export default function App() {
             }`}
           >
             <PanelBottom className="h-3 w-3" />
-            <span className="hidden 2xl:inline">Drawer</span>
+            <span className="hidden 2xl:inline">{t('Drawer')}</span>
           </button>
 
           <button
             type="button"
             onClick={handleSaveProject}
-            title="Save full workspace archive (.mtproj)"
+            title={t('Save Project')}
             className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0"
           >
             <Save className="h-3 w-3" />
             <span className="hidden 2xl:inline">.mtproj</span>
           </button>
 
-          <label className="hidden xl:flex items-center gap-1 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0" title="Switch Theme">
+          <label className="hidden xl:flex items-center gap-1 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0" title={t('Theme')}>
             <select
               value={themeId}
               onChange={(e) => setThemeId(e.target.value as AppThemeId)}
-              aria-label="Theme"
+              aria-label={t('Theme')}
               className="bg-transparent text-[10px] text-zinc-300 outline-none cursor-pointer"
             >
               {THEME_OPTIONS.map((opt) => (
                 <option key={opt.id} value={opt.id} className="bg-[#17181d] text-zinc-100">
-                  {opt.label}
+                  {t(opt.label)}
                 </option>
               ))}
             </select>
           </label>
 
-          <label className="hidden xl:flex items-center gap-1 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0" title="Switch Language">
+          <label className="hidden xl:flex items-center gap-1 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0" title={t('Language')}>
             <Globe className="h-3 w-3 shrink-0" />
             <select
               value={locale}
-              onChange={(e) => {
-                const next = e.target.value as LocaleCode;
-                setLocale(next);
-                saveLocale(next);
-              }}
-              aria-label="Language"
+              onChange={(e) => handleLocaleChange(e.target.value as LocaleCode)}
+              aria-label={t('Language')}
               className="bg-transparent text-[10px] text-zinc-300 outline-none cursor-pointer"
             >
               {AVAILABLE_LOCALES.map((loc) => (
@@ -2801,9 +2904,9 @@ export default function App() {
                 ? 'bg-[#0a84ff]/20 text-sky-300 hover:bg-[#0a84ff]/30'
                 : 'text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200'
             }`}
-            title="Check for MacTuner updates"
+            title={t('Check for Updates…')}
           >
-            {updateInfo?.available ? `Update v${updateInfo.latestVersion}` : `v${APP_VERSION}`}
+            {updateInfo?.available ? `v${updateInfo.latestVersion}` : `v${APP_VERSION}`}
           </button>
 
           {/* Clickable "N maps changed" jump pill */}
@@ -2811,10 +2914,10 @@ export default function App() {
             <button
               type="button"
               onClick={() => handleCycleChangedMap(1)}
-              title="Jump to next changed map (⌥⌘↓)"
+              title={t('Next change (⌥⌘↓)')}
               className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 hover:bg-amber-500/25 transition cursor-pointer shrink-0"
             >
-              {changedItemIds.size} chg
+              {t('%lld changed', changedItemIds.size)}
             </button>
           )}
 
@@ -2830,12 +2933,12 @@ export default function App() {
             {checksumReport.invalidCount === 0 ? (
               <>
                 <CheckCircle2 className="h-3 w-3 shrink-0" />
-                Checksum OK
+                {t('Checksum OK')}
               </>
             ) : (
               <>
                 <ShieldAlert className="h-3 w-3 shrink-0" />
-                Checksum Invalid ({checksumReport.invalidCount})
+                {t('Checksum Invalid (%lld)', checksumReport.invalidCount)}
               </>
             )}
           </button>
@@ -2847,8 +2950,8 @@ export default function App() {
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="glass-card flex flex-col items-center gap-3 rounded-2xl px-10 py-8 text-center">
             <Upload className="h-10 w-10 text-sky-400" />
-            <div className="text-base font-semibold text-white">Drop ECU .bin, .xdf, .a2l, .ols, .kp or .mtproj file</div>
-            <div className="text-xs text-slate-400">Hold Shift while dropping a BIN to load as Comparison BIN</div>
+            <div className="text-base font-semibold text-white">{t('Open XDF, A2L/KP, BIN, Project, or Datalog')}</div>
+            <div className="text-xs text-slate-400">{t('Hold Shift while dropping a BIN to load as Comparison BIN')}</div>
           </div>
         </div>
       )}
@@ -2960,5 +3063,6 @@ export default function App() {
         onClose={() => setUpdateModalOpen(false)}
       />
     </div>
+    </I18nProvider>
   );
 }

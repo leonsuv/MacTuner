@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Cell, HeatmapPalette, cellKey } from '@mactuner/core';
 import { HEATMAP_PALETTES } from '../lib/theme';
+import { useI18n } from '../lib/i18n';
 
 export interface DatalogPoint3D {
   r: number;
@@ -128,6 +129,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   onJumpToHex,
   onOpenXdfEditor,
 }) => {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -915,7 +917,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
         <div className="flex items-center gap-1.5 min-w-0 shrink-0">
           <Box className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
           <span className="text-xs font-semibold tracking-[-0.01em] text-zinc-100 whitespace-nowrap shrink-0">
-            3D Surface
+            {t('3D Surface')}
           </span>
           {pointDrag ? (
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[10px] font-mono font-semibold tabular-nums text-amber-300 truncate">
@@ -930,15 +932,15 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
           ) : isLocked ? (
             <span className="inline-flex items-center gap-1 text-[10px] text-amber-400/80 shrink-0">
               <Lock className="w-3 h-3" />
-              Locked
+              {t('Locked')}
             </span>
           ) : (
             <span className="text-[10px] text-zinc-500 hidden 2xl:inline truncate">
               {editMode && canEdit
-                ? 'Drag vertex · Shift = fine'
+                ? t('Drag Vertices (Edit Mode)')
                 : canEdit
-                  ? 'Orbit · ⌥+Drag edit'
-                  : 'Drag to orbit'}
+                  ? t('Drag = Orbit · ⌥-Drag = Edit Point')
+                  : t('Drag to orbit')}
             </span>
           )}
         </div>
@@ -950,7 +952,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               type="button"
               onClick={zoomOut}
               className="px-1 py-0.5 rounded text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
-              title="Zoom Out"
+              title={t('Zoom Out')}
             >
               <ZoomOut className="w-3 h-3" />
             </button>
@@ -958,7 +960,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               type="button"
               onClick={zoomIn}
               className="px-1 py-0.5 rounded text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
-              title="Zoom In"
+              title={t('Zoom In')}
             >
               <ZoomIn className="w-3 h-3" />
             </button>
@@ -967,7 +969,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               type="button"
               onClick={setCameraFrontX}
               className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
-              title="Frontal View (X Axis)"
+              title={t('Frontal (X)')}
             >
               X
             </button>
@@ -975,7 +977,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               type="button"
               onClick={setCameraSideY}
               className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
-              title="Side View (Y Axis)"
+              title={t('Side (Y)')}
             >
               Y
             </button>
@@ -983,9 +985,9 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               type="button"
               onClick={setCameraTop}
               className="px-1.5 py-0.5 rounded text-[10px] font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
-              title="Top-Down View"
+              title={t('Top-Down')}
             >
-              Top
+              {t('Top')}
             </button>
           </div>
 
@@ -998,10 +1000,10 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
                   ? 'bg-[#0a84ff] text-white shadow-[0_1px_6px_rgba(10,132,255,0.4)]'
                   : 'bg-white/[0.045] text-zinc-300 hover:bg-white/[0.09] hover:text-white'
               }`}
-              title="Toggle 3D vertex drag editing (or hold Option/Alt + drag)"
+              title={t('Drag Vertices (Edit Mode)')}
             >
               <MoveVertical className="w-3 h-3" />
-              Points
+              {t('Points')}
             </button>
           )}
 
@@ -1014,10 +1016,10 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
                   ? 'bg-emerald-500/15 text-emerald-300'
                   : 'bg-white/[0.045] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200'
               }`}
-              title="Toggle 3D Datalog Measurement Cloud (3D-Messpunkte)"
+              title={t('3D Cloud')}
             >
               <ScatterChart className="w-3 h-3" />
-              Cloud ({datalogPoints?.length})
+              {t('3D Cloud')} ({datalogPoints?.length})
             </button>
           )}
 
@@ -1030,10 +1032,10 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
                   ? 'bg-amber-500/15 text-amber-300'
                   : 'bg-white/[0.045] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200'
               }`}
-              title="Toggle comparison wireframe overlay"
+              title={t('Comparison Wireframe')}
             >
               <Layers className="w-3 h-3" />
-              Cmp
+              {t('Cmp')}
             </button>
           )}
 
@@ -1041,10 +1043,10 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             type="button"
             onClick={setCameraReset}
             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium whitespace-nowrap bg-white/[0.045] text-zinc-300 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
-            title="Reset 3D camera"
+            title={t('Reset Camera')}
           >
             <RotateCcw className="w-3 h-3" />
-            Reset
+            {t('Reset')}
           </button>
         </div>
       </div>
@@ -1108,7 +1110,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
           className="fixed z-50 w-52 rounded-xl glass-popover py-1.5 text-xs text-zinc-200 shadow-2xl"
         >
           <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            Camera
+            {t('Camera View')}
           </div>
           <button
             type="button"
@@ -1118,7 +1120,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             }}
             className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
           >
-            <span>Reset Camera</span>
+            <span>{t('Reset Camera')}</span>
             <RotateCcw className="w-3 h-3 text-zinc-500" />
           </button>
           <button
@@ -1129,7 +1131,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             }}
             className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
           >
-            <span>Frontal (X)</span>
+            <span>{t('Frontal (X)')}</span>
             <span className="text-[10px] font-mono text-zinc-500">X</span>
           </button>
           <button
@@ -1140,7 +1142,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             }}
             className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
           >
-            <span>Side (Y)</span>
+            <span>{t('Side (Y)')}</span>
             <span className="text-[10px] font-mono text-zinc-500">Y</span>
           </button>
           <button
@@ -1151,8 +1153,8 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             }}
             className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
           >
-            <span>Top-Down</span>
-            <span className="text-[10px] font-mono text-zinc-500">Top</span>
+            <span>{t('Top-Down')}</span>
+            <span className="text-[10px] font-mono text-zinc-500">{t('Top')}</span>
           </button>
           <div className="flex items-center gap-1 px-2 py-1">
             <button
@@ -1161,7 +1163,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               className="flex-1 inline-flex items-center justify-center gap-1 py-1 rounded-md bg-white/[0.05] hover:bg-white/[0.1] text-[11px] cursor-pointer"
             >
               <ZoomOut className="w-3 h-3" />
-              Zoom −
+              {t('Zoom Out')}
             </button>
             <button
               type="button"
@@ -1169,7 +1171,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               className="flex-1 inline-flex items-center justify-center gap-1 py-1 rounded-md bg-white/[0.05] hover:bg-white/[0.1] text-[11px] cursor-pointer"
             >
               <ZoomIn className="w-3 h-3" />
-              Zoom +
+              {t('Zoom In')}
             </button>
           </div>
 
@@ -1186,7 +1188,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             >
               <span className="inline-flex items-center gap-2">
                 <MoveVertical className="w-3.5 h-3.5 text-zinc-400" />
-                Edit Points
+                {t('Drag Vertices (Edit Mode)')}
               </span>
               {editMode && <Check className="w-3.5 h-3.5 text-[#0a84ff]" />}
             </button>
@@ -1203,7 +1205,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             >
               <span className="inline-flex items-center gap-2">
                 <Layers className="w-3.5 h-3.5 text-zinc-400" />
-                Compare Wireframe
+                {t('Comparison Wireframe')}
               </span>
               {showCompare && <Check className="w-3.5 h-3.5 text-amber-400" />}
             </button>
@@ -1220,7 +1222,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
           >
             <span className="inline-flex items-center gap-2">
               <ScatterChart className="w-3.5 h-3.5 text-zinc-400" />
-              3D Measurement Cloud
+              {t('3D Cloud')}
             </span>
             {hasDatalogPoints && showMeasurementCloud && (
               <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -1242,7 +1244,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed text-left text-amber-300 cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              Reset to Original
+              {t('Reset to Original')}
             </button>
           )}
 
@@ -1256,7 +1258,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
             >
               <Binary className="w-3.5 h-3.5 text-zinc-400" />
-              Show in Hex
+              {t('Show in Hex')}
             </button>
           )}
 
@@ -1270,7 +1272,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
             >
               <Settings2 className="w-3.5 h-3.5 text-zinc-400" />
-              Edit in XDF…
+              {t('Edit XDF')}
             </button>
           )}
         </div>

@@ -68,6 +68,7 @@ import {
 import { getHeatmapCellColors } from '../lib/theme';
 import { Surface3DCanvas, type DatalogPoint3D } from './Surface3DCanvas';
 import { Curves2DCanvas } from './Curves2DCanvas';
+import { useI18n } from '../lib/i18n';
 
 export interface MapEditorOpenBin {
   id: string;
@@ -205,6 +206,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
   datalogPoints,
   userNote,
 }) => {
+  const { t } = useI18n();
   const rows = item.data.rows;
   const cols = item.data.cols;
   const totalCells = rows * cols;
@@ -751,6 +753,14 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
       });
       setAnchorCell(cell);
       setFocusCell(cell);
+      return;
+    }
+
+    // Clicking the sole currently-selected cell again unselects it cleanly
+    if (selectedKeys.size === 1 && selectedKeys.has(key)) {
+      setSelectedKeys(new Set());
+      setAnchorCell(null);
+      setFocusCell(null);
       return;
     }
 
@@ -1620,7 +1630,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                    Scalar Constant Readout
+                    {t('Constant')}
                   </div>
                   <div
                     className={`mt-1 text-4xl font-mono font-bold tabular-nums tracking-tight ${
@@ -1648,7 +1658,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     }`}
                   >
                     {delta > 0 ? '+' : ''}
-                    {formatDisplayDelta(delta)} vs Compare
+                    {formatDisplayDelta(delta)} {t('Comparison')}
                   </span>
                 )}
               </div>
@@ -1666,7 +1676,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                       if (Number.isFinite(p)) applyConstant(p);
                     }
                   }}
-                  placeholder="Enter value…"
+                  placeholder={t('Value')}
                   className="flex-1 min-w-[160px] px-3 py-2 rounded-lg bg-[#0f1014] border border-white/[0.08] focus:border-[#0a84ff] focus:outline-none text-sm font-mono tabular-nums text-zinc-100 disabled:opacity-45"
                 />
                 <button
@@ -1678,7 +1688,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                   }}
                   className="px-4 py-2 rounded-lg text-xs font-semibold bg-[#0a84ff] hover:bg-[#1e8fff] disabled:opacity-40 text-white shadow-[0_1px_8px_rgba(10,132,255,0.4)] transition-colors cursor-pointer"
                 >
-                  Apply
+                  {t('Apply')}
                 </button>
                 <div className="inline-flex items-center rounded-lg bg-white/[0.04] border border-white/[0.065] p-0.5 gap-0.5">
                   <button
@@ -1720,18 +1730,18 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 </div>
               </div>
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-1">
-                <div className="text-[10px] uppercase tracking-wider text-zinc-500">Compare BIN</div>
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('Comparison')}</div>
                 <div className="text-xs font-mono font-semibold text-zinc-100">
                   {cmpVal !== null
                     ? `${formatDisplayValue(cmpVal)}${activeUnitLabel ? ` ${activeUnitLabel}` : ''}`
                     : '—'}
                 </div>
                 <div className="text-[10.5px] font-mono text-zinc-500">
-                  {compareBin ? 'Baseline loaded' : 'No compare BIN'}
+                  {compareBin ? t('Baseline') : t('No Comparison')}
                 </div>
               </div>
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-1">
-                <div className="text-[10px] uppercase tracking-wider text-zinc-500">1 Raw Step</div>
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('1 Raw Step')}</div>
                 <div className="text-xs font-mono font-semibold text-zinc-100">
                   {formattedRawStep}
                   {activeUnitLabel ? ` ${activeUnitLabel}` : ''}
@@ -1739,7 +1749,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 <div className="text-[10.5px] font-mono text-zinc-500">{layoutTypeDescription(item.data)}</div>
               </div>
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-1">
-                <div className="text-[10px] uppercase tracking-wider text-zinc-500">Safe Range</div>
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('Limits')}</div>
                 <div
                   className={`text-xs font-mono font-semibold ${
                     isOor ? 'text-rose-400' : 'text-emerald-300'
@@ -1747,10 +1757,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 >
                   {effectiveSafeRange?.min !== undefined || effectiveSafeRange?.max !== undefined
                     ? `${effectiveSafeRange?.min ?? '−∞'} … ${effectiveSafeRange?.max ?? '+∞'}`
-                    : 'Unbounded'}
+                    : t('Unbounded')}
                 </div>
                 <div className="text-[10.5px] text-zinc-500">
-                  {isOor ? 'Out of bounds!' : 'Within bounds'}
+                  {isOor ? t('Outside safety range') : t('Within bounds')}
                 </div>
               </div>
             </div>
@@ -1793,13 +1803,13 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                    Configuration Flag Switch
+                    {t('Flag')}
                   </div>
                   <div className="text-2xl font-semibold text-zinc-100">
-                    {isEnabled ? 'Enabled (Active)' : 'Disabled (Inactive)'}
+                    {isEnabled ? t('Enabled (Active)') : t('Disabled (Inactive)')}
                   </div>
                   <div className="text-xs font-mono text-zinc-400">
-                    Address {hexAddr} · Mask {maskHex} {invert ? '· Inverted Logic' : ''}
+                    {t('Address')} {hexAddr} · {t('Bitmask')} {maskHex} {invert ? `· ${t('Inverted (0 = On)')}` : ''}
                   </div>
                 </div>
 
@@ -1917,11 +1927,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               <div className="space-y-1">
                 <div className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-200">
                   <Wrench className="w-4 h-4 text-[#0a84ff]" />
-                  Binary Code Patch (XDFPATCH)
+                  {t('Patch')} (XDFPATCH)
                 </div>
                 <div className="text-xs text-zinc-400">
-                  {entries.length} patch {entries.length === 1 ? 'entry' : 'entries'} ·{' '}
-                  {entryStates.filter((s) => s.isApplied).length} applied
+                  {entries.length} · {entryStates.filter((s) => s.isApplied).length} {t('Applied')}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -1932,7 +1941,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium bg-white/[0.06] hover:bg-white/[0.12] disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 transition-colors cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  Revert to Base
+                  {t('Revert')}
                 </button>
                 <button
                   type="button"
@@ -1941,7 +1950,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-[#0a84ff] hover:bg-[#1e8fff] disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-[0_1px_8px_rgba(10,132,255,0.4)] transition-colors cursor-pointer"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  {allApplied ? 'Patch Applied' : 'Apply Patch'}
+                  {allApplied ? t('Patch applied') : t('Apply Patch')}
                 </button>
               </div>
             </div>
@@ -2085,7 +2094,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               {isLocked && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300">
                   <Lock className="w-3 h-3" />
-                  Locked
+                  {t('Locked')}
                 </span>
               )}
 
@@ -2103,10 +2112,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     setOpenMenu((m) => (m === 'safeRange' ? null : 'safeRange'));
                   }}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30 cursor-pointer"
-                  title="Click to configure Safe Range bounds"
+                  title={t('Edit Safety Range…')}
                 >
                   <ShieldAlert className="w-3 h-3" />
-                  {outOfRangeCount} out of range
+                  {t('%lld out of range', outOfRangeCount)}
                 </button>
               )}
 
@@ -2117,18 +2126,18 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     type="button"
                     onClick={() => setOpenMenu((m) => (m === 'sharedAxis' ? null : 'sharedAxis'))}
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-orange-500/15 border border-orange-500/35 text-orange-300 hover:bg-orange-500/25 cursor-pointer"
-                    title="This map shares an axis (COM_AXIS) with other maps"
+                    title={t('Shared Axes (%lld other maps)', sharedAxisInfo.allSiblings.length)}
                   >
                     <AlertTriangle className="w-3 h-3" />
-                    Shared Axis ({sharedAxisInfo.allSiblings.length})
+                    {t('Shared Axes (%lld other maps)', sharedAxisInfo.allSiblings.length)}
                   </button>
                   {openMenu === 'sharedAxis' && (
                     <div className="absolute left-0 top-full mt-1.5 z-40 w-64 rounded-xl glass-popover p-2.5 space-y-1.5">
                       <div className="text-[10.5px] font-semibold text-orange-300">
-                        Shared Axis Maps (COM_AXIS)
+                        {t('Shared Axes (%lld other maps)', sharedAxisInfo.allSiblings.length)}
                       </div>
                       <div className="text-[10px] text-zinc-400">
-                        Editing axis breakpoints will affect these sibling maps:
+                        {t('Editing axis breakpoints will affect these sibling maps:')}
                       </div>
                       <div className="max-h-44 overflow-y-auto space-y-1 pt-1">
                         {sharedAxisInfo.allSiblings.map((sib) => (
@@ -2263,34 +2272,34 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                       ? 'bg-emerald-500/12 border border-emerald-500/30 text-emerald-300'
                       : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200'
                 }`}
-                title="Configure Safe Range min/max bounds"
+                title={t('Edit Safety Range…')}
               >
                 <ShieldAlert className="w-3.5 h-3.5" />
-                Limits
+                {t('Limits')}
               </button>
               {openMenu === 'safeRange' && (
                 <div className="absolute right-0 top-full mt-1.5 z-40 w-64 rounded-xl glass-popover p-3 space-y-2.5">
                   <div className="text-[11px] font-semibold text-zinc-100">
-                    Safe Range Guardrails
+                    {t('Edit Safety Range…')}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <label className="space-y-1">
-                      <span className="block text-[10px] uppercase text-zinc-500">Min</span>
+                      <span className="block text-[10px] uppercase text-zinc-500">{t('Min')}</span>
                       <input
                         type="text"
                         value={safeMinText}
                         onChange={(e) => setSafeMinText(e.target.value)}
-                        placeholder="None"
+                        placeholder="—"
                         className="w-full px-2 py-1 rounded-lg bg-[#101115] border border-white/[0.08] focus:border-[#0a84ff] focus:outline-none text-xs font-mono text-zinc-100"
                       />
                     </label>
                     <label className="space-y-1">
-                      <span className="block text-[10px] uppercase text-zinc-500">Max</span>
+                      <span className="block text-[10px] uppercase text-zinc-500">{t('Max')}</span>
                       <input
                         type="text"
                         value={safeMaxText}
                         onChange={(e) => setSafeMaxText(e.target.value)}
-                        placeholder="None"
+                        placeholder="—"
                         className="w-full px-2 py-1 rounded-lg bg-[#101115] border border-white/[0.08] focus:border-[#0a84ff] focus:outline-none text-xs font-mono text-zinc-100"
                       />
                     </label>
@@ -2312,14 +2321,14 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                       }}
                       className="text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
                     >
-                      Clear
+                      {t('Clear All')}
                     </button>
                     <button
                       type="button"
                       onClick={handleSaveSafeRange}
                       className="px-3 py-1 rounded-lg text-xs font-medium bg-[#0a84ff] hover:bg-[#1e8fff] text-white cursor-pointer"
                     >
-                      Apply
+                      {t('Apply')}
                     </button>
                   </div>
                 </div>
@@ -2336,10 +2345,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     ? 'bg-[#0a84ff]/20 border border-[#0a84ff]/40 text-sky-300'
                     : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200'
                 }`}
-                title="Pin map for side-by-side split editing"
+                title={t('Pin map for side-by-side split view (e.g. Bank 1/2, Upshift/Downshift)')}
               >
                 <Pin className="w-3.5 h-3.5" />
-                {isPinned ? 'Pinned' : 'Pin'}
+                {isPinned ? t('Pinned') : t('Pin')}
               </button>
             )}
             {(isPinned || splitPinnedActive) && onToggleMirrorPinned && (
@@ -2351,10 +2360,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
                     : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300'
                 }`}
-                title="Mirror edits live to pinned split map"
+                title={t('Apply edits from the active map simultaneously to the pinned map (e.g. Bank 1/2)')}
               >
                 <Link2 className="w-3.5 h-3.5" />
-                Mirror Edits
+                {t('Mirror Edits')}
               </button>
             )}
 
@@ -2370,10 +2379,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                       ? 'bg-white/[0.03] text-zinc-600 cursor-not-allowed'
                       : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 cursor-pointer'
                   }`}
-                  title="Copy map values from Compare BIN, another open BIN, or a same-dimension XDF map"
+                  title={t('Copy Map from…')}
                 >
                   <Copy className="w-3.5 h-3.5 text-zinc-400" />
-                  Copy From
+                  {t('Copy From')}
                   <ChevronDown className="w-3 h-3 opacity-60" />
                 </button>
                 {openMenu === 'copyFrom' && (
@@ -2384,13 +2393,13 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                         onClick={() => handleCopyFromSource({ kind: 'compare' })}
                         className="w-full text-left px-3 py-1.5 text-amber-300 hover:bg-white/[0.08] cursor-pointer"
                       >
-                        Comparison BIN (Baseline)
+                        {t('Comparison BIN / Reference (Right)')}
                       </button>
                     )}
                     {otherOpenBins.length > 0 && (
                       <>
                         <div className="px-3 pt-1.5 pb-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                          Open BINs
+                          {t('Open BINs')}
                         </div>
                         {otherOpenBins.map((ob) => (
                           <button
@@ -2407,7 +2416,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     {sameDimMaps.length > 0 && (
                       <>
                         <div className="px-3 pt-1.5 pb-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                          Same-Size Maps ({rows}×{cols})
+                          {t('Other map (%lld×%lld)', rows, cols)}
                         </div>
                         <div className="max-h-40 overflow-y-auto">
                           {sameDimMaps.slice(0, 15).map((m) => (
@@ -2437,14 +2446,14 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/25'
                     : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200'
                 }`}
-                title={isLocked ? 'Unlock map for editing (⌘L)' : 'Lock map against accidental edits (⌘L)'}
+                title={t('Lock Map Against Changes (⌘L)')}
               >
                 {isLocked ? (
                   <Lock className="w-3.5 h-3.5 text-amber-300" />
                 ) : (
                   <Unlock className="w-3.5 h-3.5 text-zinc-400" />
                 )}
-                {isLocked ? 'Locked' : 'Lock'}
+                {isLocked ? t('Locked') : t('Lock')}
               </button>
             )}
             {onOpenXdfEditor && (
@@ -2452,10 +2461,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 type="button"
                 onClick={onOpenXdfEditor}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 transition-colors cursor-pointer"
-                title="Edit XDF map definition & scaling"
+                title={t('Edit XDF')}
               >
                 <Settings2 className="w-3.5 h-3.5 text-zinc-400" />
-                Edit XDF
+                {t('Edit XDF')}
               </button>
             )}
             <button
@@ -2464,7 +2473,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 onJumpToHex(anchorCell ? cellOffset(item.data, anchorCell) : item.data.address)
               }
               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 transition-colors cursor-pointer"
-              title="Inspect map bytes in Hex Editor"
+              title={t('Open Hex-Diff')}
             >
               <Binary className="w-3.5 h-3.5 text-zinc-400" />
               Hex
@@ -2480,10 +2489,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                   ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 cursor-pointer'
                   : 'bg-white/[0.03] text-zinc-600 cursor-not-allowed opacity-50'
               }`}
-              title={isLocked ? 'Unlock map to reset' : 'Reset entire map to comparison BIN'}
+              title={t('Reset the whole map including axes to the comparison')}
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              Reset
+              {t('Reset')}
             </button>
           </div>
         </div>
@@ -2547,7 +2556,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 onChange={(e) => setSyncBlockEdits(e.target.checked)}
                 className="rounded accent-[#0a84ff]"
               />
-              Sync Edits
+              {t('Sync')}
             </label>
           </div>
         )}
@@ -2577,7 +2586,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !isLocked) handleSetDirect();
                 }}
-                placeholder={isLocked ? 'Locked' : 'Value'}
+                placeholder={isLocked ? t('Locked') : t('Value')}
                 className={`w-20 px-2 py-1 rounded-md bg-[#17181d] border focus:border-[#0a84ff] focus:outline-none disabled:opacity-45 disabled:cursor-not-allowed text-xs font-mono tabular-nums text-zinc-100 placeholder:text-zinc-600 transition-colors ${
                   inlineTypingBuffer !== null ? 'border-[#0a84ff] ring-1 ring-[#0a84ff]/50' : 'border-white/[0.065]'
                 }`}
@@ -2592,7 +2601,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     : toolBtnDisabled
                 }`}
               >
-                Set
+                {t('Set')}
               </button>
             </div>
 
@@ -2693,7 +2702,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 <div className="absolute left-0 top-full mt-1.5 z-30 w-80 rounded-xl glass-popover p-3 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-semibold tracking-tight text-zinc-100">
-                      Apply Formula
+                      {t('Apply Formula to Selection')}
                     </span>
                     <span className="text-[10px] font-mono text-zinc-500">
                       X · CMP · AX · AY · R · C
@@ -2718,7 +2727,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                       onClick={handleApplyFormula}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#0a84ff] hover:bg-[#1e8fff] disabled:opacity-40 text-white transition-colors cursor-pointer"
                     >
-                      Apply
+                      {t('Apply')}
                     </button>
                   </div>
 
@@ -2726,16 +2735,16 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     {parsedFormula ? (
                       formulaPreview ? (
                         <span className="text-zinc-400">
-                          Preview:{' '}
+                          {t('Preview:')}{' '}
                           <span className="text-zinc-300">{formulaPreview.before}</span>
                           {' → '}
                           <span className="text-emerald-400 font-semibold">{formulaPreview.after}</span>
                         </span>
                       ) : (
-                        <span className="text-zinc-500">Ready ({selectedKeys.size} cells)</span>
+                        <span className="text-zinc-500">{selectedKeys.size}</span>
                       )
                     ) : (
-                      <span className="text-rose-400">Invalid expression syntax</span>
+                      <span className="text-rose-400">{t('Invalid expression syntax')}</span>
                     )}
                   </div>
 
@@ -2765,10 +2774,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                   ? 'bg-amber-500/12 text-amber-300 hover:bg-amber-500/22 cursor-pointer'
                   : toolBtnDisabled
               }`}
-              title="Restore selected cells from comparison BIN"
+              title={t('Reset selection to the comparison value')}
             >
               <Undo2 className="w-3.5 h-3.5" />
-              Original
+              {t('Original')}
             </button>
 
             <div className="h-4 w-px bg-white/[0.065] mx-0.5" />
@@ -2781,10 +2790,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
                 canEditMulti ? toolBtnActive : toolBtnDisabled
               }`}
-              title="Smooth selected cells (axis-aware 1D/2D)"
+              title={t('Smooth')}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              Smooth
+              {t('Smooth')}
             </button>
 
             {/* Interpolate Dropdown */}
@@ -2802,16 +2811,16 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 }`}
               >
                 <Spline className="w-3.5 h-3.5" />
-                Interp
+                {t('Interp')}
                 <ChevronDown className="w-3 h-3 opacity-60" />
               </button>
               {openMenu === 'interpolate' && (
-                <div className="absolute left-0 top-full mt-1.5 z-30 w-36 rounded-xl glass-popover py-1">
+                <div className="absolute left-0 top-full mt-1.5 z-30 w-40 rounded-xl glass-popover py-1">
                   {(
                     [
-                      ['horizontal', 'Horizontal'],
-                      ['vertical', 'Vertical'],
-                      ['bilinear', 'Bilinear'],
+                      ['horizontal', t('Horizontally')],
+                      ['vertical', t('Vertically')],
+                      ['bilinear', t('Bilinear (4 Cells)')],
                     ] as const
                   ).map(([m, label]) => (
                     <button
@@ -2842,7 +2851,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 }`}
               >
                 <ArrowDownToLine className="w-3.5 h-3.5" />
-                Fill
+                {t('Fill')}
                 <ChevronDown className="w-3 h-3 opacity-60" />
               </button>
               {openMenu === 'fill' && (
@@ -2850,10 +2859,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                   <div className="grid grid-cols-2 gap-1 px-2">
                     {(
                       [
-                        ['down', 'Down ↓'],
-                        ['up', 'Up ↑'],
-                        ['right', 'Right →'],
-                        ['left', 'Left ←'],
+                        ['down', `${t('Fill Down')} ↓`],
+                        ['up', `${t('Fill Up')} ↑`],
+                        ['right', `${t('Fill Right')} →`],
+                        ['left', `${t('Fill Left')} ←`],
                       ] as const
                     ).map(([dir, label]) => (
                       <button
@@ -2874,13 +2883,13 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     onClick={handleFillAverage}
                     className="w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/[0.08] disabled:opacity-40 cursor-pointer"
                   >
-                    Set to Average
+                    {t('Set to Average')}
                   </button>
 
                   {/* Flatten to Value */}
                   <div className="px-2.5 pt-1.5 border-t border-white/[0.065] space-y-1">
                     <div className="text-[10px] uppercase tracking-wider text-zinc-500">
-                      Flatten to Value
+                      {t('Flatten to Value…')}
                     </div>
                     <div className="flex items-center gap-1">
                       <input
@@ -2890,7 +2899,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') handleFlatten();
                         }}
-                        placeholder="Target…"
+                        placeholder={t('Value')}
                         className="flex-1 min-w-0 px-2 py-1 rounded bg-[#101115] border border-white/[0.08] text-xs font-mono text-zinc-100 focus:border-[#0a84ff] focus:outline-none"
                       />
                       <button
@@ -2898,7 +2907,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                         onClick={handleFlatten}
                         className="px-2 py-1 rounded bg-[#0a84ff] hover:bg-[#1e8fff] text-[11px] font-medium text-white cursor-pointer"
                       >
-                        Go
+                        {t('Apply')}
                       </button>
                     </div>
                   </div>
@@ -2906,21 +2915,21 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                   {/* Clamp Min / Max */}
                   <div className="px-2.5 pt-1.5 border-t border-white/[0.065] space-y-1">
                     <div className="text-[10px] uppercase tracking-wider text-zinc-500">
-                      Clamp (Min / Max)
+                      {t('Clamp Values')}
                     </div>
                     <div className="flex items-center gap-1">
                       <input
                         type="text"
                         value={clampMinText}
                         onChange={(e) => setClampMinText(e.target.value)}
-                        placeholder="Min"
+                        placeholder={t('Min')}
                         className="w-16 px-1.5 py-1 rounded bg-[#101115] border border-white/[0.08] text-xs font-mono text-zinc-100 focus:border-[#0a84ff] focus:outline-none"
                       />
                       <input
                         type="text"
                         value={clampMaxText}
                         onChange={(e) => setClampMaxText(e.target.value)}
-                        placeholder="Max"
+                        placeholder={t('Max')}
                         className="w-16 px-1.5 py-1 rounded bg-[#101115] border border-white/[0.08] text-xs font-mono text-zinc-100 focus:border-[#0a84ff] focus:outline-none"
                       />
                       <button
@@ -2928,7 +2937,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                         onClick={handleClamp}
                         className="flex-1 px-2 py-1 rounded bg-[#0a84ff] hover:bg-[#1e8fff] text-[11px] font-medium text-white cursor-pointer"
                       >
-                        Clamp
+                        {t('Apply')}
                       </button>
                     </div>
                   </div>
@@ -2949,17 +2958,17 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                       ? toolBtnActive
                       : toolBtnDisabled
                 }`}
-                title="Rescale X or Y axis breakpoints and optionally resample map values"
+                title={t('Rescale axis breakpoints and automatically bilinearly re-interpolate Z map values')}
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
-                Rescale
+                {t('Rescale')}
               </button>
 
               {openMenu === 'rescale' && (
                 <div className="absolute left-0 top-full mt-1.5 z-30 w-76 rounded-xl glass-popover p-3 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-semibold tracking-tight text-zinc-100">
-                      Rescale Breakpoints
+                      {t('Rescale Axis')}
                     </span>
                     <div className="inline-flex rounded-md bg-white/[0.05] p-0.5">
                       <button
@@ -2977,7 +2986,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                               : 'text-zinc-600 cursor-not-allowed'
                         }`}
                       >
-                        X Axis
+                        {t('X-Axis')}
                       </button>
                       <button
                         type="button"
@@ -2994,7 +3003,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                               : 'text-zinc-600 cursor-not-allowed'
                         }`}
                       >
-                        Y Axis
+                        {t('Y-Axis')}
                       </button>
                     </div>
                   </div>
@@ -3002,7 +3011,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                   <div className="grid grid-cols-2 gap-2">
                     <label className="space-y-1">
                       <span className="block text-[10px] uppercase tracking-wider text-zinc-500">
-                        Start
+                        {t('Start')}
                       </span>
                       <input
                         type="text"
@@ -3013,7 +3022,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     </label>
                     <label className="space-y-1">
                       <span className="block text-[10px] uppercase tracking-wider text-zinc-500">
-                        End
+                        {t('End')}
                       </span>
                       <input
                         type="text"
@@ -3032,7 +3041,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                         onChange={(e) => setRescaleInterpolate(e.target.checked)}
                         className="rounded accent-[#0a84ff]"
                       />
-                      <span>Resample map values to preserve shape</span>
+                      <span>{t('Rescale & Re-Interpolate')}</span>
                     </label>
 
                     {rescaleInterpolate && (
@@ -3043,7 +3052,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                           onChange={(e) => setRescaleExtrapolate(e.target.checked)}
                           className="rounded accent-[#0a84ff]"
                         />
-                        <span>Extrapolate boundary values</span>
+                        <span>{t('Extrapolate boundary values')}</span>
                       </label>
                     )}
 
@@ -3056,8 +3065,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                           className="rounded accent-orange-400"
                         />
                         <span>
-                          Cascade to {rescaleTargetSiblingsCount} shared-axis{' '}
-                          {rescaleTargetSiblingsCount === 1 ? 'map' : 'maps'}
+                          {t('Also re-interpolate %lld linked maps', rescaleTargetSiblingsCount)}
                         </span>
                       </label>
                     )}
@@ -3069,14 +3077,14 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                       onClick={() => setOpenMenu(null)}
                       className="px-2.5 py-1 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05] transition-colors cursor-pointer"
                     >
-                      Cancel
+                      {t('Cancel')}
                     </button>
                     <button
                       type="button"
                       onClick={handleApplyRescale}
                       className="px-3 py-1 rounded-lg text-xs font-medium bg-[#0a84ff] hover:bg-[#1e8fff] text-white transition-colors cursor-pointer"
                     >
-                      Rescale
+                      {t('Rescale')}
                     </button>
                   </div>
                 </div>
@@ -3096,10 +3104,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     ? 'bg-[#0a84ff] text-white shadow-[0_1px_6px_rgba(10,132,255,0.35)]'
                     : toolBtnActive
                 }`}
-                title="Click any X/Y axis header cell to edit its breakpoint value inline"
+                title={t('Edit axes inline')}
               >
                 <Edit3 className="w-3.5 h-3.5" />
-                Axes
+                {t('Axes')}
               </button>
             )}
 
@@ -3113,7 +3121,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 }`}
               >
                 <MoreHorizontal className="w-3.5 h-3.5" />
-                Actions
+                {t('Actions')}
               </button>
               {openMenu === 'actions' && (
                 <div className="absolute left-0 top-full mt-1.5 z-30 w-48 rounded-xl glass-popover py-1 text-xs">
@@ -3125,7 +3133,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     }}
                     className="w-full flex items-center justify-between px-3 py-1.5 text-zinc-200 hover:bg-white/[0.08] cursor-pointer"
                   >
-                    <span>Select All</span>
+                    <span>{t('Select All')}</span>
                     <span className="text-[10px] font-mono text-zinc-500">⌘A</span>
                   </button>
                   <button
@@ -3134,7 +3142,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     onClick={selectChangedCells}
                     className="w-full text-left px-3 py-1.5 text-zinc-200 hover:bg-white/[0.08] disabled:opacity-40 cursor-pointer"
                   >
-                    Select Changed Cells ({changedCount})
+                    {t('Select Changed Cells')} ({changedCount})
                   </button>
                   <button
                     type="button"
@@ -3142,7 +3150,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-200 hover:bg-white/[0.08] cursor-pointer"
                   >
                     <ClipboardCopy className="w-3.5 h-3.5 text-zinc-400" />
-                    Copy with Axes (TSV)
+                    {t('Copy with Axes')} (TSV)
                   </button>
                 </div>
               )}
@@ -3207,7 +3215,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               {(
                 [
                   ['bin', 'BIN', false],
-                  ['compare', 'Comparison', true],
+                  ['compare', t('Comparison'), true],
                   ['delta', 'Δ', true],
                   ['deltaPct', 'Δ %', true],
                 ] as const
@@ -3243,10 +3251,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
             {/* Min / Max / Avg Summary */}
             <div className="flex items-center gap-3.5 text-[11px] font-mono tabular-nums text-zinc-500">
               <span className="text-[10px] uppercase tracking-wider text-zinc-500">
-                {stats.scoped ? 'Selection' : 'Table'}
+                {stats.scoped ? t('Selection') : t('Table')}
               </span>
               <span>
-                min{' '}
+                {t('Min').toLowerCase()}{' '}
                 <strong className="text-zinc-200 font-semibold">
                   {stats.min !== null
                     ? viewMode === 'deltaPct'
@@ -3295,14 +3303,32 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 show2D || show3D ? 'flex-[1.15] min-h-[180px]' : 'flex-1'
               } rounded-xl bg-[#121317] border border-white/[0.065] p-2 overflow-auto select-none`}
               onMouseLeave={() => setHoveredCell(null)}
+              onMouseDown={(e) => {
+                const tag = (e.target as HTMLElement).tagName;
+                if (e.target === e.currentTarget || tag === 'TABLE' || tag === 'TBODY' || tag === 'THEAD' || tag === 'TR') {
+                  if (selectedKeys.size > 0) {
+                    setSelectedKeys(new Set());
+                    setAnchorCell(null);
+                    setFocusCell(null);
+                  }
+                }
+              }}
             >
               <table className="border-separate border-spacing-[2.5px] w-max min-w-full text-[11px] font-mono tabular-nums">
                 <thead className="sticky top-0 z-20">
                   <tr>
                     <th
-                      onClick={selectAll}
+                      onClick={() => {
+                        if (selectedKeys.size >= rows * cols) {
+                          setSelectedKeys(new Set());
+                          setAnchorCell(null);
+                          setFocusCell(null);
+                        } else {
+                          selectAll();
+                        }
+                      }}
                       className="sticky left-0 z-30 px-2.5 py-1.5 bg-[#121317] rounded-[5px] text-[10px] font-semibold text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] cursor-pointer text-center min-w-[54px] transition-colors"
-                      title="Select all cells (⌘A)"
+                      title={selectedKeys.size >= rows * cols ? 'Clear selection (Esc)' : 'Select all cells (⌘A)'}
                     >
                       {transposed ? 'X \\ Y' : 'Y \\ X'}
                     </th>
@@ -3686,11 +3712,11 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
             }}
             className="w-full text-left px-3 py-1.5 hover:bg-white/[0.08] disabled:opacity-40 cursor-pointer"
           >
-            Smooth (3×3)
+            {t('Smooth')} (3×3)
           </button>
 
           <div className="px-3 py-1 flex items-center justify-between gap-1">
-            <span className="text-[11px] text-zinc-400">Interpolate</span>
+            <span className="text-[11px] text-zinc-400">{t('Interpolate')}</span>
             <div className="inline-flex gap-1">
               {(
                 [
@@ -3724,7 +3750,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
             }}
             className="w-full text-left px-3 py-1.5 hover:bg-white/[0.08] disabled:opacity-40 text-amber-300 cursor-pointer"
           >
-            Reset Selected Cells
+            {t('Reset to Original')}
           </button>
 
           <div className="my-1 border-t border-white/[0.08]" />
@@ -3738,7 +3764,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               }}
               className="px-2 py-1 rounded bg-white/[0.05] hover:bg-white/[0.12] text-[11px] cursor-pointer"
             >
-              Copy (⌘C)
+              {t('Copy (⌘C)')}
             </button>
             <button
               type="button"
@@ -3749,7 +3775,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               }}
               className="px-2 py-1 rounded bg-white/[0.05] hover:bg-white/[0.12] disabled:opacity-40 text-[11px] cursor-pointer"
             >
-              Paste (⌘V)
+              {t('Paste (⌘V)')}
             </button>
           </div>
 
@@ -3763,7 +3789,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
             }}
             className="w-full text-left px-3 py-1.5 hover:bg-white/[0.08] cursor-pointer"
           >
-            Select Row ({yLabels[cellCtxMenu.cell.r] ?? cellCtxMenu.cell.r})
+            {t('Select Row')} ({yLabels[cellCtxMenu.cell.r] ?? cellCtxMenu.cell.r})
           </button>
           <button
             type="button"
@@ -3773,7 +3799,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
             }}
             className="w-full text-left px-3 py-1.5 hover:bg-white/[0.08] cursor-pointer"
           >
-            Select Column ({xLabels[cellCtxMenu.cell.c] ?? cellCtxMenu.cell.c})
+            {t('Select Column')} ({xLabels[cellCtxMenu.cell.c] ?? cellCtxMenu.cell.c})
           </button>
           <button
             type="button"
@@ -3783,7 +3809,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
             }}
             className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] cursor-pointer"
           >
-            <span>Select All</span>
+            <span>{t('Select All')}</span>
             <span className="text-[10px] font-mono text-zinc-500">⌘A</span>
           </button>
 
@@ -3798,7 +3824,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
             className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] cursor-pointer"
           >
             <Binary className="w-3.5 h-3.5 text-zinc-400" />
-            Jump Cell to Hex
+            {t('Show in Hex')}
           </button>
 
           {onOpenXdfEditor && (
@@ -3811,7 +3837,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] cursor-pointer"
             >
               <Settings2 className="w-3.5 h-3.5 text-zinc-400" />
-              Edit in XDF Editor
+              {t('Edit XDF')}
             </button>
           )}
         </div>

@@ -34,6 +34,7 @@ import type {
   UnitSystem,
   XDFItem,
 } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export type PaletteSection =
   | 'overview'
@@ -110,6 +111,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onSetHeatmapPalette,
   onSetUnitSystem,
 }) => {
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -178,8 +180,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       // Navigation (9)
       {
         id: 'nav-overview',
-        label: 'Overview',
-        subtitle: 'ECU Identity, Modified Maps Summary & Health Dashboard',
+        label: t('Overview'),
+        subtitle: t('ECU Identity, Modified Maps Summary & Health Dashboard'),
         shortcut: '⌘0',
         group: 'Navigation',
         icon: <LayoutDashboard className="h-4 w-4 text-sky-400" />,
@@ -187,64 +189,64 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
       {
         id: 'nav-hex',
-        label: 'Hex-Diff Editor',
-        subtitle: 'Split binary diff, 2D waveform & code XRefs',
+        label: t('Hex Editor'),
+        subtitle: t('Split binary diff, 2D waveform & code XRefs'),
         group: 'Navigation',
         icon: <Binary className="h-4 w-4 text-sky-400" />,
         run: () => onSwitchSection('workspace', 'hex'),
       },
       {
         id: 'nav-map',
-        label: 'Map Editor',
-        subtitle: '2D table, 1D curves & 3D surface calibration',
+        label: t('Map Editor'),
+        subtitle: t('2D table, 1D curves & 3D surface calibration'),
         group: 'Navigation',
         icon: <Table2 className="h-4 w-4 text-sky-400" />,
         run: () => onSwitchSection('workspace', 'map'),
       },
       {
         id: 'nav-compare',
-        label: 'Multi-Compare',
-        subtitle: 'Side-by-side comparison across multiple BINs & Snapshots',
+        label: t('Multi-Compare'),
+        subtitle: t('Compare 3+ files side by side'),
         group: 'Navigation',
         icon: <Columns3 className="h-4 w-4 text-purple-400" />,
         run: () => onSwitchSection('compare'),
       },
       {
         id: 'nav-discovery',
-        label: 'Discovery & DTC',
-        subtitle: 'Map Finder, DTC-Off Tables, Tune Porting & Batch',
+        label: t('Discovery & DTCs'),
+        subtitle: t('Map Finder, DTC-Off Tables, Tune Porting & Batch'),
         group: 'Navigation',
         icon: <Search className="h-4 w-4 text-sky-400" />,
         run: () => onSwitchSection('discovery'),
       },
       {
         id: 'nav-memory',
-        label: 'Memory Atlas',
-        subtitle: 'PFLASH Partitions, TPROT Sectors & Shared Axes',
+        label: t('Memory Atlas'),
+        subtitle: t('PFLASH Partitions, TPROT Sectors & Shared Axes'),
         group: 'Navigation',
         icon: <HardDrive className="h-4 w-4 text-purple-400" />,
         run: () => onSwitchSection('memory'),
       },
       {
         id: 'nav-recipes',
-        label: 'Recipes & Plugins',
-        subtitle: 'Tuning recipes, JS plugins & reference library',
+        label: t('Recipes & Plugins'),
+        subtitle: t('Tuning recipes, JS plugins & reference library'),
         group: 'Navigation',
         icon: <Sparkles className="h-4 w-4 text-amber-400" />,
         run: () => onSwitchSection('recipes'),
       },
       {
         id: 'nav-datalog',
-        label: 'Datalog & Dyno',
-        subtitle: '20 Hz WOT Dyno Pull, Scatter, Auto-Tune & OBD-II',
+        label: t('Datalog'),
+        subtitle: t('Load CSV/ADX logs, live trace, hit overlay & correction suggestions'),
         group: 'Navigation',
         icon: <Activity className="h-4 w-4 text-emerald-400" />,
         run: () => onSwitchSection('datalog'),
       },
       {
         id: 'nav-flash',
-        label: 'Flash Preflight',
-        subtitle: 'Checksum triage, Diagnostics, Snapshots & HTML Report',
+        label: t('Checksums & Flash'),
+        subtitle: t('Checksum triage, Diagnostics, Snapshots & HTML Report'),
         group: 'Navigation',
         icon: <ShieldCheck className="h-4 w-4 text-sky-400" />,
         run: () => onSwitchSection('flash'),
@@ -253,32 +255,32 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       // Layout (5)
       {
         id: 'layout-studio',
-        label: 'Layout: Studio',
-        subtitle: 'Balanced MacTuner workbench with sidebar & inspector',
+        label: `${t('Layout')}: ${t('Studio')}`,
+        subtitle: t('Balanced MacTuner workbench with sidebar & inspector'),
         group: 'Layout',
         icon: <LayoutGrid className="h-4 w-4 text-sky-400" />,
         run: () => onSetLayoutMode?.('studio'),
       },
       {
         id: 'layout-ide',
-        label: 'Layout: IDE',
-        subtitle: 'Tabbed multi-map editor with Xcode-style bottom drawer',
+        label: `${t('Layout')}: ${t('IDE')}`,
+        subtitle: t('Tabbed multi-map editor with Xcode-style bottom drawer'),
         group: 'Layout',
         icon: <LayoutGrid className="h-4 w-4 text-purple-400" />,
         run: () => onSetLayoutMode?.('ide'),
       },
       {
         id: 'layout-canvas',
-        label: 'Layout: Canvas',
-        subtitle: 'Distraction-free full-bleed map & hex canvas',
+        label: `${t('Layout')}: ${t('Canvas')}`,
+        subtitle: t('Distraction-free full-bleed map & hex canvas'),
         group: 'Layout',
         icon: <LayoutGrid className="h-4 w-4 text-emerald-400" />,
         run: () => onSetLayoutMode?.('canvas'),
       },
       {
         id: 'toggle-drawer',
-        label: 'Toggle Bottom Drawer',
-        subtitle: 'Show or hide 3D Surface, Datalog Trace & Preflight Atlas',
+        label: t('Toggle Bottom Drawer'),
+        subtitle: t('Show or hide 3D Surface, Datalog Trace & Preflight Atlas'),
         shortcut: '⇧⌘Y',
         group: 'Layout',
         icon: <PanelBottom className="h-4 w-4 text-sky-400" />,
@@ -286,8 +288,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
       {
         id: 'toggle-inspector',
-        label: 'Toggle Inspector',
-        subtitle: 'Show or hide right Map Properties & Preflight Inspector',
+        label: t('Toggle Inspector'),
+        subtitle: t('Show or hide right Map Properties & Preflight Inspector'),
         shortcut: '⌥⌘I',
         group: 'Layout',
         icon: <PanelRight className="h-4 w-4 text-sky-400" />,
@@ -297,8 +299,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       // Actions (7)
       {
         id: 'act-toggle-lock',
-        label: 'Toggle Map Lock',
-        subtitle: 'Protect active map from accidental edits',
+        label: t('Toggle Map Lock'),
+        subtitle: t('Protect active map from accidental edits'),
         shortcut: '⌘L',
         group: 'Actions',
         icon: <Lock className="h-4 w-4 text-amber-400" />,
@@ -306,8 +308,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
       {
         id: 'act-toggle-fav',
-        label: 'Toggle Favorite',
-        subtitle: 'Pin or unpin active map in Favorites scope',
+        label: t('Toggle Favorite'),
+        subtitle: t('Pin or unpin active map in Favorites scope'),
         shortcut: '⌘D',
         group: 'Actions',
         icon: <Star className="h-4 w-4 text-amber-400" />,
@@ -315,8 +317,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
       {
         id: 'act-next-changed',
-        label: 'Next Changed Map',
-        subtitle: 'Jump to next modified map in XDF',
+        label: t('Next Changed Map'),
+        subtitle: t('Jump to next changed map'),
         shortcut: '⌥⌘↓',
         group: 'Actions',
         icon: <ArrowDown className="h-4 w-4 text-amber-400" />,
@@ -324,8 +326,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
       {
         id: 'act-prev-changed',
-        label: 'Previous Changed Map',
-        subtitle: 'Jump to previous modified map in XDF',
+        label: t('Previous Changed Map'),
+        subtitle: t('Jump to previous changed map'),
         shortcut: '⌥⌘↑',
         group: 'Actions',
         icon: <ArrowUp className="h-4 w-4 text-amber-400" />,
@@ -333,24 +335,24 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
       {
         id: 'act-snapshot',
-        label: 'Quick Snapshot',
-        subtitle: 'Capture a named restore point of the current BIN',
+        label: t('Quick Snapshot'),
+        subtitle: t('Capture a named restore point of the current BIN'),
         group: 'Actions',
         icon: <Camera className="h-4 w-4 text-emerald-400" />,
         run: () => onQuickSnapshot?.(),
       },
       {
         id: 'act-fix-cs',
-        label: 'Fix Checksums',
-        subtitle: 'Recalculate and repair all invalid ECU checksum blocks',
+        label: t('Fix Checksums'),
+        subtitle: t('Recalculate and repair all invalid ECU checksum blocks'),
         group: 'Actions',
         icon: <Wand2 className="h-4 w-4 text-emerald-400" />,
         run: onFixChecksums,
       },
       {
         id: 'act-swap',
-        label: 'Swap BINs',
-        subtitle: 'Flip Active (L) and Comparison (R) files',
+        label: t('Swap Active & Comparison BIN'),
+        subtitle: t('Edit the comparison and use the BIN as the comparison'),
         group: 'Actions',
         icon: <ArrowLeftRight className="h-4 w-4 text-amber-400" />,
         run: onSwapBins,
@@ -359,8 +361,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       // Export & Print (7)
       {
         id: 'exp-bin',
-        label: 'Export BIN',
-        subtitle: 'Open Pre-Save Review & download tuned .bin',
+        label: t('Export BIN'),
+        subtitle: t('Open Pre-Save Review & download tuned .bin'),
         shortcut: '⇧⌘E',
         group: 'Export',
         icon: <FileDown className="h-4 w-4 text-sky-400" />,
@@ -368,48 +370,48 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
       {
         id: 'exp-xdf',
-        label: 'Export XDF (.xdf)',
-        subtitle: 'Export TunerPro v1.70 XML definition',
+        label: t('Export / Save XDF As…'),
+        subtitle: t('Export TunerPro v1.70 XML definition'),
         group: 'Export',
         icon: <Download className="h-4 w-4 text-zinc-300" />,
         run: () => onExportDefinition?.('xdf', 'xdf'),
       },
       {
         id: 'exp-a2l',
-        label: 'Export A2L (.a2l)',
-        subtitle: 'Export ASAP2 ECU calibration definition',
+        label: t('Export as ASAP2 (.a2l) …'),
+        subtitle: t('Export ASAP2 ECU calibration definition'),
         group: 'Export',
         icon: <Download className="h-4 w-4 text-zinc-300" />,
         run: () => onExportDefinition?.('a2l', 'a2l'),
       },
       {
         id: 'exp-csv',
-        label: 'Export CSV (.csv)',
-        subtitle: 'Export WinOLS CSV map list',
+        label: t('Export as CSV…'),
+        subtitle: t('Export WinOLS CSV map list'),
         group: 'Export',
         icon: <Download className="h-4 w-4 text-zinc-300" />,
         run: () => onExportDefinition?.('csv', 'csv'),
       },
       {
         id: 'exp-kp',
-        label: 'Export KP (.kp)',
-        subtitle: 'Export WinOLS binary map pack',
+        label: t('WinOLS Map Pack (.kp)'),
+        subtitle: t('Export WinOLS binary map pack'),
         group: 'Export',
         icon: <Download className="h-4 w-4 text-zinc-300" />,
         run: () => onExportDefinition?.('kp', 'kp'),
       },
       {
         id: 'exp-xml',
-        label: 'Export RomRaider XML (.xml)',
-        subtitle: 'Export RomRaider ECU XML definition',
+        label: t('Export as RomRaider XML (.xml) …'),
+        subtitle: t('Export RomRaider ECU XML definition'),
         group: 'Export',
         icon: <Download className="h-4 w-4 text-zinc-300" />,
         run: () => onExportDefinition?.('xml', 'xml'),
       },
       {
         id: 'act-print',
-        label: 'Print / Save PDF',
-        subtitle: 'Print calibration summary or save PDF report',
+        label: t('Print / Save PDF…'),
+        subtitle: t('Export change report with charts as PDF'),
         shortcut: '⌘P',
         group: 'Export',
         icon: <Printer className="h-4 w-4 text-zinc-300" />,
@@ -419,64 +421,64 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       // Appearance: Heatmap Palettes (5) & Units (3)
       {
         id: 'pal-classic',
-        label: 'Heatmap Palette: Classic',
-        subtitle: 'Traditional blue → cyan → green → yellow → red',
+        label: `${t('Palette')}: ${t('Classic (Rainbow)')}`,
+        subtitle: t('Traditional blue → cyan → green → yellow → red'),
         group: 'Appearance',
         icon: <Palette className="h-4 w-4 text-sky-400" />,
         run: () => onSetHeatmapPalette?.('classic'),
       },
       {
         id: 'pal-viridis',
-        label: 'Heatmap Palette: Viridis',
-        subtitle: 'Perceptually uniform scientific colormap (CVD-safe)',
+        label: `${t('Palette')}: ${t('Viridis')}`,
+        subtitle: t('Perceptually uniform scientific colormap (CVD-safe)'),
         group: 'Appearance',
         icon: <Palette className="h-4 w-4 text-emerald-400" />,
         run: () => onSetHeatmapPalette?.('viridis'),
       },
       {
         id: 'pal-cividis',
-        label: 'Heatmap Palette: Cividis',
-        subtitle: 'Deuteranopia & protanopia safe colormap',
+        label: `${t('Palette')}: ${t('Cividis (Deuteranopia / Protanopia)')}`,
+        subtitle: t('Deuteranopia & protanopia safe colormap'),
         group: 'Appearance',
         icon: <Palette className="h-4 w-4 text-amber-400" />,
         run: () => onSetHeatmapPalette?.('cividis'),
       },
       {
         id: 'pal-plasma',
-        label: 'Heatmap Palette: Plasma',
-        subtitle: 'High-dynamic indigo → magenta → bright yellow',
+        label: `${t('Palette')}: ${t('Plasma')}`,
+        subtitle: t('High-dynamic indigo → magenta → bright yellow'),
         group: 'Appearance',
         icon: <Palette className="h-4 w-4 text-fuchsia-400" />,
         run: () => onSetHeatmapPalette?.('plasma'),
       },
       {
         id: 'pal-hc',
-        label: 'Heatmap Palette: High-Contrast',
-        subtitle: 'Maximum legibility diverging slate-blue → crimson',
+        label: `${t('Palette')}: ${t('High Contrast')}`,
+        subtitle: t('Maximum legibility diverging slate-blue → crimson'),
         group: 'Appearance',
         icon: <Palette className="h-4 w-4 text-rose-400" />,
         run: () => onSetHeatmapPalette?.('high-contrast'),
       },
       {
         id: 'unit-original',
-        label: 'Units: Original',
-        subtitle: 'Show native XDF units without conversion',
+        label: `${t('Units')}: ${t('Original')}`,
+        subtitle: t('No unit conversion'),
         group: 'Appearance',
         icon: <Scale className="h-4 w-4 text-zinc-300" />,
         run: () => onSetUnitSystem?.('original'),
       },
       {
         id: 'unit-metric',
-        label: 'Units: Metric',
-        subtitle: 'Convert to °C, bar, Nm, km/h, λ',
+        label: `${t('Units')}: ${t('Metric')}`,
+        subtitle: t('Metric (°C, Nm, bar, km/h)'),
         group: 'Appearance',
         icon: <Scale className="h-4 w-4 text-sky-400" />,
         run: () => onSetUnitSystem?.('metric'),
       },
       {
         id: 'unit-imperial',
-        label: 'Units: Imperial',
-        subtitle: 'Convert to °F, psi, lb-ft, mph, AFR',
+        label: `${t('Units')}: ${t('Imperial')}`,
+        subtitle: t('Imperial (°F, lb-ft, psi, mph)'),
         group: 'Appearance',
         icon: <Scale className="h-4 w-4 text-amber-400" />,
         run: () => onSetUnitSystem?.('imperial'),
@@ -506,7 +508,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       !lower ||
       a.label.toLowerCase().includes(lower) ||
       (a.subtitle?.toLowerCase().includes(lower) ?? false) ||
-      a.group.toLowerCase().includes(lower);
+      a.group.toLowerCase().includes(lower) ||
+      t(a.group).toLowerCase().includes(lower);
 
     return [
       ...out,
@@ -515,6 +518,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       ...detActions.filter(filter),
     ].slice(0, 60);
   }, [
+    t,
     query,
     items,
     candidates,
@@ -576,7 +580,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Command, map, :80000, 20000..201FF, or cols=16…"
+            placeholder={t('Command, map, :80000, 20000..201FF, or cols=16…')}
             className="w-full bg-transparent text-sm text-white placeholder-slate-400 outline-none"
           />
           <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-slate-400">
@@ -586,7 +590,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
         <div className="max-h-[420px] overflow-y-auto p-2">
           {actions.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400">No matching maps or commands</div>
+            <div className="py-8 text-center text-xs text-slate-400">{t('No matching maps or commands')}</div>
           ) : (
             actions.map((act, idx) => {
               const active = idx === selectedIdx;
@@ -616,7 +620,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         {act.shortcut}
                       </kbd>
                     )}
-                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-400">{act.group}</span>
+                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-400">{t(act.group)}</span>
                     {active && <CornerDownLeft className="h-3.5 w-3.5 text-sky-400" />}
                   </div>
                 </button>

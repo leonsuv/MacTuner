@@ -30,6 +30,7 @@ import {
   type XDFDefinition,
   type XDFItem,
 } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export interface DatalogOverlayState {
   enabled: boolean;
@@ -599,6 +600,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
   onDatalogOverlayChange,
   onSelectMap,
 }) => {
+  const { t } = useI18n();
   const [session, setSession] = useState<DatalogSession>(() => createRealisticWotPull());
   const [mode, setMode] = useState<DatalogMode>('timeseries');
   const [enabledKeys, setEnabledKeys] = useState<Set<string>>(
@@ -1716,8 +1718,8 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
           <div>
             <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">{session.name}</h2>
             <p className="text-[11px] font-mono tabular-nums text-zinc-400">
-              {session.timestamps.length} samples · {session.sampleRateHz} Hz ·{' '}
-              {(session.timestamps[session.timestamps.length - 1] ?? 0).toFixed(2)}s duration
+              {session.timestamps.length} {t('samples')} · {session.sampleRateHz} Hz ·{' '}
+              {(session.timestamps[session.timestamps.length - 1] ?? 0).toFixed(2)}s {t('duration')}
             </p>
           </div>
         </div>
@@ -1726,11 +1728,11 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
         <div className="flex items-center gap-0.5 p-0.5 rounded-full bg-white/[0.04] border border-white/[0.065] flex-wrap">
           {(
             [
-              { id: 'timeseries', label: 'Time-Series', icon: <Activity className="w-3.5 h-3.5" /> },
-              { id: 'scatter', label: 'XY Scatter', icon: <ScatterChart className="w-3.5 h-3.5" /> },
-              { id: 'dyno', label: 'Virtual Dyno', icon: <Gauge className="w-3.5 h-3.5" /> },
-              { id: 'autotune', label: 'Auto-Tune', icon: <Grid3x3 className="w-3.5 h-3.5" /> },
-              { id: 'obd', label: 'Live OBD-II', icon: <Radio className="w-3.5 h-3.5" /> },
+              { id: 'timeseries', label: t('Time-Series'), icon: <Activity className="w-3.5 h-3.5" /> },
+              { id: 'scatter', label: t('XY Scatter'), icon: <ScatterChart className="w-3.5 h-3.5" /> },
+              { id: 'dyno', label: t('Virtual Dyno'), icon: <Gauge className="w-3.5 h-3.5" /> },
+              { id: 'autotune', label: t('Auto-Tune'), icon: <Grid3x3 className="w-3.5 h-3.5" /> },
+              { id: 'obd', label: t('Live OBD-II'), icon: <Radio className="w-3.5 h-3.5" /> },
             ] as const
           ).map((m) => (
             <button
@@ -1766,7 +1768,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-medium transition-colors cursor-pointer"
           >
             <Flame className="w-3.5 h-3.5" />
-            <span>20 Hz WOT Pull</span>
+            <span>{t('20 Hz WOT Pull')}</span>
           </button>
           <button
             type="button"
@@ -1774,7 +1776,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_2px_10px_rgba(10,132,255,0.3)] transition-colors cursor-pointer"
           >
             <Upload className="w-3.5 h-3.5" />
-            <span>Import CSV / ADX</span>
+            <span>{t('Import CSV / ADX')}</span>
           </button>
         </div>
       </div>
@@ -1784,7 +1786,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
         <div className="px-5 py-2 border-b border-amber-500/25 bg-amber-500/[0.07] flex items-center gap-2.5 flex-wrap text-xs">
           <div className="flex items-center gap-1.5 text-amber-300 font-semibold shrink-0">
             <AlertTriangle className="w-3.5 h-3.5" />
-            <span>Anomalies ({anomalies.length}):</span>
+            <span>{t('Anomalies')} ({anomalies.length}):</span>
           </div>
           {anomalies.map((a) => (
             <button
@@ -1797,7 +1799,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               }}
               className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/15 hover:bg-amber-500/30 border border-amber-500/35 text-[11px] font-mono text-amber-200 cursor-pointer"
             >
-              <span className="font-sans font-semibold">{a.label}:</span>
+              <span className="font-sans font-semibold">{t(a.label)}:</span>
               <span>{a.detail}</span>
             </button>
           ))}
@@ -1814,7 +1816,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-[11px] font-semibold cursor-pointer shrink-0"
             >
               {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-              <span>{isPlaying ? 'Pause' : 'Play'}</span>
+              <span>{isPlaying ? t('Pause') : t('Play')}</span>
             </button>
             <input
               type="range"
@@ -1841,13 +1843,13 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                 onChange={(e) => setOverlayEnabled(e.target.checked)}
                 className="accent-[#0a84ff]"
               />
-              <span>Hit-Overlay in Heatmap</span>
+              <span>{t('Hit-Overlay in Heatmap')}</span>
             </label>
             <select
               value={overlayXChannel}
               onChange={(e) => setOverlayXChannel(e.target.value)}
               className="px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] text-[11px] text-zinc-200"
-              title="X-Channel override"
+              title={t('X-Channel override')}
             >
               {session.channels.map((ch) => (
                 <option key={ch.key} value={ch.key}>
@@ -1859,7 +1861,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               value={overlayYChannel}
               onChange={(e) => setOverlayYChannel(e.target.value)}
               className="px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] text-[11px] text-zinc-200"
-              title="Y-Channel override"
+              title={t('Y-Channel override')}
             >
               {session.channels.map((ch) => (
                 <option key={ch.key} value={ch.key}>
@@ -1876,7 +1878,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               }}
               className="px-2.5 py-1 rounded-lg bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 border border-[#0a84ff]/35 text-[11px] font-semibold text-[#5ac8fa] cursor-pointer"
             >
-              Open Map with Live Trace
+              {t('Open Map with Live Trace')}
             </button>
             <button
               type="button"
@@ -1888,7 +1890,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               }`}
             >
               <Calculator className="w-3 h-3" />
-              <span>Math Channel</span>
+              <span>{t('Math Channel')}</span>
             </button>
           </div>
         </div>
@@ -1899,7 +1901,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
         <div className="px-5 py-2.5 border-b border-white/[0.065] bg-[#17181d] flex items-center justify-between gap-3 flex-wrap text-xs">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10.5px] uppercase tracking-wider font-semibold text-zinc-400">
-              Math Builder:
+              {t('Math Builder:')}
             </span>
             <select
               value={mathChA}
@@ -1937,7 +1939,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               type="text"
               value={mathName}
               onChange={(e) => setMathName(e.target.value)}
-              placeholder="Channel name"
+              placeholder={t('Channel name')}
               className="w-36 px-2.5 py-1 rounded bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
             />
             <button
@@ -1946,24 +1948,24 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-[11px] font-semibold cursor-pointer"
             >
               <Plus className="w-3 h-3" />
-              <span>Add</span>
+              <span>{t('Add')}</span>
             </button>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[10.5px] text-zinc-500">Presets:</span>
+            <span className="text-[10.5px] text-zinc-500">{t('Presets:')}</span>
             <button
               type="button"
               onClick={() => handleAddMathChannel('boost', '-', 'load', 'Boost Error')}
               className="px-2 py-1 rounded bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] text-zinc-300 cursor-pointer"
             >
-              + Boost Error
+              {t('+ Boost Error')}
             </button>
             <button
               type="button"
               onClick={() => handleAddMathChannel('lambda', '/', 'load', 'Lambda Error')}
               className="px-2 py-1 rounded bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] text-zinc-300 cursor-pointer"
             >
-              + Lambda Error
+              {t('+ Lambda Error')}
             </button>
           </div>
         </div>
@@ -1973,7 +1975,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
       {mode === 'timeseries' && (
         <div className="px-5 py-2.5 border-b border-white/[0.065] bg-[#15161b] flex items-center gap-2.5 overflow-x-auto">
           <div className="px-2.5 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.065] shrink-0">
-            <div className="text-[10px] uppercase tracking-wider text-zinc-500">Time</div>
+            <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('Time')}</div>
             <div className="text-xs font-mono tabular-nums font-bold text-white">
               {inspectTime.toFixed(2)} s
             </div>
@@ -2015,9 +2017,9 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
           <div className="flex items-center gap-3 flex-wrap">
             {(
               [
-                { label: 'X Axis', value: scatterXKey, setter: setScatterXKey },
-                { label: 'Y Axis', value: scatterYKey, setter: setScatterYKey },
-                { label: 'Color (Z)', value: scatterZKey, setter: setScatterZKey },
+                { label: t('X Axis'), value: scatterXKey, setter: setScatterXKey },
+                { label: t('Y Axis'), value: scatterYKey, setter: setScatterYKey },
+                { label: t('Color (Z)'), value: scatterZKey, setter: setScatterZKey },
               ] as const
             ).map((axis) => (
               <label key={axis.label} className="flex items-center gap-1.5 text-xs text-zinc-400">
@@ -2082,7 +2084,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] px-3.5 py-2.5">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Peak {showCrank ? 'Crank Power' : 'Wheel Power'}
+                {showCrank ? t('Peak Crank Power') : t('Peak Wheel Power')}
               </div>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="text-lg font-mono tabular-nums font-bold text-[#38bdf8]">
@@ -2096,7 +2098,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] px-3.5 py-2.5">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Peak Torque
+                {t('Peak Torque')}
               </div>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="text-lg font-mono tabular-nums font-bold text-amber-400">
@@ -2110,7 +2112,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] px-3.5 py-2.5">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Peak Boost
+                {t('Peak Boost')}
               </div>
               <div className="mt-1 text-lg font-mono tabular-nums font-bold text-emerald-400">
                 {dynoData.peakBoost !== null ? `${dynoData.peakBoost.toFixed(2)} bar` : 'N/A'}
@@ -2119,7 +2121,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] px-3.5 py-2.5">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                {activeDynoPt ? `Scrubber @ ${activeDynoPt.rpm} RPM` : 'WOT Pull Window'}
+                {activeDynoPt ? `${t('Scrubber')} @ ${activeDynoPt.rpm} RPM` : t('WOT Pull Window')}
               </div>
               <div className="mt-1 text-sm font-mono tabular-nums font-semibold text-zinc-100">
                 {activeDynoPt ? (
@@ -2139,7 +2141,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
           <div className="flex items-center justify-between gap-3 flex-wrap text-xs">
             <div className="flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-1.5 text-zinc-400">
-                <span>Preset</span>
+                <span>{t('Preset')}</span>
                 <select
                   value={vehiclePresetId}
                   onChange={(e) => {
@@ -2163,7 +2165,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               </label>
 
               <label className="flex items-center gap-1.5 text-zinc-400">
-                <span>Mass</span>
+                <span>{t('Mass')}</span>
                 <input
                   type="number"
                   min={600}
@@ -2197,15 +2199,15 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               </label>
 
               <label className="flex items-center gap-1.5 text-zinc-400">
-                <span>Smooth</span>
+                <span>{t('Smooth')}</span>
                 <select
                   value={smoothRadius}
                   onChange={(e) => setSmoothRadius(Number(e.target.value))}
                   className="px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] text-zinc-100 focus:outline-none focus:border-[#0a84ff]"
                 >
-                  <option value={1}>Light (3-pt)</option>
-                  <option value={3}>Medium (7-pt)</option>
-                  <option value={5}>Heavy (11-pt)</option>
+                  <option value={1}>{t('Light (3-pt)')}</option>
+                  <option value={3}>{t('Medium (7-pt)')}</option>
+                  <option value={5}>{t('Heavy (11-pt)')}</option>
                 </select>
               </label>
 
@@ -2258,7 +2260,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                     !showCrank ? 'bg-[#0a84ff] text-white' : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  Wheel (WHP)
+                  {t('Wheel (WHP)')}
                 </button>
                 <button
                   type="button"
@@ -2267,7 +2269,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                     showCrank ? 'bg-[#0a84ff] text-white' : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  Crank (+{drivetrainLossPct}%)
+                  {t('Crank')} (+{drivetrainLossPct}%)
                 </button>
               </div>
               {showCrank && (
@@ -2278,7 +2280,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   value={drivetrainLossPct}
                   onChange={(e) => setDrivetrainLossPct(Math.max(0, Math.min(30, Number(e.target.value) || 12)))}
                   className="w-14 px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] font-mono tabular-nums text-zinc-100 text-[11px]"
-                  title="Drivetrain loss %"
+                  title={t('Drivetrain loss %')}
                 />
               )}
             </div>
@@ -2292,7 +2294,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
           <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 flex items-center justify-between gap-4 flex-wrap">
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-white">Live OBD-II &amp; ENET Telemetry</h3>
+                <h3 className="text-sm font-semibold text-white">{t('Live OBD-II & ENET Telemetry')}</h3>
                 <span
                   className={`px-2 py-0.5 rounded-full font-mono text-[10.5px] font-semibold ${
                     obdStreaming
@@ -2300,7 +2302,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                       : 'bg-white/[0.06] text-zinc-400'
                   }`}
                 >
-                  {obdStreaming ? `${obdHz} Hz LIVE` : 'STOPPED'}
+                  {obdStreaming ? `${obdHz} Hz ${t('LIVE')}` : t('STOPPED')}
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">{obdStatus}</p>
@@ -2312,7 +2314,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                 onClick={() => void handleConnectWebSerial()}
                 className="px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-medium text-zinc-100 cursor-pointer"
               >
-                WebSerial ELM327
+                {t('WebSerial ELM327')}
               </button>
               <div className="flex items-center gap-1">
                 <input
@@ -2320,7 +2322,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   value={enetIp}
                   onChange={(e) => setEnetIp(e.target.value)}
                   className="w-40 min-w-[152px] px-2.5 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.08] font-mono text-xs text-zinc-100"
-                  placeholder="ENET IP"
+                  placeholder={t('ENET IP')}
                 />
                 <button
                   type="button"
@@ -2331,7 +2333,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   }}
                   className="px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-medium text-zinc-200 cursor-pointer"
                 >
-                  Connect ENET
+                  {t('Connect ENET')}
                 </button>
               </div>
               <button
@@ -2353,7 +2355,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                 }`}
               >
                 {obdStreaming ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                <span>{obdStreaming ? 'Stop Stream' : 'Start 20 Hz Stream'}</span>
+                <span>{obdStreaming ? t('Stop Stream') : t('Start 20 Hz Stream')}</span>
               </button>
               <button
                 type="button"
@@ -2362,7 +2364,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-35 border border-emerald-500/35 text-emerald-300 text-xs font-semibold cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Export CSV ({obdRecorded.length})</span>
+                <span>{t('Export CSV')} ({obdRecorded.length})</span>
               </button>
             </div>
           </div>
@@ -2370,12 +2372,12 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
           {/* 6 Live Gauge Readouts */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {[
-              { label: 'Engine RPM', value: obdLive.rpm.toFixed(0), unit: 'rpm', color: 'text-[#5ac8fa]', pct: obdLive.rpm / 7500 },
-              { label: 'Boost Pressure', value: obdLive.boost.toFixed(2), unit: 'bar', color: 'text-amber-400', pct: (obdLive.boost + 0.8) / 2.8 },
-              { label: 'Engine Load', value: obdLive.load.toFixed(1), unit: '%', color: 'text-emerald-400', pct: obdLive.load / 220 },
-              { label: 'Lambda (AFR)', value: obdLive.lambda.toFixed(3), unit: 'λ', color: 'text-pink-400', pct: (obdLive.lambda - 0.65) / 0.6 },
-              { label: 'Ignition Timing', value: obdLive.timing.toFixed(1), unit: '°BTDC', color: 'text-purple-400', pct: obdLive.timing / 30 },
-              { label: 'Vehicle Speed', value: obdLive.speed.toFixed(1), unit: 'km/h', color: 'text-cyan-400', pct: obdLive.speed / 220 },
+              { label: t('Engine RPM'), value: obdLive.rpm.toFixed(0), unit: 'rpm', color: 'text-[#5ac8fa]', pct: obdLive.rpm / 7500 },
+              { label: t('Boost Pressure'), value: obdLive.boost.toFixed(2), unit: 'bar', color: 'text-amber-400', pct: (obdLive.boost + 0.8) / 2.8 },
+              { label: t('Engine Load'), value: obdLive.load.toFixed(1), unit: '%', color: 'text-emerald-400', pct: obdLive.load / 220 },
+              { label: t('Lambda (AFR)'), value: obdLive.lambda.toFixed(3), unit: 'λ', color: 'text-pink-400', pct: (obdLive.lambda - 0.65) / 0.6 },
+              { label: t('Ignition Timing'), value: obdLive.timing.toFixed(1), unit: '°BTDC', color: 'text-purple-400', pct: obdLive.timing / 30 },
+              { label: t('Vehicle Speed'), value: obdLive.speed.toFixed(1), unit: 'km/h', color: 'text-cyan-400', pct: obdLive.speed / 220 },
             ].map((g) => (
               <div
                 key={g.label}
@@ -2407,7 +2409,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
           <div className="px-5 py-2.5 border-b border-white/[0.065] bg-[#15161b] flex items-center justify-between gap-3 flex-wrap text-xs">
             <div className="flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-1.5 text-zinc-400">
-                <span className="text-[10.5px] uppercase tracking-wider text-zinc-500">Map</span>
+                <span className="text-[10.5px] uppercase tracking-wider text-zinc-500">{t('Map')}</span>
                 <select
                   value={activeMap?.id ?? ''}
                   onChange={(e) => {
@@ -2419,11 +2421,11 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   className="px-2.5 py-1 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100 focus:outline-none focus:border-[#0a84ff] max-w-[230px]"
                 >
                   {tableItems.length === 0 ? (
-                    <option value="">No XDF table maps</option>
+                    <option value="">{t('No XDF table maps')}</option>
                   ) : (
-                    tableItems.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.title} ({t.data.rows}×{t.data.cols})
+                    tableItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.title} ({item.data.rows}×{item.data.cols})
                       </option>
                     ))
                   )}
@@ -2433,9 +2435,9 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[#0c0d10] border border-white/[0.08]">
                 {(
                   [
-                    { id: 'lambda', label: 'Lambda Auto-Tune' },
-                    { id: 'boost', label: 'Boost Auto-Tune' },
-                    { id: 'hits', label: 'Hit Density Only' },
+                    { id: 'lambda', label: t('Lambda Auto-Tune') },
+                    { id: 'boost', label: t('Boost Auto-Tune') },
+                    { id: 'hits', label: t('Hit Density Only') },
                   ] as const
                 ).map((opt) => (
                   <button
@@ -2459,7 +2461,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
 
               {autoTuneTarget === 'lambda' && (
                 <label className="flex items-center gap-1.5 text-zinc-400">
-                  <span>Target λ</span>
+                  <span>{t('Target λ')}</span>
                   <input
                     type="number"
                     step={0.01}
@@ -2474,7 +2476,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
 
               {autoTuneTarget === 'boost' && (
                 <label className="flex items-center gap-1.5 text-zinc-400">
-                  <span>Target Boost</span>
+                  <span>{t('Target Boost')}</span>
                   <input
                     type="number"
                     step={0.05}
@@ -2491,7 +2493,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
 
             <div className="flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-1.5 text-zinc-400">
-                <span>Damping</span>
+                <span>{t('Damping')}</span>
                 <input
                   type="range"
                   min={0.1}
@@ -2507,7 +2509,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               </label>
 
               <label className="flex items-center gap-1.5 text-zinc-400">
-                <span>Min Hits</span>
+                <span>{t('Min Hits')}</span>
                 <input
                   type="number"
                   min={1}
@@ -2525,7 +2527,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   onChange={(e) => setWotFilterOnly(e.target.checked)}
                   className="accent-[#0a84ff]"
                 />
-                <span>WOT (≥65%)</span>
+                <span>{t('WOT (≥65%)')}</span>
               </label>
 
               <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer select-none">
@@ -2535,7 +2537,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   onChange={(e) => setSteadyStateOnly(e.target.checked)}
                   className="accent-[#0a84ff]"
                 />
-                <span>Steady-State</span>
+                <span>{t('Steady-State')}</span>
               </label>
 
               <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer select-none">
@@ -2545,12 +2547,12 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   onChange={(e) => setExcludeDfco(e.target.checked)}
                   className="accent-[#0a84ff]"
                 />
-                <span>Exclude DFCO</span>
+                <span>{t('Exclude DFCO')}</span>
               </label>
 
               {excludeDfco && (
                 <label className="flex items-center gap-1.5 text-zinc-400">
-                  <span>Post-DFCO</span>
+                  <span>{t('Post-DFCO')}</span>
                   <input
                     type="range"
                     min={0}
@@ -2571,7 +2573,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   onChange={(e) => setWarmOnly(e.target.checked)}
                   className="accent-[#0a84ff]"
                 />
-                <span>Warm (≥75 °C)</span>
+                <span>{t('Warm (≥75 °C)')}</span>
               </label>
 
               <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer select-none">
@@ -2581,20 +2583,20 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   onChange={(e) => setBilinearWeighting(e.target.checked)}
                   className="accent-[#0a84ff]"
                 />
-                <span>Bilinear (4 cells)</span>
+                <span>{t('Bilinear (4 cells)')}</span>
               </label>
             </div>
 
             {/* Arbitrary Target & Measured Channel Pickers + Calc Mode */}
             <div className="w-full pt-2 border-t border-white/[0.05] flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-1.5 text-zinc-400">
-                <span>Target Ch</span>
+                <span>{t('Target Ch')}</span>
                 <select
                   value={autoTuneTargetChKey}
                   onChange={(e) => setAutoTuneTargetChKey(e.target.value)}
                   className="px-2 py-1 rounded bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
                 >
-                  <option value="">Fixed Goal / Map</option>
+                  <option value="">{t('Fixed Goal / Map')}</option>
                   {session.channels.map((ch) => (
                     <option key={ch.key} value={ch.key}>
                       {ch.label}
@@ -2604,13 +2606,13 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               </label>
 
               <label className="flex items-center gap-1.5 text-zinc-400">
-                <span>Measured Ch</span>
+                <span>{t('Measured Ch')}</span>
                 <select
                   value={autoTuneMeasuredChKey}
                   onChange={(e) => setAutoTuneMeasuredChKey(e.target.value)}
                   className="px-2 py-1 rounded bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
                 >
-                  <option value="">Auto ({autoTuneTarget})</option>
+                  <option value="">{t('Auto')} ({autoTuneTarget})</option>
                   {session.channels.map((ch) => (
                     <option key={ch.key} value={ch.key}>
                       {ch.label}
@@ -2622,9 +2624,9 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[#0c0d10] border border-white/[0.08]">
                 {(
                   [
-                    { id: 'multiplicative', label: 'Multiplicative' },
-                    { id: 'additive', label: 'Additive' },
-                    { id: 'direct', label: 'Direct' },
+                    { id: 'multiplicative', label: t('Multiplicative') },
+                    { id: 'additive', label: t('Additive') },
+                    { id: 'direct', label: t('Direct') },
                   ] as const
                 ).map((cm) => (
                   <button
@@ -2652,10 +2654,10 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white">
-                    Map Hit-Overlay &amp; Auto-Tune Ready
+                    {t('Map Hit-Overlay & Auto-Tune Ready')}
                   </h3>
                   <p className="text-xs text-zinc-400 mt-1">
-                    Connect an XDF + BIN calibration to overlay live RPM×Load hit counts from the 20 Hz WOT pull and calculate 1-click lambda &amp; boost cell corrections.
+                    {t('Connect an XDF + BIN calibration to overlay live RPM×Load hit counts from the 20 Hz WOT pull and calculate 1-click lambda & boost cell corrections.')}
                   </p>
                 </div>
                 <button
@@ -2667,7 +2669,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_3px_14px_rgba(10,132,255,0.35)] cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>Load MED17 Demo Map Preview</span>
+                  <span>{t('Load MED17 Demo Map Preview')}</span>
                 </button>
               </div>
             </div>
@@ -2684,10 +2686,10 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   </div>
                   <div className="flex items-center gap-3 font-mono text-[10.5px] text-zinc-400">
                     <span>
-                      Hits: <strong className="text-[#5ac8fa]">{autoTuneAnalysis.totalHits}</strong>
+                      {t('Hits:')} <strong className="text-[#5ac8fa]">{autoTuneAnalysis.totalHits}</strong>
                     </span>
                     <span>
-                      Cells Hit:{' '}
+                      {t('Cells Hit:')}{' '}
                       <strong className="text-emerald-400">
                         {autoTuneAnalysis.coveredCells}/{activeMap.data.rows * activeMap.data.cols}
                       </strong>
@@ -2785,12 +2787,12 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   <div className="flex items-center gap-2">
                     <Wand2 className="w-3.5 h-3.5 text-[#5ac8fa]" />
                     <span className="text-xs font-semibold text-white">
-                      Auto-Tune Cell Corrections
+                      {t('Auto-Tune Cell Corrections')}
                     </span>
                   </div>
                   <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 font-mono text-[10px] text-amber-300">
                     {autoTuneAnalysis.suggestions.filter((s) => !excludedCells.has(s.key)).length}{' '}
-                    selected
+                    {t('selected')}
                   </span>
                 </div>
 
@@ -2805,8 +2807,8 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   {autoTuneAnalysis.suggestions.length === 0 ? (
                     <div className="p-8 text-center text-xs text-zinc-400">
                       {autoTuneTarget === 'hits'
-                        ? 'Switch to Lambda Auto-Tune or Boost Auto-Tune above to compute cell corrections.'
-                        : 'No cells exceed the minimum hit count & delta threshold. Try lowering Min Hits or adjusting Target.'}
+                        ? t('Switch to Lambda Auto-Tune or Boost Auto-Tune above to compute cell corrections.')
+                        : t('No cells exceed the minimum hit count & delta threshold. Try lowering Min Hits or adjusting Target.')}
                     </div>
                   ) : (
                     autoTuneAnalysis.suggestions.map((sug) => {
@@ -2843,11 +2845,11 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                               <div className="text-[11px] font-mono font-semibold text-zinc-100">
                                 [{sug.yLabel} / {sug.xLabel}]
                                 <span className="ml-1.5 px-1.5 py-0.5 rounded bg-[#0a84ff]/15 text-[#5ac8fa] text-[9.5px]">
-                                  {sug.hits} hits
+                                  {sug.hits} {t('hits')}
                                 </span>
                               </div>
                               <div className="text-[10px] font-mono text-zinc-500 mt-0.5">
-                                Logged avg: {sug.avgMeasured.toFixed(autoTuneTarget === 'lambda' ? 3 : 0)}
+                                {t('Logged avg:')} {sug.avgMeasured.toFixed(autoTuneTarget === 'lambda' ? 3 : 0)}
                               </div>
                             </div>
                           </label>
@@ -2887,9 +2889,9 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   >
                     <Wand2 className="w-3.5 h-3.5" />
                     <span>
-                      Apply{' '}
+                      {t('Apply')}{' '}
                       {autoTuneAnalysis.suggestions.filter((s) => !excludedCells.has(s.key)).length}{' '}
-                      Cell Correction(s)
+                      {t('Cell Correction(s)')}
                     </span>
                   </button>
                 </div>
@@ -2919,20 +2921,20 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
             {isDragging && (
               <div className="absolute inset-0 bg-[#0c0d10]/85 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none">
                 <Upload className="w-8 h-8 text-[#0a84ff] mb-2" />
-                <p className="text-sm font-semibold text-white">Drop CSV datalog to plot channels</p>
+                <p className="text-sm font-semibold text-white">{t('Drop CSV datalog to plot channels')}</p>
               </div>
             )}
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500">
             <span>
               {mode === 'timeseries' &&
-                'Hover chart to scrub synchronized channels · Click channel pills above to toggle traces'}
+                t('Hover chart to scrub synchronized channels · Click channel pills above to toggle traces')}
               {mode === 'scatter' &&
-                'MegaLogViewer-style XY scatter · Hover any data point to inspect X, Y & Z color value'}
+                t('MegaLogViewer-style XY scatter · Hover any data point to inspect X, Y & Z color value')}
               {mode === 'dyno' &&
-                'Road-load physics Virtual Dyno (F_accel + F_roll + F_aero) · Hover curve to inspect RPM / HP / Nm'}
+                t('Road-load physics Virtual Dyno (F_accel + F_roll + F_aero) · Hover curve to inspect RPM / HP / Nm')}
             </span>
-            <span>Drag &amp; drop any .csv log anywhere in this view</span>
+            <span>{t('Drag & drop any .csv log anywhere in this view')}</span>
           </div>
         </div>
       )}

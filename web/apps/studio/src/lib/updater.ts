@@ -1,4 +1,4 @@
-export const APP_VERSION = '4.1.1';
+export const APP_VERSION = '4.1.2';
 export const GITHUB_REPO = 'leonsuv/MacTuner';
 
 export interface UpdateInfo {

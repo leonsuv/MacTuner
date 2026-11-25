@@ -41,6 +41,7 @@ import {
   toggleDtc,
 } from '@mactuner/core';
 import type { MapCandidate } from './Sidebar';
+import { useI18n } from '../lib/i18n';
 
 export type DiscoverySubTab = 'finder' | 'dtc' | 'porting' | 'batch';
 type ScanWidth = '8' | '16' | 'f32';
@@ -414,6 +415,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
   onAddXdfItem,
   fileName = 'ecu_active.bin',
 }) => {
+  const { t } = useI18n();
   const [subTab, setSubTab] = useState<DiscoverySubTab>('finder');
 
   // --- Map Finder state ---
@@ -837,24 +839,24 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
         <div className="flex items-center gap-0.5 p-0.5 rounded-full bg-white/[0.04] border border-white/[0.065]">
           {(
             [
-              { id: 'finder', label: 'Map Finder', icon: <Radar className="w-3.5 h-3.5" /> },
-              { id: 'dtc', label: 'DTC Scanner', icon: <FileWarning className="w-3.5 h-3.5" /> },
-              { id: 'porting', label: 'Tune Porting', icon: <ArrowRightLeft className="w-3.5 h-3.5" /> },
-              { id: 'batch', label: 'Batch Tuner (.mtpatch)', icon: <Package className="w-3.5 h-3.5" /> },
+              { id: 'finder', label: t('Map Finder'), icon: <Radar className="w-3.5 h-3.5" /> },
+              { id: 'dtc', label: t('DTC Scanner'), icon: <FileWarning className="w-3.5 h-3.5" /> },
+              { id: 'porting', label: t('Tune Porting'), icon: <ArrowRightLeft className="w-3.5 h-3.5" /> },
+              { id: 'batch', label: t('Batch Tuner'), icon: <Package className="w-3.5 h-3.5" /> },
             ] as const
-          ).map((t) => (
+          ).map((tab) => (
             <button
-              key={t.id}
+              key={tab.id}
               type="button"
-              onClick={() => setSubTab(t.id)}
+              onClick={() => setSubTab(tab.id)}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11.5px] font-medium transition-all cursor-pointer ${
-                subTab === t.id
+                subTab === tab.id
                   ? 'bg-[#0a84ff] text-white shadow-[0_1px_10px_rgba(10,132,255,0.4)]'
                   : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04]'
               }`}
             >
-              {t.icon}
-              <span>{t.label}</span>
+              {tab.icon}
+              <span>{tab.label}</span>
             </button>
           ))}
         </div>
@@ -864,7 +866,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
             {(bytes.length / 1024).toFixed(0)} KB
           </span>
           <span className="text-zinc-600">·</span>
-          <span>{effectiveCandidates.length} candidates</span>
+          <span>{effectiveCandidates.length} {t('candidates')}</span>
         </div>
       </div>
 
@@ -905,7 +907,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     onChange={(e) => setSigned(e.target.checked)}
                     className="accent-[#0a84ff] rounded"
                   />
-                  <span>Signed</span>
+                  <span>{t('Signed')}</span>
                 </label>
               )}
 
@@ -916,7 +918,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                   onChange={(e) => setLsbFirst(e.target.checked)}
                   className="accent-[#0a84ff] rounded"
                 />
-                <span>LSB (Intel)</span>
+                <span>{t('LSB (Intel)')}</span>
               </label>
             </div>
 
@@ -926,7 +928,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_2px_12px_rgba(10,132,255,0.35)] transition-all cursor-pointer"
             >
               <ScanSearch className="w-3.5 h-3.5" />
-              <span>Scan BIN</span>
+              <span>{t('Scan BIN')}</span>
             </button>
           </div>
 
@@ -936,9 +938,9 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
               {effectiveCandidates.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6">
                   <Sparkles className="w-8 h-8 text-zinc-600 mb-2.5" />
-                  <p className="text-sm font-medium text-zinc-300">No map candidates scanned</p>
+                  <p className="text-sm font-medium text-zinc-300">{t('No map candidates scanned')}</p>
                   <p className="text-xs text-zinc-500 mt-1 max-w-xs">
-                    Configure word width (8-bit, 16-bit, or Float32) &amp; endianness above, then click Scan BIN.
+                    {t('Configure word width (8-bit, 16-bit, or Float32) & endianness above, then click Scan BIN.')}
                   </p>
                 </div>
               ) : (
@@ -969,12 +971,12 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                           </span>
                           {cand.hasHeaderProof && (
                             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                              Header Proof
+                              {t('Header Proof')}
                             </span>
                           )}
                           {cand.hasDiff && (
                             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">
-                              Diff
+                              {t('Diff')}
                             </span>
                           )}
                         </div>
@@ -1009,7 +1011,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="text-sm font-semibold tracking-[-0.01em] text-white">
-                          {selectedCandidate.domainHint ?? 'Detected Calibration Map'}
+                          {selectedCandidate.domainHint ?? t('Detected Calibration Map')}
                         </h3>
                         <span className="text-xs font-mono tabular-nums text-[#5ac8fa]">
                           {formatHex(selectedCandidate.address)}
@@ -1020,7 +1022,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                         {previewMatrix.isFloat
                           ? 'Float32'
                           : `${selectedCandidate.bits}-bit ${selectedCandidate.signed ? 'signed' : 'unsigned'}`}{' '}
-                        {selectedCandidate.lsbFirst ? 'LSB' : 'MSB'} · Range [
+                        {selectedCandidate.lsbFirst ? 'LSB' : 'MSB'} · {t('Range')} [
                         {previewMatrix.isFloat ? previewMatrix.min.toFixed(2) : previewMatrix.min} ..{' '}
                         {previewMatrix.isFloat ? previewMatrix.max.toFixed(2) : previewMatrix.max}]
                       </p>
@@ -1032,7 +1034,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
                       >
                         <Binary className="w-3.5 h-3.5 text-[#0a84ff]" />
-                        <span>Show in Hex</span>
+                        <span>{t('Show in Hex')}</span>
                       </button>
                       <button
                         type="button"
@@ -1040,7 +1042,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
                       >
                         <Pencil className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Edit in XDF…</span>
+                        <span>{t('Edit in XDF…')}</span>
                       </button>
                       <button
                         type="button"
@@ -1053,7 +1055,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-xs font-semibold text-white shadow-[0_2px_10px_rgba(10,132,255,0.3)] transition-colors cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Add to XDF</span>
+                        <span>{t('Add to XDF')}</span>
                       </button>
                     </div>
                   </div>
@@ -1069,7 +1071,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                       {previewMatrix.grid.map((row, rIdx) =>
                         row.map((val, cIdx) => {
                           const span = Math.max(1e-6, previewMatrix.max - previewMatrix.min);
-                          const t = (val - previewMatrix.min) / span;
+                          const norm = (val - previewMatrix.min) / span;
                           const isHovered = hoveredTile?.r === rIdx && hoveredTile?.c === cIdx;
                           const disp = previewMatrix.isFloat ? val.toFixed(1) : String(val);
                           return (
@@ -1081,7 +1083,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                               className={`h-7 rounded-[4px] border flex items-center justify-center text-[10px] font-mono tabular-nums text-white/95 font-medium select-none transition-transform ${
                                 isHovered ? 'scale-105 ring-1 ring-white/70 z-10' : ''
                               }`}
-                              style={jewelTileStyle(t)}
+                              style={jewelTileStyle(norm)}
                             >
                               {disp}
                             </div>
@@ -1105,20 +1107,20 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     </div>
                     {hoveredTile ? (
                       <span className="text-zinc-200">
-                        Cell [{hoveredTile.r}, {hoveredTile.c}] ={' '}
+                        {t('Cell')} [{hoveredTile.r}, {hoveredTile.c}] ={' '}
                         <span className="text-[#5ac8fa] font-semibold">
                           {previewMatrix.isFloat ? hoveredTile.val.toFixed(3) : hoveredTile.val}
                         </span>
                       </span>
                     ) : (
-                      <span className="text-zinc-500">Hover any jewel tile to inspect raw cell</span>
+                      <span className="text-zinc-500">{t('Hover any jewel tile to inspect raw cell')}</span>
                     )}
                   </div>
                 </div>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-center text-zinc-500">
                   <Radar className="w-9 h-9 text-zinc-700 mb-2.5" />
-                  <p className="text-xs">Select a map candidate to inspect its jewel-tile heatmap.</p>
+                  <p className="text-xs">{t('Select a map candidate to inspect its jewel-tile heatmap.')}</p>
                 </div>
               )}
             </div>
@@ -1132,10 +1134,10 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
           <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 flex items-center justify-between gap-4 flex-wrap shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div>
               <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
-                OEM DTC-Off Switch Patcher
+                {t('OEM DTC-Off Switch Patcher')}
               </h2>
               <p className="text-xs text-zinc-400 mt-0.5">
-                P0607-anchored Bosch/Siemens DTC scanner with parallel 8-bit error-class switch correlation &amp; 1-click live patching.
+                {t('P0607-anchored Bosch/Siemens DTC scanner with parallel 8-bit error-class switch correlation & 1-click live patching.')}
               </p>
             </div>
             <button
@@ -1144,7 +1146,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_2px_10px_rgba(10,132,255,0.3)] transition-colors cursor-pointer"
             >
               <ScanSearch className="w-3.5 h-3.5" />
-              <span>Scan DTC Tables</span>
+              <span>{t('Scan DTC Tables')}</span>
             </button>
           </div>
 
@@ -1159,7 +1161,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                  Detected DTCs
+                  {t('Detected DTCs')}
                 </div>
                 <div className="mt-1 text-xl font-mono tabular-nums font-bold text-white">
                   {dtcStats.total}
@@ -1171,22 +1173,22 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
 
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                  Active
+                  {t('Active')}
                 </div>
                 <div className="mt-1 text-xl font-mono tabular-nums font-bold text-emerald-400">
                   {dtcStats.active}
                 </div>
-                <div className="text-[10.5px] text-zinc-500">Error-class enabled</div>
+                <div className="text-[10.5px] text-zinc-500">{t('Error-class enabled')}</div>
               </div>
 
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                  Disabled (DTC-Off)
+                  {t('Disabled (DTC-Off)')}
                 </div>
                 <div className="mt-1 text-xl font-mono tabular-nums font-bold text-amber-400">
                   {dtcStats.disabled}
                 </div>
-                <div className="text-[10.5px] text-zinc-500">Switch byte = 0x00</div>
+                <div className="text-[10.5px] text-zinc-500">{t('Switch byte = 0x00')}</div>
               </div>
 
               <button
@@ -1196,13 +1198,13 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                 className="text-left rounded-xl bg-[#17181d] hover:bg-[#1c1d24] border border-white/[0.065] hover:border-[#0a84ff]/40 p-3.5 transition-colors cursor-pointer disabled:opacity-50"
               >
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                  Switch Table (Click → Hex)
+                  {t('Switch Table (Click → Hex)')}
                 </div>
                 <div className="mt-1 text-xl font-mono tabular-nums font-bold text-[#5ac8fa]">
                   {dtcScan.switchTableAddress >= 0 ? formatHex(dtcScan.switchTableAddress) : '—'}
                 </div>
                 <div className="text-[10.5px] font-mono text-zinc-500">
-                  Code Table: {dtcScan.codeTableAddress >= 0 ? formatHex(dtcScan.codeTableAddress) : '—'}
+                  {t('Code Table:')} {dtcScan.codeTableAddress >= 0 ? formatHex(dtcScan.codeTableAddress) : '—'}
                 </div>
               </button>
             </div>
@@ -1214,9 +1216,9 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
               <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[#17181d] border border-white/[0.065]">
                 {(
                   [
-                    { id: 'all', label: `All (${dtcStats.total})` },
-                    { id: 'active', label: `Active (${dtcStats.active})` },
-                    { id: 'disabled', label: `Disabled (${dtcStats.disabled})` },
+                    { id: 'all', label: `${t('All')} (${dtcStats.total})` },
+                    { id: 'active', label: `${t('Active')} (${dtcStats.active})` },
+                    { id: 'disabled', label: `${t('Disabled')} (${dtcStats.disabled})` },
                   ] as const
                 ).map((f) => (
                   <button
@@ -1240,7 +1242,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                   type="text"
                   value={dtcQuery}
                   onChange={(e) => setDtcQuery(e.target.value)}
-                  placeholder="Filter P-code, address..."
+                  placeholder={t('Filter P-code, address...')}
                   className="pl-8 pr-3 py-1.5 rounded-lg bg-[#17181d] border border-white/[0.08] text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#0a84ff] w-56"
                 />
               </div>
@@ -1250,9 +1252,9 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
           {!dtcScanned && filteredDtcs === null ? (
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-12 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <FileWarning className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-              <h3 className="text-sm font-semibold text-zinc-200">Ready to scan OEM DTC tables</h3>
+              <h3 className="text-sm font-semibold text-zinc-200">{t('Ready to scan OEM DTC tables')}</h3>
               <p className="text-xs text-zinc-400 max-w-md mx-auto mt-1 mb-4">
-                Correlates P-code arrays with their parallel error-class switch table for instant 1-click DTC-Off patching.
+                {t('Correlates P-code arrays with their parallel error-class switch table for instant 1-click DTC-Off patching.')}
               </p>
               <button
                 type="button"
@@ -1260,7 +1262,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold transition-colors cursor-pointer"
               >
                 <ScanSearch className="w-3.5 h-3.5" />
-                <span>Scan DTC Tables</span>
+                <span>{t('Scan DTC Tables')}</span>
               </button>
             </div>
           ) : !filteredDtcs || filteredDtcs.length === 0 ? (
@@ -1269,12 +1271,12 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
               <div>
                 <p className="text-sm font-semibold text-zinc-100">
                   {dtcScan && dtcScan.entries.length > 0
-                    ? 'No DTCs match the selected filter'
-                    : 'Scanned BIN — 0 OEM DTC switch tables detected'}
+                    ? t('No matching DTCs')
+                    : t('No OEM DTC Table Found')}
                 </p>
                 {(!dtcScan || dtcScan.entries.length === 0) && (
                   <p className="text-xs text-zinc-400 max-w-md mx-auto mt-1">
-                    No contiguous Bosch/Siemens P-code switch table was found in this binary. Load sample MED17 DTCs to preview live patching, or inspect raw flash in Hex.
+                    {t('No known Bosch/Siemens OBD-II P-code fault matrix was detected in this BIN.')}
                   </p>
                 )}
               </div>
@@ -1286,7 +1288,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold transition-colors cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>Load Sample MED17 DTCs</span>
+                    <span>{t('Load Sample MED17 DTCs')}</span>
                   </button>
                   <button
                     type="button"
@@ -1294,7 +1296,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-zinc-200 text-xs font-medium transition-colors cursor-pointer"
                   >
                     <Binary className="w-3.5 h-3.5 text-[#5ac8fa]" />
-                    <span>Open Hex</span>
+                    <span>{t('Open Hex')}</span>
                   </button>
                 </div>
               )}
@@ -1305,12 +1307,12 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-white/[0.065] bg-white/[0.02] text-[10.5px] uppercase tracking-wider text-zinc-500">
-                      <th className="py-2.5 px-4 font-semibold">DTC Code</th>
-                      <th className="py-2.5 px-4 font-semibold">Code Addr</th>
-                      <th className="py-2.5 px-4 font-semibold">Switch Addr</th>
-                      <th className="py-2.5 px-4 font-semibold">Class</th>
-                      <th className="py-2.5 px-4 font-semibold">Status (Live Toggle)</th>
-                      <th className="py-2.5 px-4 font-semibold text-right">Actions</th>
+                      <th className="py-2.5 px-4 font-semibold">{t('DTC Code')}</th>
+                      <th className="py-2.5 px-4 font-semibold">{t('Code Addr')}</th>
+                      <th className="py-2.5 px-4 font-semibold">{t('Switch Addr')}</th>
+                      <th className="py-2.5 px-4 font-semibold">{t('Class')}</th>
+                      <th className="py-2.5 px-4 font-semibold">{t('Status (Live Toggle)')}</th>
+                      <th className="py-2.5 px-4 font-semibold text-right">{t('Actions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/[0.05] text-xs">
@@ -1352,7 +1354,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                                 dtc.isDisabled ? 'bg-rose-400' : 'bg-emerald-400'
                               }`}
                             />
-                            <span>{dtc.isDisabled ? 'DTC-Off' : 'Active'}</span>
+                            <span>{dtc.isDisabled ? t('DTC-Off') : t('Active')}</span>
                           </button>
                         </td>
                         <td className="py-2.5 px-4 text-right">
@@ -1361,7 +1363,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                               type="button"
                               onClick={() => handleAddDtcToXdf(dtc)}
                               className="px-2 py-1 rounded-md bg-[#0a84ff]/15 hover:bg-[#0a84ff]/30 text-[#5ac8fa] text-[11px] font-medium border border-[#0a84ff]/35 transition-colors cursor-pointer"
-                              title="Save DTC switch as XDF Flag item"
+                              title={t('Save DTC switch as XDF Flag item')}
                             >
                               + XDF
                             </button>
@@ -1370,7 +1372,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                               onClick={() => onShowInHex(dtc.switchAddress)}
                               className="px-2 py-1 rounded-md bg-white/[0.05] hover:bg-white/[0.1] text-[11px] font-medium text-zinc-300 border border-white/[0.08] transition-colors cursor-pointer"
                             >
-                              Hex
+                              {t('Hex')}
                             </button>
                           </div>
                         </td>
@@ -1451,7 +1453,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                XDF Cross-Version Port
+                {t('XDF Cross-Version Port')}
               </button>
               <button
                 type="button"
@@ -1462,12 +1464,12 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                2-Anchor Content Port (No XDF)
+                {t('2-Anchor Content Port (No XDF)')}
               </button>
             </div>
 
             <div className="flex items-center gap-2 text-xs">
-              <span className="text-zinc-400">Transfer Mode:</span>
+              <span className="text-zinc-400">{t('Transfer Mode:')}</span>
               <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[#0c0d10] border border-white/[0.065]">
                 {(['absolute', 'delta', 'percent'] as const).map((m) => (
                   <button
@@ -1480,7 +1482,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                         : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
-                    {m}
+                    {t(m)}
                   </button>
                 ))}
               </div>
@@ -1498,9 +1500,9 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
             <div className="space-y-4">
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 flex items-center justify-between gap-4 flex-wrap">
                 <div>
-                  <h3 className="text-sm font-semibold text-white">XDF Cross-Version Porting</h3>
+                  <h3 className="text-sm font-semibold text-white">{t('XDF Cross-Version Porting')}</h3>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Correlates every XDF map across shifted software revisions (±64 KB) to export a ported XDF and ported BIN.
+                    {t('Correlates every XDF map across shifted software revisions (±64 KB) to export a ported XDF and ported BIN.')}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1510,7 +1512,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-medium text-zinc-100 cursor-pointer"
                   >
                     <Upload className="w-3.5 h-3.5 text-[#5ac8fa]" />
-                    <span>{targetBinName || 'Load Target BIN…'}</span>
+                    <span>{targetBinName || t('Load Target BIN…')}</span>
                   </button>
                   <button
                     type="button"
@@ -1519,7 +1521,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] disabled:opacity-35 border border-white/[0.08] text-xs font-medium text-zinc-100 cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Export -ported.xdf</span>
+                    <span>{t('Export Ported XDF…')}</span>
                   </button>
                   <button
                     type="button"
@@ -1528,7 +1530,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] disabled:opacity-35 text-white text-xs font-semibold cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Export -ported.bin</span>
+                    <span>{t('Export -ported.bin')}</span>
                   </button>
                 </div>
               </div>
@@ -1538,12 +1540,12 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-white/[0.065] bg-white/[0.02] text-[10.5px] uppercase tracking-wider text-zinc-500">
-                        <th className="py-2.5 px-3">Use</th>
-                        <th className="py-2.5 px-3">Map</th>
-                        <th className="py-2.5 px-3">Source</th>
-                        <th className="py-2.5 px-3">Target</th>
-                        <th className="py-2.5 px-3">Offset Δ</th>
-                        <th className="py-2.5 px-3 text-right">Confidence</th>
+                        <th className="py-2.5 px-3">{t('Use')}</th>
+                        <th className="py-2.5 px-3">{t('Map')}</th>
+                        <th className="py-2.5 px-3">{t('Source')}</th>
+                        <th className="py-2.5 px-3">{t('Target')}</th>
+                        <th className="py-2.5 px-3">{t('Offset Δ')}</th>
+                        <th className="py-2.5 px-3 text-right">{t('Confidence')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/[0.05]">
@@ -1602,9 +1604,9 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     onClick={() => cpStockRef.current?.click()}
                     className="p-3 rounded-lg bg-[#0c0d10] border border-white/[0.08] hover:border-[#0a84ff]/50 text-left cursor-pointer"
                   >
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">1. Source Stock</div>
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('1. Source Stock')}</div>
                     <div className="text-xs font-mono text-zinc-200 mt-0.5 truncate">
-                      {cpSrcStock ? cpSrcStockName : baselineBytes ? 'Active Stock Baseline (loaded)' : 'Click to load…'}
+                      {cpSrcStock ? cpSrcStockName : baselineBytes ? t('Active Stock Baseline (loaded)') : t('Click to load…')}
                     </div>
                   </button>
                   <button
@@ -1612,9 +1614,9 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     onClick={() => cpModRef.current?.click()}
                     className="p-3 rounded-lg bg-[#0c0d10] border border-white/[0.08] hover:border-[#0a84ff]/50 text-left cursor-pointer"
                   >
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">2. Source Mod</div>
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('2. Source Mod')}</div>
                     <div className="text-xs font-mono text-zinc-200 mt-0.5 truncate">
-                      {cpSrcMod ? cpSrcModName : `${fileName} (active)`}
+                      {cpSrcMod ? cpSrcModName : `${fileName} (${t('active')})`}
                     </div>
                   </button>
                   <button
@@ -1622,9 +1624,9 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                     onClick={() => cpTargetRef.current?.click()}
                     className="p-3 rounded-lg bg-[#0c0d10] border border-white/[0.08] hover:border-[#0a84ff]/50 text-left cursor-pointer"
                   >
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">3. Target Stock</div>
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">{t('3. Target Stock')}</div>
                     <div className="text-xs font-mono text-[#5ac8fa] mt-0.5 truncate">
-                      {cpTargetName || 'Click to load target .bin…'}
+                      {cpTargetName || t('Click to load target .bin…')}
                     </div>
                   </button>
                 </div>
@@ -1632,7 +1634,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                 <div className="flex items-center justify-between gap-4 flex-wrap pt-1">
                   <div className="flex items-center gap-4 flex-wrap text-xs">
                     <label className="flex items-center gap-2 text-zinc-300">
-                      <span>Tolerance:</span>
+                      <span>{t('Tolerance:')}</span>
                       <input
                         type="range"
                         min={0}
@@ -1651,7 +1653,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                         onChange={(e) => setCpUniqueOnly(e.target.checked)}
                         className="accent-[#0a84ff]"
                       />
-                      <span>Unique matches only</span>
+                      <span>{t('Unique matches only')}</span>
                     </label>
                   </div>
 
@@ -1662,7 +1664,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                       className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-xs font-semibold text-white cursor-pointer"
                     >
                       <ScanSearch className="w-3.5 h-3.5 text-[#5ac8fa]" />
-                      <span>Scan Clusters</span>
+                      <span>{t('Scan Clusters')}</span>
                     </button>
                     <button
                       type="button"
@@ -1671,7 +1673,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                       className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] disabled:opacity-35 text-white text-xs font-semibold cursor-pointer"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Apply to Active BIN</span>
+                      <span>{t('Apply to Active BIN')}</span>
                     </button>
                   </div>
                 </div>
@@ -1682,12 +1684,12 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                   <table className="w-full text-left border-collapse text-xs font-mono">
                     <thead>
                       <tr className="border-b border-white/[0.065] bg-white/[0.02] text-[10.5px] uppercase tracking-wider text-zinc-500">
-                        <th className="py-2.5 px-3">Use</th>
-                        <th className="py-2.5 px-3">Source Range</th>
-                        <th className="py-2.5 px-3">Target</th>
-                        <th className="py-2.5 px-3">Offset Δ</th>
-                        <th className="py-2.5 px-3">Bytes</th>
-                        <th className="py-2.5 px-3 text-right">Confidence</th>
+                        <th className="py-2.5 px-3">{t('Use')}</th>
+                        <th className="py-2.5 px-3">{t('Source Range')}</th>
+                        <th className="py-2.5 px-3">{t('Target')}</th>
+                        <th className="py-2.5 px-3">{t('Offset Δ')}</th>
+                        <th className="py-2.5 px-3">{t('Bytes')}</th>
+                        <th className="py-2.5 px-3 text-right">{t('Confidence')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/[0.05]">
@@ -1789,10 +1791,10 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <h2 className="text-sm font-semibold text-white">
-                  1. Extract Portable Tune Package (.mtpatch)
+                  {t('1. Extract Portable Tune Package (.mtpatch)')}
                 </h2>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Captures physical cell deltas, percentages &amp; axis edits between Stock Baseline and Active BIN.
+                  {t('Captures physical cell deltas, percentages & axis edits between Stock Baseline and Active BIN.')}
                 </p>
               </div>
               <button
@@ -1802,7 +1804,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] disabled:opacity-35 text-white text-xs font-semibold cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Extract &amp; Download .mtpatch</span>
+                <span>{t('Extract & Download .mtpatch')}</span>
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -1810,21 +1812,21 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                 type="text"
                 value={patchName}
                 onChange={(e) => setPatchName(e.target.value)}
-                placeholder="Package Name"
+                placeholder={t('Package Name')}
                 className="px-3 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100 focus:outline-none focus:border-[#0a84ff]"
               />
               <input
                 type="text"
                 value={patchAuthor}
                 onChange={(e) => setPatchAuthor(e.target.value)}
-                placeholder="Author (optional)"
+                placeholder={t('Author (optional)')}
                 className="px-3 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100 focus:outline-none focus:border-[#0a84ff]"
               />
               <input
                 type="text"
                 value={patchDesc}
                 onChange={(e) => setPatchDesc(e.target.value)}
-                placeholder="Notes / Fuel grade (optional)"
+                placeholder={t('Notes / Fuel grade (optional)')}
                 className="px-3 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100 focus:outline-none focus:border-[#0a84ff]"
               />
             </div>
@@ -1845,12 +1847,12 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <h2 className="text-sm font-semibold text-white">
-                  2. Batch Apply .mtpatch to Multiple Target BINs
+                  {t('2. Batch Apply .mtpatch to Multiple Target BINs')}
                 </h2>
                 <p className="text-xs text-zinc-400 mt-0.5">
                   {loadedPatch
-                    ? `Active Package: "${loadedPatch.name}" (${loadedPatch.items.length} map(s))`
-                    : 'Load a .mtpatch JSON file or extract one above, then drop multiple target .bin files.'}
+                    ? t('Active Package: “%@” (%lld map(s))', loadedPatch.name, loadedPatch.items.length)
+                    : t('Load a .mtpatch JSON file or extract one above, then drop multiple target .bin files.')}
                 </p>
               </div>
 
@@ -1867,7 +1869,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                           : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      {m}
+                      {t(m)}
                     </button>
                   ))}
                 </div>
@@ -1878,7 +1880,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-medium text-zinc-100 cursor-pointer"
                 >
                   <Upload className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Load .mtpatch</span>
+                  <span>{t('Load .mtpatch')}</span>
                 </button>
                 <button
                   type="button"
@@ -1886,7 +1888,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-medium text-zinc-100 cursor-pointer"
                 >
                   <Layers className="w-3.5 h-3.5 text-[#5ac8fa]" />
-                  <span>Add Target .bin(s)</span>
+                  <span>{t('Add Target .bin(s)')}</span>
                 </button>
                 <button
                   type="button"
@@ -1895,14 +1897,14 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                   className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] disabled:opacity-35 text-white text-xs font-semibold cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Batch Apply &amp; Download ({batchQueue.length})</span>
+                  <span>{t('Batch Apply & Download')} ({batchQueue.length})</span>
                 </button>
               </div>
             </div>
 
             {batchQueue.length === 0 ? (
               <div className="rounded-lg border border-dashed border-white/[0.1] bg-[#0c0d10] p-8 text-center text-xs text-zinc-500">
-                Drop one or more target <code className="text-zinc-300">.bin</code> files anywhere here to queue them for batch tuning.
+                {t('Drop one or more target .bin files anywhere here to queue them for batch tuning.')}
               </div>
             ) : (
               <div className="divide-y divide-white/[0.05] rounded-lg bg-[#0c0d10] border border-white/[0.065] overflow-hidden">
@@ -1916,8 +1918,8 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                       <div className="text-[11px] font-mono text-zinc-500">
                         {Math.round(item.bytes.length / 1024)} KB
                         {item.result
-                          ? ` · Applied ${item.result.appliedMaps} map(s), skipped ${item.result.skippedMaps}`
-                          : ' · Queued'}
+                          ? ` · ${t('Applied %lld map(s), skipped %lld', item.result.appliedMaps, item.result.skippedMaps)}`
+                          : ` · ${t('Queued')}`}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -1932,7 +1934,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                           }
                           className="px-2.5 py-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[11px] font-medium cursor-pointer"
                         >
-                          Download
+                          {t('Download')}
                         </button>
                       )}
                       <button
@@ -1940,7 +1942,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                         onClick={() => setBatchQueue((prev) => prev.filter((x) => x.id !== item.id))}
                         className="px-2 py-1 rounded-md bg-white/[0.05] hover:bg-rose-500/20 text-zinc-400 hover:text-rose-300 text-[11px] cursor-pointer"
                       >
-                        Remove
+                        {t('Remove')}
                       </button>
                     </div>
                   </div>

@@ -52,6 +52,7 @@ import {
   scalingValue,
   verifyChecksums,
 } from '@mactuner/core';
+import { useI18n } from '../lib/i18n';
 
 export type UnitSystem = 'original' | 'metric' | 'imperial';
 export type TranslationMode = 'original' | 'en' | 'de';
@@ -344,6 +345,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   activeBinId,
   onSelectOpenBin,
 }) => {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<InspectorTab>('notes');
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const [internalLockedIds, setInternalLockedIds] = useState<Set<number>>(() => new Set());
@@ -713,17 +715,17 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           type="button"
           onClick={toggleCollapse}
           className="p-1.5 rounded-md text-zinc-400 hover:bg-white/[0.08] hover:text-white transition-colors cursor-pointer"
-          title="Expand Inspector"
+          title={t('Expand Inspector')}
         >
           <ChevronLeft className="w-3.5 h-3.5" />
         </button>
         <div className="w-4 h-px bg-white/[0.065] my-0.5" />
         {(
           [
-            ['notes', StickyNote, 'Map & Notes'],
-            ['preflight', ShieldCheck, 'Preflight & Lint'],
-            ['physics', Calculator, 'Physics Calculator'],
-            ['properties', Cpu, 'ECU & Properties'],
+            ['notes', StickyNote, t('Map')],
+            ['preflight', ShieldCheck, t('Preflight')],
+            ['physics', Calculator, t('Physics Calculator')],
+            ['properties', Cpu, t('Props')],
           ] as const
         ).map(([tabKey, Icon, tip]) => (
           <button
@@ -757,10 +759,10 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         <div className="flex-1 grid grid-cols-4 gap-0.5 rounded-lg bg-white/[0.045] p-0.5">
           {(
             [
-              ['notes', 'Map', StickyNote],
-              ['preflight', 'Lint', ShieldCheck],
-              ['physics', 'Calc', Calculator],
-              ['properties', 'ECU', Cpu],
+              ['notes', t('Map'), StickyNote],
+              ['preflight', t('Preflight'), ShieldCheck],
+              ['physics', t('Physics'), Calculator],
+              ['properties', t('Props'), Cpu],
             ] as const
           ).map(([key, label, Icon]) => {
             const active = activeTab === key;
@@ -776,7 +778,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 }`}
               >
                 <Icon className="w-3 h-3 shrink-0" />
-                <span>{label}</span>
+                <span className="truncate">{label}</span>
                 {key === 'preflight' && preflightBadgeCount > 0 && !active && (
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
                 )}
@@ -788,7 +790,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           type="button"
           onClick={toggleCollapse}
           className="p-1 rounded-md text-zinc-500 hover:bg-white/[0.07] hover:text-zinc-200 transition-colors cursor-pointer shrink-0"
-          title="Collapse Inspector"
+          title={t('Collapse Inspector')}
         >
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
@@ -803,7 +805,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                  Protection &amp; Workspace
+                  {t('Protection & Workspace')}
                 </span>
                 <kbd className="text-[10px] font-mono text-zinc-500">⌘L</kbd>
               </div>
@@ -826,14 +828,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   ) : (
                     <Unlock className="w-3.5 h-3.5 text-zinc-400" />
                   )}
-                  {isLocked ? 'Map Locked (Read-Only)' : 'Map Unlocked'}
+                  {isLocked ? t('Locked') : t('Lock Map')}
                 </span>
                 <span
                   className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
                     isLocked ? 'bg-amber-500/20 text-amber-200' : 'bg-white/[0.06] text-zinc-400'
                   }`}
                 >
-                  {isLocked ? 'ON' : 'OFF'}
+                  {isLocked ? t('ON') : t('OFF')}
                 </span>
               </button>
 
@@ -853,10 +855,10 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 >
                   <span className="inline-flex items-center gap-2">
                     <Pin className="w-3.5 h-3.5" />
-                    {isPinned ? 'Pinned for Split' : 'Pin for Split'}
+                    {isPinned ? t('Pinned') : t('Pin')}
                   </span>
                   <span className="text-[10px] font-mono opacity-75">
-                    {isPinned ? 'PINNED' : 'OFF'}
+                    {isPinned ? t('PINNED') : t('OFF')}
                   </span>
                 </button>
               )}
@@ -867,7 +869,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   <div className="flex items-center justify-between text-[10.5px]">
                     <span className="inline-flex items-center gap-1.5 font-semibold text-sky-300">
                       <Link2 className="w-3 h-3" />
-                      Sync-Block ({activeSyncGroup.itemIds.length} twins)
+                      {t('Sync Block')} ({activeSyncGroup.itemIds.length})
                     </span>
                     <span className="font-mono text-[10px] text-sky-200/80">
                       {Math.round(activeSyncGroup.similarity * 100)}%
@@ -886,7 +888,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                             type="button"
                             onClick={() => onSelectMap?.(id)}
                             className="px-1.5 py-0.5 rounded bg-white/[0.07] hover:bg-white/[0.14] text-[10px] text-zinc-200 truncate max-w-full cursor-pointer"
-                            title={`Jump to twin ${twin.title}`}
+                            title={twin.title}
                           >
                             {twin.title}
                           </button>
@@ -901,14 +903,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-1.5 text-[11px] text-zinc-400">
                     <Scale className="w-3 h-3 text-zinc-500" />
-                    Unit System
+                    {t('Unit System')}
                   </span>
                   <div className="inline-flex rounded-md bg-white/[0.05] p-0.5">
                     {(
                       [
-                        ['original', 'Orig'],
-                        ['metric', 'Metric'],
-                        ['imperial', 'Imperial'],
+                        ['original', t('Original')],
+                        ['metric', t('Metric')],
+                        ['imperial', t('Imperial')],
                       ] as const
                     ).map(([sys, lbl]) => (
                       <button
@@ -940,7 +942,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     if (!loC.converted) return null;
                     return (
                       <div className="rounded-lg bg-[#101115] border border-white/[0.06] px-2.5 py-1.5 flex items-center justify-between text-[10.5px] font-mono tabular-nums">
-                        <span className="text-zinc-500">Converted</span>
+                        <span className="text-zinc-500">{t('Converted')}</span>
                         <span className="text-sky-300 font-semibold">
                           {loC.value.toFixed(1)} – {hiC.value.toFixed(1)} {loC.unit}
                         </span>
@@ -956,11 +958,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                   <Search className="w-3 h-3 text-[#0a84ff]" />
-                  Code XREFs
+                  {t('Code References (XREFs)')}
                 </span>
                 {xrefTargetAddr !== null && (
                   <span className="text-[10px] font-mono text-zinc-500">
-                    {xrefResults?.length ?? 0} hits
+                    {xrefResults?.length ?? 0}
                   </span>
                 )}
               </div>
@@ -972,13 +974,13 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.05] hover:bg-white/[0.1] disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 transition-colors cursor-pointer"
               >
                 <Search className="w-3.5 h-3.5 text-[#0a84ff]" />
-                Find Code XREFs
+                {t('Find Code References (XREFs)')}
               </button>
 
               {xrefResults !== null && (
                 xrefResults.length === 0 ? (
                   <div className="text-[11px] text-zinc-500 text-center py-1">
-                    No code or pointer references found for {hexAddr(xrefTargetAddr ?? 0)}.
+                    {t('No direct code references found')} ({hexAddr(xrefTargetAddr ?? 0)})
                   </div>
                 ) : (
                   <div className="space-y-1.5 max-h-44 overflow-y-auto pr-0.5">
@@ -1015,7 +1017,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                   <Languages className="w-3 h-3 text-[#0a84ff]" />
-                  ECU Glossary &amp; Translator
+                  {t('ECU Glossary & Translator')}
                 </span>
               </div>
 
@@ -1054,7 +1056,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="text-[11px] text-zinc-500">Select a map to translate its title.</div>
+                <div className="text-[11px] text-zinc-500">{t('Select a map to translate its title.')}</div>
               )}
 
               {detectedAcronyms.length > 0 && (
@@ -1086,7 +1088,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     type="text"
                     value={acronymLookup}
                     onChange={(e) => setAcronymLookup(e.target.value)}
-                    placeholder="Lookup LDRXN, KFZWOP, LAMFA…"
+                    placeholder={t('Lookup LDRXN, KFZWOP, LAMFA…')}
                     className="w-full pl-7 pr-2.5 py-1.5 rounded-lg bg-[#101115] border border-white/[0.07] focus:border-[#0a84ff] focus:outline-none text-[11px] font-mono text-zinc-100 placeholder:text-zinc-600"
                   />
                 </div>
@@ -1118,10 +1120,10 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                   <StickyNote className="w-3 h-3 text-[#0a84ff]" />
-                  Calibration Notes
+                  {t('Calibration Notes')}
                 </span>
                 {activeNote.length > 0 && (
-                  <span className="text-[9.5px] font-mono text-emerald-400">Saved</span>
+                  <span className="text-[9.5px] font-mono text-emerald-400">{t('Saved')}</span>
                 )}
               </div>
               {item ? (
@@ -1129,11 +1131,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   value={activeNote}
                   onChange={(e) => updateActiveNote(e.target.value)}
                   rows={4}
-                  placeholder={`Notes for ${item.title} (persisted locally)…`}
+                  placeholder={t('Notes: %@', item.title)}
                   className="w-full rounded-lg bg-[#101115] border border-white/[0.07] focus:border-[#0a84ff] focus:outline-none p-2 text-[11.5px] text-zinc-200 placeholder:text-zinc-600 resize-y leading-relaxed"
                 />
               ) : (
-                <div className="text-[11px] text-zinc-500">Select a map to add notes.</div>
+                <div className="text-[11px] text-zinc-500">{t('Select a map to add notes.')}</div>
               )}
             </section>
           </>
@@ -1147,7 +1149,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                   <ShieldCheck className="w-3 h-3 text-[#0a84ff]" />
-                  Checksum Triage
+                  {t('Checksum Status')}
                 </span>
                 {effectiveChecksumSummary && (
                   <span
@@ -1158,8 +1160,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     }`}
                   >
                     {effectiveChecksumSummary.invalidCount === 0
-                      ? 'ALL OK'
-                      : `${effectiveChecksumSummary.invalidCount} INVALID`}
+                      ? t('Checksum OK')
+                      : t('Checksum Invalid (%lld)', effectiveChecksumSummary.invalidCount)}
                   </span>
                 )}
               </div>
@@ -1174,7 +1176,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     )}
                     <div className="flex items-center justify-between text-[10.5px] font-mono">
                       <span className="text-emerald-400">
-                        {effectiveChecksumSummary.validCount} valid
+                        {effectiveChecksumSummary.validCount} {t('valid')}
                       </span>
                       <span
                         className={
@@ -1183,7 +1185,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                             : 'text-zinc-500'
                         }
                       >
-                        {effectiveChecksumSummary.invalidCount} invalid
+                        {effectiveChecksumSummary.invalidCount} {t('invalid')}
                       </span>
                     </div>
                   </div>
@@ -1196,12 +1198,12 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#0a84ff] hover:bg-[#1e8fff] text-white shadow-[0_1px_8px_rgba(10,132,255,0.35)] transition-colors cursor-pointer"
                       >
                         <Wrench className="w-3.5 h-3.5" />
-                        Fix Checksums
+                        {t('Fix Checksums')}
                       </button>
                     )}
                 </>
               ) : (
-                <div className="text-[11px] text-zinc-500">Load a BIN to verify checksums.</div>
+                <div className="text-[11px] text-zinc-500">{t('Open a BIN file to verify checksums and export them for flash tools.')}</div>
               )}
             </section>
 
@@ -1210,7 +1212,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                   <Copy className="w-3 h-3 text-amber-400" />
-                  Forgotten Twins
+                  {t('Forgotten Twins')}
                 </span>
                 <span className="text-[10px] font-mono text-zinc-500">
                   {forgottenTwins.length}
@@ -1220,7 +1222,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               {forgottenTwins.length === 0 ? (
                 <div className="rounded-lg bg-[#101115] border border-white/[0.06] px-2.5 py-2 flex items-center gap-2 text-[11px] text-emerald-300/90">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>No untouched twin maps detected.</span>
+                  <span>{t('No untouched twin maps detected.')}</span>
                 </div>
               ) : (
                 <div className="space-y-1.5">
@@ -1242,7 +1244,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         </span>
                       </div>
                       <div className="text-[10px] text-zinc-400 leading-snug">
-                        Twin of <span className="text-zinc-200">{source.title}</span> is unmodified.
+                        {t('Twin of %@ is unmodified.', source.title)}
                       </div>
                       {onApplyPatches && (
                         <button
@@ -1251,7 +1253,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           className="w-full inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-medium bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 transition-colors cursor-pointer"
                         >
                           <Copy className="w-3 h-3" />
-                          Copy to Twin
+                          {t('Copy to Twin')}
                         </button>
                       )}
                     </div>
@@ -1265,7 +1267,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                   <AlertTriangle className="w-3 h-3 text-amber-400" />
-                  Definition Lint
+                  {t('Map Diagnostics')}
                 </span>
                 <span className="text-[10px] font-mono text-zinc-500">
                   {effectiveDiagnostics.length}
@@ -1275,7 +1277,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               {effectiveDiagnostics.length === 0 ? (
                 <div className="rounded-lg bg-[#101115] border border-white/[0.06] px-2.5 py-2 flex items-center gap-2 text-[11px] text-emerald-300/90">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>All XDF definitions pass lint checks.</span>
+                  <span>{t('All axes are monotonic; no outliers, clipped curves, or address errors found.')}</span>
                 </div>
               ) : (
                 <div className="space-y-1.5 max-h-72 overflow-y-auto pr-0.5">
@@ -1327,7 +1329,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/[0.08] hover:bg-white/[0.15] text-[10px] font-medium text-zinc-100 transition-colors cursor-pointer"
                         >
                           <Wrench className="w-2.5 h-2.5 text-[#0a84ff]" />
-                          Auto-Fix
+                          {t('Auto-Fix')}
                         </button>
                       )}
                     </div>
@@ -1344,7 +1346,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                 <Gauge className="w-3 h-3 text-[#0a84ff]" />
-                Tuning Physics Calc
+                {t('Physics Calculator')}
               </span>
               <span className="text-[9.5px] font-mono text-zinc-500 uppercase">{unitSystem}</span>
             </div>
@@ -1359,7 +1361,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                Diesel (TDI/CDI)
+                {t('Diesel (TDI/CDI)')}
               </button>
               <button
                 type="button"
@@ -1370,14 +1372,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                Gasoline (TSI/N55)
+                {t('Gasoline (TSI/N55)')}
               </button>
             </div>
 
             {fuelMode === 'diesel' ? (
               <div className="space-y-3">
                 <CalcSlider
-                  label="Air Mass (MAF)"
+                  label={t('Air Mass (MAF)')}
                   value={dieselAirMg}
                   min={400}
                   max={1800}
@@ -1386,7 +1388,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   onChange={setDieselAirMg}
                 />
                 <CalcSlider
-                  label="Injection Qty (IQ)"
+                  label={t('Injection Qty (IQ)')}
                   value={dieselIqMg}
                   min={20}
                   max={130}
@@ -1396,7 +1398,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   onChange={setDieselIqMg}
                 />
                 <CalcSlider
-                  label="Engine Speed"
+                  label={t('Engine Speed')}
                   value={dieselRpm}
                   min={1500}
                   max={5200}
@@ -1416,22 +1418,22 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 >
                   <span className="inline-flex items-center gap-1.5">
                     <Flame className="w-3.5 h-3.5" />
-                    Smoke Limit
+                    {t('Smoke Limit')}
                   </span>
                   <span>
                     {dieselCalc.smokeStatus === 'clean'
-                      ? 'Clean (λ ≥ 1.15)'
+                      ? t('Clean (λ ≥ 1.15)')
                       : dieselCalc.smokeStatus === 'borderline'
-                        ? 'Haze Zone'
-                        : 'Heavy Smoke!'}
+                        ? t('Haze Zone')
+                        : t('Heavy Smoke!')}
                   </span>
                 </div>
 
                 <div className="rounded-lg bg-[#101115] border border-white/[0.06] p-2.5 space-y-1.5">
                   <KvRow label="Lambda (λ)" value={dieselCalc.lambda.toFixed(3)} mono highlight />
-                  <KvRow label="AFR (Diesel 14.5:1)" value={`${dieselCalc.afr.toFixed(1)} : 1`} mono />
+                  <KvRow label={t('AFR (Diesel 14.5:1)')} value={`${dieselCalc.afr.toFixed(1)} : 1`} mono />
                   <KvRow
-                    label="Est. Torque"
+                    label={t('Est. Torque')}
                     value={
                       unitSystem === 'imperial'
                         ? `~${dieselCalc.estLbFt.toFixed(0)} lb-ft`
@@ -1440,7 +1442,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     mono
                   />
                   <KvRow
-                    label="Est. Power"
+                    label={t('Est. Power')}
                     value={`~${dieselCalc.estHp.toFixed(0)} HP · ${dieselCalc.estPs.toFixed(0)} PS`}
                     mono
                   />
@@ -1449,7 +1451,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             ) : (
               <div className="space-y-3">
                 <CalcSlider
-                  label="Boost (Abs.)"
+                  label={t('Boost (Abs.)')}
                   value={gasBoostBar}
                   min={1.0}
                   max={3.4}
@@ -1463,7 +1465,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   onChange={setGasBoostBar}
                 />
                 <CalcSlider
-                  label="Displacement"
+                  label={t('Displacement')}
                   value={gasDispL}
                   min={1.0}
                   max={6.2}
@@ -1473,7 +1475,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   onChange={setGasDispL}
                 />
                 <CalcSlider
-                  label="Engine Speed"
+                  label={t('Engine Speed')}
                   value={gasRpm}
                   min={2000}
                   max={8000}
@@ -1484,7 +1486,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
                 <div className="rounded-lg bg-[#101115] border border-white/[0.06] p-2.5 space-y-1.5">
                   <KvRow
-                    label="Gauge Boost"
+                    label={t('Gauge Boost')}
                     value={
                       unitSystem === 'imperial'
                         ? `+${gasCalc.gaugePsi.toFixed(1)} psi`
@@ -1493,9 +1495,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     mono
                     highlight
                   />
-                  <KvRow label="Est. Rel. Load" value={`~${gasCalc.estLoadPct.toFixed(0)} %`} mono />
+                  <KvRow label={t('Est. Rel. Load')} value={`~${gasCalc.estLoadPct.toFixed(0)} %`} mono />
                   <KvRow
-                    label="Target Fueling"
+                    label={t('Target Fueling')}
                     value={
                       unitSystem === 'imperial'
                         ? `AFR ${gasCalc.targetAfr.toFixed(2)} (λ ${gasCalc.targetLambda.toFixed(2)})`
@@ -1504,7 +1506,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     mono
                   />
                   <KvRow
-                    label="Est. Torque"
+                    label={t('Est. Torque')}
                     value={
                       unitSystem === 'imperial'
                         ? `~${gasCalc.estLbFt.toFixed(0)} lb-ft`
@@ -1513,7 +1515,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     mono
                   />
                   <KvRow
-                    label="Est. Power"
+                    label={t('Est. Power')}
                     value={`~${gasCalc.estHp.toFixed(0)} HP · ${gasCalc.estPs.toFixed(0)} PS`}
                     mono
                   />
@@ -1531,7 +1533,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                   <Cpu className="w-3 h-3 text-[#0a84ff]" />
-                  ECU Identity
+                  {t('ECU Identity')}
                 </span>
                 {ecuIdentity.hasTPROT && (
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-[9.5px] font-mono font-semibold text-amber-300">
@@ -1541,18 +1543,18 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 )}
               </div>
               <div className="space-y-1.5">
-                <KvRow label="Family" value={ecuIdentity.ecuFamily} highlight />
-                <KvRow label="HW Number" value={ecuIdentity.hardwareNumber} mono />
-                <KvRow label="SW Number" value={ecuIdentity.softwareNumber} mono />
+                <KvRow label={t('Family')} value={ecuIdentity.ecuFamily} highlight />
+                <KvRow label={t('HW Number')} value={ecuIdentity.hardwareNumber} mono />
+                <KvRow label={t('SW Number')} value={ecuIdentity.softwareNumber} mono />
                 {ecuIdentity.oemPartNumber && (
                   <KvRow label="OEM / EPK" value={ecuIdentity.oemPartNumber} mono />
                 )}
                 <KvRow
-                  label="Arch"
+                  label={t('Arch')}
                   value={`${ecuIdentity.architecture} (${ecuIdentity.endianness})`}
                   mono
                 />
-                <KvRow label="Binary Size" value={`${ecuIdentity.fileSizeKB} KB`} mono />
+                <KvRow label={t('Binary Size')} value={`${ecuIdentity.fileSizeKB} KB`} mono />
               </div>
             </section>
 
@@ -1562,7 +1564,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                     <HardDrive className="w-3 h-3 text-[#0a84ff]" />
-                    Open BINs
+                    {t('Open BINs')}
                   </span>
                   <span className="text-[10px] font-mono text-zinc-500">{openBins.length}</span>
                 </div>
@@ -1583,7 +1585,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         <span className="truncate">{b.name}</span>
                         <span className="flex items-center gap-1.5 shrink-0 font-mono text-[10px] text-zinc-500">
                           {b.modified && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title="Modified" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title={t('Modified')} />
                           )}
                           {b.size !== undefined ? `${Math.round(b.size / 1024)}K` : ''}
                         </span>
@@ -1596,34 +1598,34 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
             {!item || !mapMetrics ? (
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-5 text-center text-xs text-zinc-500">
-                Select a map in the workspace to inspect its binary layout and diff summary.
+                {t('Select a map in the workspace to inspect its binary layout and diff summary.')}
               </div>
             ) : (
               <>
                 {/* Exact Memory & Encoding Card */}
                 <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                    Binary Layout
+                    {t('Memory Layout')}
                   </div>
                   <div className="space-y-1.5">
                     <KvRow
-                      label="Byte Range"
+                      label={t('Address Range')}
                       value={`${hexAddr(mapMetrics.start)} – ${hexAddr(Math.max(mapMetrics.start, mapMetrics.end - 1))}`}
                       mono
                     />
                     <KvRow
-                      label="Size"
+                      label={t('Size')}
                       value={`${mapMetrics.byteLen} B (${mapMetrics.totalCells} × ${mapMetrics.elemSize}B)`}
                       mono
                     />
                     <KvRow
-                      label="Dimensions"
+                      label={t('Dimensions')}
                       value={`${item.data.rows} × ${item.data.cols} (${item.data.columnMajor ? 'Col-Major' : 'Row-Major'})`}
                       mono
                     />
-                    <KvRow label="Encoding" value={layoutTypeDescription(item.data)} mono />
+                    <KvRow label={t('Encoding')} value={layoutTypeDescription(item.data)} mono />
                     <KvRow
-                      label="Raw Range"
+                      label={t('Raw Range')}
                       value={
                         item.data.isFloat
                           ? 'IEEE-754 Float32'
@@ -1637,18 +1639,18 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 {/* Scaling Card */}
                 <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                    Scaling &amp; Equation
+                    {t('Scaling & Equation')}
                   </div>
                   <div className="space-y-1.5">
-                    <KvRow label="Equation" value={item.scaling.equation || 'X'} mono />
-                    <KvRow label="Units" value={item.scaling.units || '—'} />
+                    <KvRow label={t('Equation')} value={item.scaling.equation || 'X'} mono />
+                    <KvRow label={t('Units')} value={item.scaling.units || '—'} />
                     <KvRow
-                      label="1 Raw Step"
+                      label={t('1 Raw Step')}
                       value={`${scalingFormat(item.scaling, scalingRawStep(item.scaling))}${item.scaling.units ? ` ${item.scaling.units}` : ''}`}
                       mono
                     />
                     <KvRow
-                      label="Min / Max"
+                      label={`${t('Min')} / ${t('Max')}`}
                       value={
                         mapMetrics.min !== null && mapMetrics.max !== null
                           ? `${scalingFormat(item.scaling, mapMetrics.min)} … ${scalingFormat(item.scaling, mapMetrics.max)}`
@@ -1657,7 +1659,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                       mono
                     />
                     <KvRow
-                      label="First Cell"
+                      label={t('First Cell')}
                       value={(() => {
                         const raw = BinCodec.raw(item.data, { r: 0, c: 0 }, bin);
                         return raw !== null ? scalingDisplay(item.scaling, raw, item.data) : '—';
@@ -1671,26 +1673,26 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 {(mapMetrics.xAxisInfo || mapMetrics.yAxisInfo) && (
                   <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2.5">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                      Axis Addresses
+                      {t('Memory Map & Axes')}
                     </div>
                     {mapMetrics.xAxisInfo && (
                       <div className="rounded-lg bg-[#101115] border border-white/[0.06] p-2 space-y-1">
                         <div className="text-[10px] font-semibold text-zinc-400">
-                          X-Axis ({item.data.cols} cols)
+                          {t('X-Axis')} ({item.data.cols})
                         </div>
-                        <KvRow label="Address" value={mapMetrics.xAxisInfo.source} mono />
-                        <KvRow label="Type" value={mapMetrics.xAxisInfo.encoding} mono />
-                        <KvRow label="Range" value={mapMetrics.xAxisInfo.range} mono />
+                        <KvRow label={t('Address')} value={mapMetrics.xAxisInfo.source} mono />
+                        <KvRow label={t('Type')} value={mapMetrics.xAxisInfo.encoding} mono />
+                        <KvRow label={t('Range')} value={mapMetrics.xAxisInfo.range} mono />
                       </div>
                     )}
                     {mapMetrics.yAxisInfo && (
                       <div className="rounded-lg bg-[#101115] border border-white/[0.06] p-2 space-y-1">
                         <div className="text-[10px] font-semibold text-zinc-400">
-                          Y-Axis ({item.data.rows} rows)
+                          {t('Y-Axis')} ({item.data.rows})
                         </div>
-                        <KvRow label="Address" value={mapMetrics.yAxisInfo.source} mono />
-                        <KvRow label="Type" value={mapMetrics.yAxisInfo.encoding} mono />
-                        <KvRow label="Range" value={mapMetrics.yAxisInfo.range} mono />
+                        <KvRow label={t('Address')} value={mapMetrics.yAxisInfo.source} mono />
+                        <KvRow label={t('Type')} value={mapMetrics.yAxisInfo.encoding} mono />
+                        <KvRow label={t('Range')} value={mapMetrics.yAxisInfo.range} mono />
                       </div>
                     )}
                   </section>
@@ -1699,12 +1701,12 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 {/* Diff Summary Card */}
                 <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                    Diff Summary
+                    {t('Diff Summary')}
                   </div>
                   {compareBin ? (
                     <div className="space-y-1.5">
                       <KvRow
-                        label="Changed Cells"
+                        label={t('Changed Cells')}
                         value={`${mapMetrics.changedCells} / ${mapMetrics.totalCells} (${Math.round(
                           (mapMetrics.changedCells / Math.max(1, mapMetrics.totalCells)) * 100,
                         )}%)`}
@@ -1712,19 +1714,19 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         highlight={mapMetrics.changedCells > 0}
                       />
                       <KvRow
-                        label="Changed Bytes"
+                        label={t('Changed Bytes')}
                         value={`${mapMetrics.changedBytes} / ${mapMetrics.byteLen} B`}
                         mono
                       />
                       <KvRow
-                        label="Max Raw Δ"
+                        label={t('Max Raw Δ')}
                         value={String(Math.round(mapMetrics.maxRawDelta))}
                         mono
                       />
                     </div>
                   ) : (
                     <div className="text-[11px] text-zinc-500">
-                      Load a comparison BIN to see cell-level differences.
+                      {t('Load Comparison BIN')}
                     </div>
                   )}
                 </section>
@@ -1739,7 +1741,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 transition-colors cursor-pointer"
                       >
                         <Binary className="w-3.5 h-3.5 text-zinc-400" />
-                        Hex View
+                        {t('Hex Diff')}
                       </button>
                     )}
                     {onOpenXdfEditor && (
@@ -1749,7 +1751,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 transition-colors cursor-pointer"
                       >
                         <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-400" />
-                        Edit XDF
+                        {t('Edit XDF')}
                       </button>
                     )}
                   </div>
