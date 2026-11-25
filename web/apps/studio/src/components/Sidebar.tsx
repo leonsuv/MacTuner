@@ -1,16 +1,31 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Binary,
   Bookmark,
   ChevronDown,
   ChevronRight,
+  Copy,
+  Edit3,
+  FileWarning,
   GitCompare,
+  Grid3X3,
   Layers,
+  Lock,
+  Pin,
   Plus,
+  RotateCcw,
   Search,
+  ShieldAlert,
+  SlidersHorizontal,
   Sparkles,
+  Spline,
+  Star,
   Table2,
+  ToggleLeft,
   Trash2,
+  Unlock,
+  Wrench,
   X,
 } from 'lucide-react';
 import {
@@ -18,10 +33,13 @@ import {
   XDFDefinition,
   XDFItem,
   layoutByteRange,
+  translateMapName,
+  type TranslationMode,
 } from '@mactuner/core';
 
 export type WorkbenchMode = 'hex' | 'map';
 export type SidebarTab = 'maps' | 'diffs' | 'detected' | 'markers';
+export type SidebarMapScope = 'all' | 'changed' | 'favorites';
 
 export interface MapCandidate {
   id: string;
@@ -67,7 +85,43 @@ export interface SidebarProps {
   onDeleteMarker?: (id: string) => void;
   activeTab?: SidebarTab;
   onTabChange?: (tab: SidebarTab) => void;
+  // Swift MacTuner parity props (all optional & backwards-compatible)
+  mapScope?: SidebarMapScope;
+  onMapScopeChange?: (scope: SidebarMapScope) => void;
+  favoriteIds?: Set<string>;
+  onToggleFavorite?: (item: XDFItem) => void;
+  lockedItemIds?: Set<number>;
+  onToggleLock?: (item: XDFItem) => void;
+  pinnedItemId?: number | null;
+  onTogglePin?: (item: XDFItem) => void;
+  outOfSafeRangeItemIds?: Set<number>;
+  diagnosticWarningItemIds?: Set<number>;
+  autoAlignConfidenceByItemId?: Record<number, number>;
+  translationMode?: TranslationMode;
+  outsideOfXdfBytes?: number;
+  onClickOutsideOfXdf?: () => void;
+  diffClusterGap?: number;
+  onDiffClusterGapChange?: (gap: number) => void;
+  // Context menu actions
+  onCopyMapFromCompare?: (item: XDFItem) => void;
+  onResetMap?: (item: XDFItem) => void;
+  onEditMapInXdfModal?: (item: XDFItem) => void;
+  onDeleteMap?: (item: XDFItem) => void;
+  onCreateXdfFromDiff?: (cluster: DiffCluster) => void;
+  onCopyDiffFromCompare?: (cluster: DiffCluster) => void;
+  onEditCandidateInXdfModal?: (candidate: MapCandidate) => void;
+  onIgnoreCandidate?: (candidate: MapCandidate) => void;
 }
+
+type ContextMenuState =
+  | { kind: 'map'; x: number; y: number; item: XDFItem }
+  | { kind: 'diff'; x: number; y: number; cluster: DiffCluster }
+  | { kind: 'candidate'; x: number; y: number; candidate: MapCandidate }
+  | { kind: 'marker'; x: number; y: number; marker: HexMarker }
+  | null;
+
+const DIFF_GAP_OPTIONS = [0, 16, 32, 64] as const;
+const CONFIDENCE_OPTIONS = [0.85, 0.7, 0.55] as const;
 
 function formatHex(addr: number): string {
   return `0x${Math.max(0, addr).toString(16).toUpperCase().padStart(5, '0')}`;
@@ -76,6 +130,35 @@ function formatHex(addr: number): string {
 function formatByteSize(bytes: number): string {
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${bytes} B`;
+}
+
+function guessDiffShapeBadge(spanBytes: number): string {
+  if (spanBytes === 512) return '16×16?';
+  if (spanBytes === 256) return '16×8?';
+  if (spanBytes === 128) return '8×8?';
+  if (spanBytes === 200) return '10×10?';
+  if (spanBytes === 288) return '12×12?';
+  if (spanBytes === 72) return '6×6?';
+  if (spanBytes >= 16 && spanBytes <= 64 && spanBytes % 2 === 0) return '1D?';
+  if (spanBytes <= 4) return 'Scalar?';
+  if (spanBytes > 512 && spanBytes % 32 === 0) return '2D?';
+  return 'Block';
+}
+
+function renderMapKindIcon(item: XDFItem): React.ReactNode {
+  switch (item.itemKind.kind) {
+    case 'table':
+      if (item.data.rows <= 1 || item.data.cols <= 1) {
+        return <Spline className="w-3 h-3 text-cyan-400 shrink-0" />;
+      }
+      return <Grid3X3 className="w-3 h-3 text-sky-400 shrink-0" />;
+    case 'constant':
+      return <SlidersHorizontal className="w-3 h-3 text-amber-400 shrink-0" />;
+    case 'flag':
+      return <ToggleLeft className="w-3 h-3 text-emerald-400 shrink-0" />;
+    case 'patch':
+      return <Wrench className="w-3 h-3 text-purple-400 shrink-0" />;
+  }
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -94,11 +177,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeleteMarker,
   activeTab: controlledTab,
   onTabChange,
+  mapScope: controlledScope,
+  onMapScopeChange,
+  favoriteIds,
+  onToggleFavorite,
+  lockedItemIds,
+  onToggleLock,
+  pinnedItemId,
+  onTogglePin,
+  outOfSafeRangeItemIds,
+  diagnosticWarningItemIds,
+  autoAlignConfidenceByItemId,
+  translationMode = 'original',
+  outsideOfXdfBytes = 0,
+  onClickOutsideOfXdf,
+  diffClusterGap = 16,
+  onDiffClusterGapChange,
+  onCopyMapFromCompare,
+  onResetMap,
+  onEditMapInXdfModal,
+  onDeleteMap,
+  onCreateXdfFromDiff,
+  onCopyDiffFromCompare,
+  onEditCandidateInXdfModal,
+  onIgnoreCandidate,
 }) => {
   const [internalTab, setInternalTab] = useState<SidebarTab>('maps');
   const [search, setSearch] = useState('');
-  const [mapFilter, setMapFilter] = useState<'all' | 'changed'>('all');
+  const [internalScope, setInternalScope] = useState<SidebarMapScope>('all');
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [minConfidence, setMinConfidence] = useState<number>(0.55);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const activeTab = controlledTab ?? internalTab;
   const setActiveTab = (tab: SidebarTab) => {
@@ -106,7 +216,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onTabChange?.(tab);
   };
 
+  const mapFilter = controlledScope ?? internalScope;
+  const setMapFilter = (scope: SidebarMapScope) => {
+    setInternalScope(scope);
+    onMapScopeChange?.(scope);
+  };
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [contextMenu]);
+
   const query = search.trim().toLowerCase();
+
+  const favoritesCount = useMemo(() => {
+    if (!xdf || !favoriteIds) return 0;
+    return xdf.items.filter((it) => favoriteIds.has(String(it.id))).length;
+  }, [xdf, favoriteIds]);
 
   const groupedMaps = useMemo(() => {
     const items = xdf?.items ?? [];
@@ -114,10 +256,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     const filtered = items.filter((item) => {
       if (mapFilter === 'changed' && !changedItemIds.has(item.id)) return false;
+      if (mapFilter === 'favorites' && !(favoriteIds?.has(String(item.id)) ?? false)) return false;
       if (!query) return true;
       const addrHex = formatHex(item.data.address).toLowerCase();
+      const displayTitle =
+        translationMode !== 'original'
+          ? translateMapName(item.title, translationMode).toLowerCase()
+          : item.title.toLowerCase();
       return (
         item.title.toLowerCase().includes(query) ||
+        displayTitle.includes(query) ||
         item.description.toLowerCase().includes(query) ||
         addrHex.includes(query)
       );
@@ -136,7 +284,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [xdf, mapFilter, changedItemIds, query]);
+  }, [xdf, mapFilter, changedItemIds, favoriteIds, query, translationMode]);
 
   const filteredDiffs = useMemo(() => {
     if (!query) return diffClusters;
@@ -147,9 +295,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
     });
   }, [diffClusters, query]);
 
+  const detectedStats = useMemo(() => {
+    let count2D = 0;
+    let count1D = 0;
+    let countPtr = 0;
+    for (const c of detectedCandidates) {
+      if (c.patternLabel?.toLowerCase().includes('ptr')) countPtr++;
+      if (c.rows > 1 && c.cols > 1) count2D++;
+      else count1D++;
+    }
+    return { count2D, count1D, countPtr };
+  }, [detectedCandidates]);
+
   const filteredDetected = useMemo(() => {
-    if (!query) return detectedCandidates;
     return detectedCandidates.filter((c) => {
+      if (c.confidence < minConfidence) return false;
+      if (!query) return true;
       const addr = formatHex(c.address).toLowerCase();
       const dims = `${c.rows}x${c.cols}`;
       return (
@@ -159,7 +320,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         (c.patternLabel?.toLowerCase().includes(query) ?? false)
       );
     });
-  }, [detectedCandidates, query]);
+  }, [detectedCandidates, minConfidence, query]);
 
   const filteredMarkers = useMemo(() => {
     if (!query) return markers;
@@ -180,6 +341,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       else next.add(cat);
       return next;
     });
+  };
+
+  const openMenuAt = (e: React.MouseEvent, next: Exclude<ContextMenuState, null>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const x = Math.min(e.clientX, window.innerWidth - 220);
+    const y = Math.min(e.clientY, window.innerHeight - 310);
+    setContextMenu({ ...next, x: Math.max(8, x), y: Math.max(8, y) });
   };
 
   const totalMaps = xdf?.items.length ?? 0;
@@ -250,7 +419,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </div>
 
-      {/* Search Input */}
+      {/* Search Input & Contextual Filters */}
       <div className="px-2.5 py-2 border-b border-white/[0.065]">
         <div className="relative flex items-center">
           <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 pointer-events-none" />
@@ -281,13 +450,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        {/* All / Changed filter pills (Maps tab) */}
+        {/* All / Changed / Favorites scope pills (Maps tab) */}
         {activeTab === 'maps' && (
           <div className="flex items-center gap-1 mt-2">
             <button
               type="button"
               onClick={() => setMapFilter('all')}
-              className={`px-2.5 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+              className={`px-2 py-0.5 rounded-md text-[10.5px] font-medium transition-colors cursor-pointer ${
                 mapFilter === 'all'
                   ? 'bg-white/[0.09] text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]'
@@ -298,7 +467,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => setMapFilter('changed')}
-              className={`px-2.5 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+              className={`px-2 py-0.5 rounded-md text-[10.5px] font-medium transition-colors cursor-pointer ${
                 mapFilter === 'changed'
                   ? 'bg-amber-500/15 text-amber-300'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]'
@@ -309,6 +478,74 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {changedItemIds.size}
               </span>
             </button>
+            <button
+              type="button"
+              onClick={() => setMapFilter('favorites')}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-medium transition-colors cursor-pointer ${
+                mapFilter === 'favorites'
+                  ? 'bg-amber-400/15 text-amber-300'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]'
+              }`}
+              title="Favorites (⌘3)"
+            >
+              <Star className="w-2.5 h-2.5 fill-current" />
+              <span className="font-mono tabular-nums">{favoritesCount}</span>
+            </button>
+          </div>
+        )}
+
+        {/* Diff cluster gap selector (Diffs tab) */}
+        {activeTab === 'diffs' && (
+          <div className="flex items-center justify-between gap-1 mt-2">
+            <span className="text-[10px] font-medium text-zinc-500">Cluster gap</span>
+            <div className="flex items-center gap-0.5">
+              {DIFF_GAP_OPTIONS.map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => onDiffClusterGapChange?.(g)}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono tabular-nums transition-colors cursor-pointer ${
+                    diffClusterGap === g
+                      ? 'bg-[#0a84ff]/20 text-sky-300'
+                      : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.04]'
+                  }`}
+                >
+                  {g}B
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ECU completeness header & confidence filter (Detected tab) */}
+        {activeTab === 'detected' && (
+          <div className="mt-2 space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 bg-white/[0.03] rounded-md px-2 py-1">
+              <span>2D: {detectedStats.count2D}</span>
+              <span className="text-zinc-600">·</span>
+              <span>1D: {detectedStats.count1D}</span>
+              <span className="text-zinc-600">·</span>
+              <span>Ptr: {detectedStats.countPtr}</span>
+            </div>
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[10px] font-medium text-zinc-500">Min conf</span>
+              <div className="flex items-center gap-0.5">
+                {CONFIDENCE_OPTIONS.map((thr) => (
+                  <button
+                    key={thr}
+                    type="button"
+                    onClick={() => setMinConfidence(thr)}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono tabular-nums transition-colors cursor-pointer ${
+                      Math.abs(minConfidence - thr) < 0.001
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    {Math.round(thr * 100)}%
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -318,13 +555,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* MAPS TAB */}
         {activeTab === 'maps' && (
           <>
+            {/* Outside of XDF row in Changed scope */}
+            {mapFilter === 'changed' && outsideOfXdfBytes > 0 && (
+              <button
+                type="button"
+                onClick={() => onClickOutsideOfXdf?.()}
+                className="w-full text-left px-2.5 py-2 mb-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25 hover:bg-amber-500/15 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-amber-300">
+                    <FileWarning className="w-3.5 h-3.5 shrink-0" />
+                    <span>Outside of XDF</span>
+                  </span>
+                  <span className="text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200">
+                    {formatByteSize(outsideOfXdfBytes)}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[10px] text-amber-200/70">
+                  Modified bytes outside defined XDF ranges — click to inspect
+                </p>
+              </button>
+            )}
+
             {groupedMaps.length === 0 ? (
               <div className="text-center py-10 px-4">
                 <Layers className="w-5 h-5 text-zinc-600 mx-auto mb-2" />
                 <p className="text-xs text-zinc-500">
                   {mapFilter === 'changed'
                     ? 'No modified maps match your filter.'
-                    : 'No maps found.'}
+                    : mapFilter === 'favorites'
+                      ? 'No favorite maps yet. Click ★ or press ⌘D.'
+                      : 'No maps found.'}
                 </p>
               </div>
             ) : (
@@ -361,41 +622,105 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         {items.map((item) => {
                           const isSelected = item.id === selectedItemId;
                           const isChanged = changedItemIds.has(item.id);
+                          const isFav = favoriteIds?.has(String(item.id)) ?? false;
+                          const isLocked = lockedItemIds?.has(item.id) ?? false;
+                          const isPinned = pinnedItemId === item.id;
+                          const isOutOfSafe = outOfSafeRangeItemIds?.has(item.id) ?? false;
+                          const hasDiagWarn = diagnosticWarningItemIds?.has(item.id) ?? false;
+                          const alignConf = autoAlignConfidenceByItemId?.[item.id];
+                          const displayTitle =
+                            translationMode !== 'original'
+                              ? translateMapName(item.title, translationMode)
+                              : item.title;
                           const dims =
                             item.itemKind.kind === 'table'
                               ? `${item.data.rows}×${item.data.cols}`
                               : item.itemKind.kind === 'flag'
                                 ? 'FLAG'
-                                : '1×1';
+                                : item.itemKind.kind === 'patch'
+                                  ? 'PATCH'
+                                  : '1×1';
                           return (
-                            <button
+                            <div
                               key={item.id}
-                              type="button"
+                              role="button"
+                              tabIndex={0}
                               onClick={() => onSelectItem(item)}
-                              className={`w-full text-left px-2.5 py-2 rounded-lg transition-colors cursor-pointer ${
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  onSelectItem(item);
+                                }
+                              }}
+                              onContextMenu={(e) => openMenuAt(e, { kind: 'map', x: e.clientX, y: e.clientY, item })}
+                              className={`w-full text-left px-2 py-1.5 rounded-lg transition-colors cursor-pointer group ${
                                 isSelected
                                   ? 'bg-[#0a84ff]/16 text-white'
                                   : 'text-zinc-300 hover:bg-white/[0.045] hover:text-zinc-100'
                               }`}
                             >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs font-medium truncate">
-                                  {item.title}
-                                </span>
-                                <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="flex items-center justify-between gap-1.5">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  {renderMapKindIcon(item)}
+                                  <span
+                                    className="text-xs font-medium truncate"
+                                    title={translationMode !== 'original' ? `${displayTitle} (${item.title})` : item.title}
+                                  >
+                                    {displayTitle}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {isLocked && (
+                                    <span title="Locked">
+                                      <Lock className="w-3 h-3 text-amber-400" />
+                                    </span>
+                                  )}
+                                  {isPinned && (
+                                    <span title="Pinned for Split View">
+                                      <Pin className="w-3 h-3 text-sky-400" />
+                                    </span>
+                                  )}
+                                  {isOutOfSafe && (
+                                    <span title="Out of Safe Range">
+                                      <AlertTriangle className="w-3 h-3 text-rose-400" />
+                                    </span>
+                                  )}
+                                  {hasDiagWarn && (
+                                    <span title="Diagnostic Warning">
+                                      <ShieldAlert className="w-3 h-3 text-amber-400" />
+                                    </span>
+                                  )}
+                                  {alignConf !== undefined && (
+                                    <span
+                                      className="text-[9.5px] font-mono px-1 rounded bg-emerald-500/15 text-emerald-300"
+                                      title="Auto-Align match confidence"
+                                    >
+                                      {alignConf > 1 ? Math.round(alignConf) : Math.round(alignConf * 100)}%
+                                    </span>
+                                  )}
                                   {isChanged && (
                                     <span
                                       className="w-1.5 h-1.5 rounded-full bg-amber-400"
                                       title="Modified vs Stock"
                                     />
                                   )}
-                                  <span
-                                    className={`text-[10px] font-mono tabular-nums ${
-                                      isSelected ? 'text-blue-200/80' : 'text-zinc-500'
-                                    }`}
-                                  >
-                                    {dims}
-                                  </span>
+                                  {onToggleFavorite && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onToggleFavorite(item);
+                                      }}
+                                      title={isFav ? 'Remove from Favorites' : 'Add to Favorites'}
+                                      className={`p-0.5 rounded transition cursor-pointer ${
+                                        isFav
+                                          ? 'text-amber-400 opacity-100'
+                                          : 'text-zinc-600 opacity-0 group-hover:opacity-100 hover:text-amber-300'
+                                      }`}
+                                    >
+                                      <Star className={`w-3 h-3 ${isFav ? 'fill-current' : ''}`} />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                               <div
@@ -405,11 +730,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               >
                                 <span>{formatHex(item.data.address)}</span>
                                 <span>
-                                  {item.data.bits}b
+                                  {dims} · {item.data.bits}b
                                   {item.scaling.units ? ` · ${item.scaling.units}` : ''}
                                 </span>
                               </div>
-                            </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -432,6 +757,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             ) : (
               filteredDiffs.map((cluster, idx) => {
                 const span = Math.max(1, cluster.end - cluster.start);
+                const shapeBadge = guessDiffShapeBadge(span);
                 const matchingMap = xdf?.items.find((it) => {
                   const [s, e] = layoutByteRange(it.data);
                   return cluster.start < e && cluster.end > s;
@@ -441,15 +767,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     key={`${cluster.start}-${idx}`}
                     type="button"
                     onClick={() => onJumpToAddress(cluster.start, true)}
+                    onContextMenu={(e) => openMenuAt(e, { kind: 'diff', x: e.clientX, y: e.clientY, cluster })}
                     className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.045] transition-colors cursor-pointer group"
                   >
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-1.5">
                       <span className="text-xs font-mono tabular-nums font-medium text-amber-300">
                         {formatHex(cluster.start)} · {formatByteSize(cluster.changedBytes)}
                       </span>
-                      <span className="text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded bg-amber-500/12 text-amber-300">
-                        Δ {span} B
-                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[9.5px] font-mono px-1 py-0.5 rounded bg-sky-500/15 text-sky-300">
+                          {shapeBadge}
+                        </span>
+                        <span className="text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded bg-amber-500/12 text-amber-300">
+                          Δ {span}B
+                        </span>
+                      </div>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between text-[10.5px] text-zinc-400">
                       <span className="truncate">
@@ -473,12 +805,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="text-center py-10 px-4">
                 <Sparkles className="w-5 h-5 text-zinc-600 mx-auto mb-2" />
                 <p className="text-xs text-zinc-500">
-                  No detected map candidates yet. Run Map Finder in Discovery.
+                  No detected map candidates match threshold ({Math.round(minConfidence * 100)}%).
                 </p>
               </div>
             ) : (
               filteredDetected.map((cand) => {
                 const dims = `${cand.rows}×${cand.cols}`;
+                const evidenceLabel =
+                  cand.hasHeaderProof
+                    ? 'Header'
+                    : cand.hasAxes
+                      ? 'Axes'
+                      : 'Pattern';
+                const evidenceCls =
+                  cand.hasHeaderProof
+                    ? 'bg-amber-500/15 text-amber-300'
+                    : cand.hasAxes
+                      ? 'bg-sky-500/15 text-sky-300'
+                      : 'bg-white/[0.08] text-zinc-300';
                 const subtitle =
                   cand.patternLabel ??
                   `Bosch ${dims}${cand.hasAxes ? ' + Axes' : ''}${cand.hasDiff ? ' · Diff' : ''}`;
@@ -489,6 +833,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       if (onSelectCandidate) onSelectCandidate(cand);
                       else onJumpToAddress(cand.address, true);
                     }}
+                    onContextMenu={(e) =>
+                      openMenuAt(e, { kind: 'candidate', x: e.clientX, y: e.clientY, candidate: cand })
+                    }
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
@@ -526,11 +873,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </div>
 
                     <div className="mt-1 flex items-center gap-1.5 text-[10.5px] text-zinc-500 truncate">
-                      {cand.hasHeaderProof !== false && (
-                        <span className="text-[10px] font-medium px-1.5 py-0 rounded bg-amber-500/12 text-amber-300 shrink-0">
-                          Header
-                        </span>
-                      )}
+                      <span className={`text-[9.5px] font-medium px-1.5 py-0 rounded shrink-0 ${evidenceCls}`}>
+                        {evidenceLabel}
+                      </span>
                       <span className="truncate">{subtitle}</span>
                     </div>
                   </div>
@@ -547,7 +892,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="text-center py-10 px-4">
                 <Bookmark className="w-5 h-5 text-zinc-600 mx-auto mb-2" />
                 <p className="text-xs text-zinc-500">
-                  No bookmarks saved. Press <kbd className="px-1 py-0.5 rounded bg-white/[0.07] font-mono text-[10px] text-zinc-300">M</kbd> in Hex Editor to bookmark an offset.
+                  No bookmarks saved. Press{' '}
+                  <kbd className="px-1 py-0.5 rounded bg-white/[0.07] font-mono text-[10px] text-zinc-300">
+                    M
+                  </kbd>{' '}
+                  in Hex Editor to bookmark an offset.
                 </p>
               </div>
             ) : (
@@ -555,6 +904,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div
                   key={marker.id}
                   onClick={() => onJumpToAddress(marker.address, true)}
+                  onContextMenu={(e) =>
+                    openMenuAt(e, { kind: 'marker', x: e.clientX, y: e.clientY, marker })
+                  }
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
@@ -603,6 +955,261 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </>
         )}
       </div>
+
+      {/* Right-click Context Menu */}
+      {contextMenu && (
+        <div
+          ref={menuRef}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          className="glass-popover fixed z-50 w-52 rounded-xl py-1 text-xs shadow-2xl border border-white/10"
+        >
+          {contextMenu.kind === 'map' && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectItem(contextMenu.item);
+                  setContextMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+              >
+                <Table2 className="w-3.5 h-3.5 text-sky-400" />
+                <span>Edit Map</span>
+              </button>
+              {onTogglePin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onTogglePin(contextMenu.item);
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+                >
+                  <Pin className="w-3.5 h-3.5 text-sky-400" />
+                  <span>{pinnedItemId === contextMenu.item.id ? 'Unpin Split' : 'Pin for Split'}</span>
+                </button>
+              )}
+              {onToggleFavorite && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleFavorite(contextMenu.item);
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+                >
+                  <Star className="w-3.5 h-3.5 text-amber-400" />
+                  <span>
+                    {favoriteIds?.has(String(contextMenu.item.id)) ? 'Remove Favorite' : 'Toggle Favorite'}
+                  </span>
+                </button>
+              )}
+              {onToggleLock && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleLock(contextMenu.item);
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+                >
+                  {lockedItemIds?.has(contextMenu.item.id) ? (
+                    <Unlock className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  )}
+                  <span>{lockedItemIds?.has(contextMenu.item.id) ? 'Unlock Map' : 'Lock Map'}</span>
+                </button>
+              )}
+              <div className="my-1 border-t border-white/[0.08]" />
+              {onCopyMapFromCompare && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCopyMapFromCompare(contextMenu.item);
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Copy from Compare</span>
+                </button>
+              )}
+              {onResetMap && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onResetMap(contextMenu.item);
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Reset Map</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  onJumpToAddress(contextMenu.item.data.address, true);
+                  setContextMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+              >
+                <Binary className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Show in Hex</span>
+              </button>
+              {onEditMapInXdfModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onEditMapInXdfModal(contextMenu.item);
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Edit in XDF Modal…</span>
+                </button>
+              )}
+              {onDeleteMap && (
+                <>
+                  <div className="my-1 border-t border-white/[0.08]" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDeleteMap(contextMenu.item);
+                      setContextMenu(null);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-rose-400 hover:bg-rose-500/15 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Map</span>
+                  </button>
+                </>
+              )}
+            </>
+          )}
+
+          {contextMenu.kind === 'diff' && (
+            <>
+              {onCreateXdfFromDiff && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCreateXdfFromDiff(contextMenu.cluster);
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Create XDF Map…</span>
+                </button>
+              )}
+              {onCopyDiffFromCompare && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCopyDiffFromCompare(contextMenu.cluster);
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Copy from Compare</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  onJumpToAddress(contextMenu.cluster.start, true);
+                  setContextMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+              >
+                <Binary className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Jump in Hex</span>
+              </button>
+            </>
+          )}
+
+          {contextMenu.kind === 'candidate' && (
+            <>
+              {onAddCandidateToXdf && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAddCandidateToXdf(contextMenu.candidate);
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Add to XDF</span>
+                </button>
+              )}
+              {onEditCandidateInXdfModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onEditCandidateInXdfModal(contextMenu.candidate);
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Edit in XDF Modal…</span>
+                </button>
+              )}
+              {onIgnoreCandidate && (
+                <>
+                  <div className="my-1 border-t border-white/[0.08]" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onIgnoreCandidate(contextMenu.candidate);
+                      setContextMenu(null);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-rose-400 hover:bg-rose-500/15 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Ignore Candidate</span>
+                  </button>
+                </>
+              )}
+            </>
+          )}
+
+          {contextMenu.kind === 'marker' && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  onJumpToAddress(contextMenu.marker.address, true);
+                  setContextMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10 cursor-pointer"
+              >
+                <Binary className="w-3.5 h-3.5 text-sky-400" />
+                <span>Jump in Hex</span>
+              </button>
+              {onDeleteMarker && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDeleteMarker(contextMenu.marker.id);
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-rose-400 hover:bg-rose-500/15 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Bookmark</span>
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </aside>
   );
 };

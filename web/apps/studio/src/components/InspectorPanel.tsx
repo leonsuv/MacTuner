@@ -1,41 +1,75 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   Binary,
   BookOpen,
   Calculator,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Cpu,
   Flame,
   Gauge,
+  HardDrive,
   Languages,
+  Link2,
   Lock,
+  Pin,
   Scale,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
   SlidersHorizontal,
   StickyNote,
   Unlock,
+  Wrench,
 } from 'lucide-react';
 import {
   Axis,
   BinCodec,
+  DiagnosticFinding,
+  Patch,
+  XDFDefinition,
   XDFItem,
+  XRefMatch,
   countChangedBytes,
   countChangedCells,
   elementBytes,
+  findCodeXRefs,
+  findSyncBlocks,
+  fixChecksums,
+  identifyECU,
   layoutByteRange,
   layoutCount,
   layoutRawRange,
   layoutTypeDescription,
   maxCellDelta,
+  runDiagnostics,
   scalingDisplay,
   scalingFormat,
   scalingRawStep,
   scalingValue,
+  verifyChecksums,
 } from '@mactuner/core';
 
 export type UnitSystem = 'metric' | 'imperial';
 export type TranslationMode = 'original' | 'en' | 'de';
-type InspectorTab = 'notes' | 'physics' | 'properties';
+type InspectorTab = 'notes' | 'preflight' | 'physics' | 'properties';
+
+export interface OpenBinSummary {
+  id: string;
+  name: string;
+  size?: number;
+  modified?: boolean;
+}
+
+export interface ChecksumSummaryInfo {
+  validCount: number;
+  invalidCount: number;
+  pluginName?: string;
+  canFix?: boolean;
+}
 
 export interface InspectorPanelProps {
   item: XDFItem | null;
@@ -51,6 +85,22 @@ export interface InspectorPanelProps {
   onTranslationModeChange?: (mode: TranslationMode) => void;
   onJumpToHex?: (address: number) => void;
   onOpenXdfEditor?: () => void;
+  /** Optional XDF definition for Sync-Blocks, Forgotten Twins, and Definition Lint */
+  xdf?: XDFDefinition | null;
+  onSelectMap?: (itemId: number) => void;
+  onApplyPatches?: (patches: Patch[], label: string) => void;
+  /** Split-pin controls */
+  isPinned?: boolean;
+  onTogglePin?: () => void;
+  /** Preflight / Diagnostics / Checksums */
+  diagnostics?: DiagnosticFinding[];
+  onAutoFixDiagnostic?: (finding: DiagnosticFinding) => void;
+  onFixChecksums?: () => void;
+  checksumSummary?: ChecksumSummaryInfo;
+  /** Open BINs quick-switcher */
+  openBins?: OpenBinSummary[];
+  activeBinId?: string;
+  onSelectOpenBin?: (id: string) => void;
 }
 
 const NOTES_STORAGE_KEY = 'mactuner.mapNotes.v1';
@@ -167,12 +217,10 @@ export function translateMapText(text: string, mode: TranslationMode): string {
   if (!text || mode === 'original') return text;
   let out = text;
 
-  // Replace acronyms if present without duplicating existing expansions
   for (const entry of ECU_ACRONYMS) {
     const re = new RegExp(`\\b${entry.code}\\b`, 'gi');
     if (re.test(out)) {
       const replacement = mode === 'en' ? `${entry.en} (${entry.code})` : `${entry.de} (${entry.code})`;
-      // Only expand standalone acronym strings or short labels so we don't double-expand
       if (out.trim().toUpperCase() === entry.code) {
         return replacement;
       }
@@ -283,6 +331,18 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onTranslationModeChange,
   onJumpToHex,
   onOpenXdfEditor,
+  xdf = null,
+  onSelectMap,
+  onApplyPatches,
+  isPinned = false,
+  onTogglePin,
+  diagnostics: controlledDiagnostics,
+  onAutoFixDiagnostic,
+  onFixChecksums,
+  checksumSummary: controlledChecksumSummary,
+  openBins,
+  activeBinId,
+  onSelectOpenBin,
 }) => {
   const [activeTab, setActiveTab] = useState<InspectorTab>('notes');
   const [internalCollapsed, setInternalCollapsed] = useState(false);
@@ -309,6 +369,10 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const [notesStore, setNotesStore] = useState<Record<string, string>>(() => loadNotesMap());
   const [acronymLookup, setAcronymLookup] = useState<string>('');
 
+  // Code XREFs state
+  const [xrefResults, setXrefResults] = useState<XRefMatch[] | null>(null);
+  const [xrefTargetAddr, setXrefTargetAddr] = useState<number | null>(null);
+
   // Physics calculator state
   const [fuelMode, setFuelMode] = useState<'diesel' | 'gasoline'>('diesel');
   const [dieselAirMg, setDieselAirMg] = useState<number>(1150);
@@ -317,6 +381,12 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const [gasBoostBar, setGasBoostBar] = useState<number>(2.4);
   const [gasDispL, setGasDispL] = useState<number>(2.0);
   const [gasRpm, setGasRpm] = useState<number>(5800);
+
+  // Reset XREFs when item changes
+  useEffect(() => {
+    setXrefResults(null);
+    setXrefTargetAddr(null);
+  }, [item?.id]);
 
   const isCollapsed = controlledCollapsed ?? internalCollapsed;
   const toggleCollapse = () => {
@@ -370,7 +440,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
     }
   };
 
-  // Cmd+L / Ctrl+L shortcut for Map Lock when uncontrolled (or when MapEditorView doesn't handle it)
+  // Cmd+L / Ctrl+L shortcut for Map Lock when uncontrolled
   useEffect(() => {
     if (!item || onToggleLock) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -407,6 +477,101 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
       saveNotesMap(next);
       return next;
     });
+  };
+
+  // ECU Identity (for Props tab)
+  const ecuIdentity = useMemo(() => identifyECU(bin), [bin]);
+
+  // Sync Blocks (for Map tab Sync-Block pill & Preflight Forgotten Twins)
+  const syncBlocks = useMemo(() => {
+    if (!xdf || bin.length === 0) return [];
+    return findSyncBlocks(compareBin ?? bin, xdf, 0.92);
+  }, [xdf, bin, compareBin]);
+
+  const itemById = useMemo(() => {
+    const m = new Map<number, XDFItem>();
+    if (xdf) {
+      for (const it of xdf.items) m.set(it.id, it);
+    }
+    return m;
+  }, [xdf]);
+
+  const activeSyncGroup = useMemo(() => {
+    if (!item) return null;
+    return syncBlocks.find((g) => g.itemIds.includes(item.id)) ?? null;
+  }, [syncBlocks, item]);
+
+  // Forgotten Twins: twin groups where at least one map is modified vs compareBin and another is untouched
+  const forgottenTwins = useMemo(() => {
+    if (!compareBin || !xdf || syncBlocks.length === 0) return [];
+    const out: Array<{ source: XDFItem; target: XDFItem; similarity: number }> = [];
+    for (const grp of syncBlocks) {
+      const members = grp.itemIds
+        .map((id) => itemById.get(id))
+        .filter((it): it is XDFItem => Boolean(it));
+      const modified = members.filter((m) => countChangedCells(m, bin, compareBin) > 0);
+      const untouched = members.filter((m) => countChangedCells(m, bin, compareBin) === 0);
+      if (modified.length > 0 && untouched.length > 0) {
+        const src = modified[0];
+        for (const tgt of untouched) {
+          out.push({ source: src, target: tgt, similarity: grp.similarity });
+        }
+      }
+    }
+    return out;
+  }, [syncBlocks, itemById, bin, compareBin, xdf]);
+
+  // Preflight checksum summary (use prop or compute fallback when on Preflight tab)
+  const effectiveChecksumSummary = useMemo((): ChecksumSummaryInfo | null => {
+    if (controlledChecksumSummary) return controlledChecksumSummary;
+    if (activeTab !== 'preflight' || bin.length === 0) return null;
+    const report = verifyChecksums(bin, compareBin);
+    return {
+      validCount: report.validCount,
+      invalidCount: report.invalidCount,
+      pluginName: report.pluginName,
+      canFix: report.canFix,
+    };
+  }, [controlledChecksumSummary, activeTab, bin, compareBin]);
+
+  // Preflight diagnostics (use prop or compute fallback when on Preflight tab)
+  const effectiveDiagnostics = useMemo((): DiagnosticFinding[] => {
+    if (controlledDiagnostics) return controlledDiagnostics;
+    if (activeTab !== 'preflight' || !xdf || bin.length === 0) return [];
+    return runDiagnostics(bin, compareBin, xdf);
+  }, [controlledDiagnostics, activeTab, bin, compareBin, xdf]);
+
+  const handleCopyToTwin = (source: XDFItem, target: XDFItem) => {
+    if (!onApplyPatches) return;
+    const [sStart, sEnd] = layoutByteRange(source.data);
+    const [tStart, tEnd] = layoutByteRange(target.data);
+    const len = Math.min(sEnd - sStart, tEnd - tStart);
+    if (len <= 0 || sStart < 0 || sStart + len > bin.length || tStart < 0 || tStart + len > bin.length) {
+      return;
+    }
+    const oldBytes = bin.slice(tStart, tStart + len);
+    const nextBytes = bin.slice(sStart, sStart + len);
+    onApplyPatches([{ offset: tStart, old: oldBytes, next: nextBytes }], `Copy ${source.title} → ${target.title}`);
+  };
+
+  const handleFixChecksumsClick = () => {
+    if (onFixChecksums) {
+      onFixChecksums();
+      return;
+    }
+    if (onApplyPatches && bin.length > 0) {
+      const res = fixChecksums(bin);
+      if (res.patches.length > 0) {
+        onApplyPatches(res.patches, `Fix ${res.fixedCount} checksum block(s)`);
+      }
+    }
+  };
+
+  const handleScanCodeXRefs = () => {
+    if (!item || bin.length === 0) return;
+    const found = findCodeXRefs(bin, item.data.address, 25);
+    setXrefResults(found);
+    setXrefTargetAddr(item.data.address);
   };
 
   // Detected acronyms + translated title/description
@@ -535,6 +700,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
     };
   }, [gasBoostBar, gasDispL, gasRpm]);
 
+  const preflightBadgeCount =
+    (controlledChecksumSummary?.invalidCount ?? 0) +
+    forgottenTwins.length +
+    (controlledDiagnostics?.filter((d) => d.severity !== 'info').length ?? 0);
+
   // Collapsed vertical rail
   if (isCollapsed) {
     return (
@@ -551,8 +721,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         {(
           [
             ['notes', StickyNote, 'Map & Notes'],
+            ['preflight', ShieldCheck, 'Preflight & Lint'],
             ['physics', Calculator, 'Physics Calculator'],
-            ['properties', Cpu, 'Map Properties'],
+            ['properties', Cpu, 'ECU & Properties'],
           ] as const
         ).map(([tabKey, Icon, tip]) => (
           <button
@@ -562,7 +733,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               setActiveTab(tabKey);
               toggleCollapse();
             }}
-            className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+            className={`relative p-1.5 rounded-md transition-colors cursor-pointer ${
               activeTab === tabKey
                 ? 'bg-[#0a84ff]/20 text-[#0a84ff]'
                 : 'text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200'
@@ -570,6 +741,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             title={tip}
           >
             <Icon className="w-3.5 h-3.5" />
+            {tabKey === 'preflight' && preflightBadgeCount > 0 && (
+              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-400" />
+            )}
           </button>
         ))}
       </aside>
@@ -577,15 +751,16 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   }
 
   return (
-    <aside className="w-64 shrink-0 h-full bg-[#121317] border-l border-white/[0.065] flex flex-col text-zinc-100 overflow-hidden">
+    <aside className="w-72 shrink-0 h-full bg-[#121317] border-l border-white/[0.065] flex flex-col text-zinc-100 overflow-hidden">
       {/* Top Tab Strip + Collapse */}
-      <div className="shrink-0 flex items-center gap-1 px-2.5 py-2 border-b border-white/[0.065] bg-[#15161b]">
-        <div className="flex-1 grid grid-cols-3 gap-0.5 rounded-lg bg-white/[0.045] p-0.5">
+      <div className="shrink-0 flex items-center gap-1 px-2 py-2 border-b border-white/[0.065] bg-[#15161b]">
+        <div className="flex-1 grid grid-cols-4 gap-0.5 rounded-lg bg-white/[0.045] p-0.5">
           {(
             [
               ['notes', 'Map', StickyNote],
-              ['physics', 'Physics', Calculator],
-              ['properties', 'Props', Cpu],
+              ['preflight', 'Check', ShieldCheck],
+              ['physics', 'Calc', Calculator],
+              ['properties', 'ECU', Cpu],
             ] as const
           ).map(([key, label, Icon]) => {
             const active = activeTab === key;
@@ -594,7 +769,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 key={key}
                 type="button"
                 onClick={() => setActiveTab(key)}
-                className={`inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-md text-[10.5px] font-medium transition-all cursor-pointer ${
+                className={`relative inline-flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[10px] font-medium transition-all cursor-pointer ${
                   active
                     ? 'bg-[#0a84ff] text-white shadow-[0_1px_6px_rgba(10,132,255,0.35)]'
                     : 'text-zinc-400 hover:text-zinc-200'
@@ -602,6 +777,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               >
                 <Icon className="w-3 h-3 shrink-0" />
                 <span className="truncate">{label}</span>
+                {key === 'preflight' && preflightBadgeCount > 0 && !active && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                )}
               </button>
             );
           })}
@@ -621,11 +799,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         {/* TAB 1: MAP & NOTES */}
         {activeTab === 'notes' && (
           <>
-            {/* Map Lock & Quick Actions */}
+            {/* Map Lock, Pin & Quick Actions */}
             <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                  Protection &amp; Units
+                  Protection &amp; Workspace
                 </span>
                 <kbd className="text-[10px] font-mono text-zinc-500">⌘L</kbd>
               </div>
@@ -658,6 +836,65 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   {isLocked ? 'ON' : 'OFF'}
                 </span>
               </button>
+
+              {/* Pin for Split Button */}
+              {onTogglePin && (
+                <button
+                  type="button"
+                  disabled={!item}
+                  onClick={onTogglePin}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    !item
+                      ? 'bg-white/[0.02] border-white/[0.05] text-zinc-600 cursor-not-allowed'
+                      : isPinned
+                        ? 'bg-[#0a84ff]/15 border-[#0a84ff]/35 text-sky-300 hover:bg-[#0a84ff]/25 cursor-pointer'
+                        : 'bg-white/[0.04] border-white/[0.065] text-zinc-300 hover:bg-white/[0.08] cursor-pointer'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Pin className="w-3.5 h-3.5" />
+                    {isPinned ? 'Pinned for Split' : 'Pin for Split'}
+                  </span>
+                  <span className="text-[10px] font-mono opacity-75">
+                    {isPinned ? 'PINNED' : 'OFF'}
+                  </span>
+                </button>
+              )}
+
+              {/* Sync-Block Twin Pill */}
+              {activeSyncGroup && (
+                <div className="rounded-lg bg-sky-500/10 border border-sky-500/25 p-2 space-y-1.5">
+                  <div className="flex items-center justify-between text-[10.5px]">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-sky-300">
+                      <Link2 className="w-3 h-3" />
+                      Sync-Block ({activeSyncGroup.itemIds.length} twins)
+                    </span>
+                    <span className="font-mono text-[10px] text-sky-200/80">
+                      {Math.round(activeSyncGroup.similarity * 100)}%
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {activeSyncGroup.itemIds
+                      .filter((id) => id !== item?.id)
+                      .slice(0, 4)
+                      .map((id) => {
+                        const twin = itemById.get(id);
+                        if (!twin) return null;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => onSelectMap?.(id)}
+                            className="px-1.5 py-0.5 rounded bg-white/[0.07] hover:bg-white/[0.14] text-[10px] text-zinc-200 truncate max-w-full cursor-pointer"
+                            title={`Jump to twin ${twin.title}`}
+                          >
+                            {twin.title}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
 
               {/* Metric <-> Imperial Unit Toggle */}
               <div className="space-y-1.5 pt-1 border-t border-white/[0.06]">
@@ -713,6 +950,65 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               </div>
             </section>
 
+            {/* Code XREFs Disassembly Lookup */}
+            <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                  <Search className="w-3 h-3 text-[#0a84ff]" />
+                  Code XREFs
+                </span>
+                {xrefTargetAddr !== null && (
+                  <span className="text-[10px] font-mono text-zinc-500">
+                    {xrefResults?.length ?? 0} hits
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                disabled={!item || bin.length === 0}
+                onClick={handleScanCodeXRefs}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.05] hover:bg-white/[0.1] disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 transition-colors cursor-pointer"
+              >
+                <Search className="w-3.5 h-3.5 text-[#0a84ff]" />
+                Find Code XREFs
+              </button>
+
+              {xrefResults !== null && (
+                xrefResults.length === 0 ? (
+                  <div className="text-[11px] text-zinc-500 text-center py-1">
+                    No code or pointer references found for {hexAddr(xrefTargetAddr ?? 0)}.
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-44 overflow-y-auto pr-0.5">
+                    {xrefResults.map((x) => (
+                      <button
+                        key={`${x.codeAddress}-${x.arch}`}
+                        type="button"
+                        onClick={() => onJumpToHex?.(x.codeAddress)}
+                        className="w-full text-left rounded-lg bg-[#101115] hover:bg-white/[0.07] border border-white/[0.06] px-2 py-1.5 space-y-0.5 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10.5px] font-mono font-semibold text-sky-300">
+                            {hexAddr(x.codeAddress)}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-white/[0.06] text-[9px] font-mono uppercase text-zinc-400">
+                            {x.arch}
+                          </span>
+                        </div>
+                        <div className="text-[10px] font-mono text-zinc-200 truncate" title={x.instruction}>
+                          {x.instruction}
+                        </div>
+                        <div className="text-[9.5px] font-mono text-zinc-500 truncate" title={x.preview}>
+                          {x.preview}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )
+              )}
+            </section>
+
             {/* Bosch / Siemens Acronym & DE/EN Map Translator */}
             <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2.5">
               <div className="flex items-center justify-between">
@@ -760,7 +1056,6 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 <div className="text-[11px] text-zinc-500">Select a map to translate its title.</div>
               )}
 
-              {/* Detected acronyms in current map */}
               {detectedAcronyms.length > 0 && (
                 <div className="space-y-1.5">
                   {detectedAcronyms.map((ac) => (
@@ -843,7 +1138,206 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           </>
         )}
 
-        {/* TAB 2: PHYSICS CALCULATOR */}
+        {/* TAB 2: PREFLIGHT (Checksums + Forgotten Twins + Definition Lint) */}
+        {activeTab === 'preflight' && (
+          <>
+            {/* Checksum Triage Card */}
+            <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                  <ShieldCheck className="w-3 h-3 text-[#0a84ff]" />
+                  Checksum Triage
+                </span>
+                {effectiveChecksumSummary && (
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full text-[9.5px] font-semibold ${
+                      effectiveChecksumSummary.invalidCount === 0
+                        ? 'bg-emerald-500/15 text-emerald-300'
+                        : 'bg-rose-500/15 text-rose-300'
+                    }`}
+                  >
+                    {effectiveChecksumSummary.invalidCount === 0
+                      ? 'ALL OK'
+                      : `${effectiveChecksumSummary.invalidCount} INVALID`}
+                  </span>
+                )}
+              </div>
+
+              {effectiveChecksumSummary ? (
+                <>
+                  <div className="rounded-lg bg-[#101115] border border-white/[0.06] p-2.5 space-y-1">
+                    {effectiveChecksumSummary.pluginName && (
+                      <div className="text-[11px] font-medium text-zinc-200 truncate">
+                        {effectiveChecksumSummary.pluginName}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-[10.5px] font-mono">
+                      <span className="text-emerald-400">
+                        {effectiveChecksumSummary.validCount} valid
+                      </span>
+                      <span
+                        className={
+                          effectiveChecksumSummary.invalidCount > 0
+                            ? 'text-rose-400 font-semibold'
+                            : 'text-zinc-500'
+                        }
+                      >
+                        {effectiveChecksumSummary.invalidCount} invalid
+                      </span>
+                    </div>
+                  </div>
+
+                  {effectiveChecksumSummary.invalidCount > 0 &&
+                    (onFixChecksums || onApplyPatches) && (
+                      <button
+                        type="button"
+                        onClick={handleFixChecksumsClick}
+                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#0a84ff] hover:bg-[#1e8fff] text-white shadow-[0_1px_8px_rgba(10,132,255,0.35)] transition-colors cursor-pointer"
+                      >
+                        <Wrench className="w-3.5 h-3.5" />
+                        Fix Checksums
+                      </button>
+                    )}
+                </>
+              ) : (
+                <div className="text-[11px] text-zinc-500">Load a BIN to verify checksums.</div>
+              )}
+            </section>
+
+            {/* Forgotten Twins Card */}
+            <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                  <Copy className="w-3 h-3 text-amber-400" />
+                  Forgotten Twins
+                </span>
+                <span className="text-[10px] font-mono text-zinc-500">
+                  {forgottenTwins.length}
+                </span>
+              </div>
+
+              {forgottenTwins.length === 0 ? (
+                <div className="rounded-lg bg-[#101115] border border-white/[0.06] px-2.5 py-2 flex items-center gap-2 text-[11px] text-emerald-300/90">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>No untouched twin maps detected.</span>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {forgottenTwins.map(({ source, target, similarity }) => (
+                    <div
+                      key={`${source.id}-${target.id}`}
+                      className="rounded-lg bg-amber-500/10 border border-amber-500/25 p-2 space-y-1.5"
+                    >
+                      <div className="flex items-start justify-between gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onSelectMap?.(target.id)}
+                          className="text-left text-[11px] font-semibold text-amber-200 hover:underline leading-tight cursor-pointer"
+                        >
+                          {target.title}
+                        </button>
+                        <span className="text-[9.5px] font-mono text-amber-300/80 shrink-0">
+                          {Math.round(similarity * 100)}%
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-zinc-400 leading-snug">
+                        Twin of <span className="text-zinc-200">{source.title}</span> is unmodified.
+                      </div>
+                      {onApplyPatches && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyToTwin(source, target)}
+                          className="w-full inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-medium bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 transition-colors cursor-pointer"
+                        >
+                          <Copy className="w-3 h-3" />
+                          Copy to Twin
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Definition Lint Card */}
+            <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                  <AlertTriangle className="w-3 h-3 text-amber-400" />
+                  Definition Lint
+                </span>
+                <span className="text-[10px] font-mono text-zinc-500">
+                  {effectiveDiagnostics.length}
+                </span>
+              </div>
+
+              {effectiveDiagnostics.length === 0 ? (
+                <div className="rounded-lg bg-[#101115] border border-white/[0.06] px-2.5 py-2 flex items-center gap-2 text-[11px] text-emerald-300/90">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>All XDF definitions pass lint checks.</span>
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-0.5">
+                  {effectiveDiagnostics.slice(0, 30).map((f) => (
+                    <div
+                      key={f.id}
+                      className={`rounded-lg border p-2 space-y-1 ${
+                        f.severity === 'error'
+                          ? 'bg-rose-500/10 border-rose-500/25'
+                          : f.severity === 'warning'
+                            ? 'bg-amber-500/10 border-amber-500/25'
+                            : 'bg-white/[0.03] border-white/[0.065]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span
+                          className={`text-[9.5px] font-semibold uppercase tracking-wider ${
+                            f.severity === 'error'
+                              ? 'text-rose-300'
+                              : f.severity === 'warning'
+                                ? 'text-amber-300'
+                                : 'text-sky-300'
+                          }`}
+                        >
+                          {f.category}
+                        </span>
+                        {f.address !== undefined && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              f.itemId !== undefined && onSelectMap
+                                ? onSelectMap(f.itemId)
+                                : onJumpToHex?.(f.address!)
+                            }
+                            className="text-[9.5px] font-mono text-zinc-400 hover:text-white cursor-pointer"
+                          >
+                            {hexAddr(f.address)}
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-[11px] font-medium text-zinc-100 leading-snug">
+                        {f.title}
+                      </div>
+                      <div className="text-[10px] text-zinc-400 leading-relaxed">{f.detail}</div>
+                      {onAutoFixDiagnostic && (
+                        <button
+                          type="button"
+                          onClick={() => onAutoFixDiagnostic(f)}
+                          className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/[0.08] hover:bg-white/[0.15] text-[10px] font-medium text-zinc-100 transition-colors cursor-pointer"
+                        >
+                          <Wrench className="w-2.5 h-2.5 text-[#0a84ff]" />
+                          Auto-Fix
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+
+        {/* TAB 3: PHYSICS CALCULATOR */}
         {activeTab === 'physics' && (
           <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-3">
             <div className="flex items-center justify-between">
@@ -854,7 +1348,6 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <span className="text-[9.5px] font-mono text-zinc-500 uppercase">{unitSystem}</span>
             </div>
 
-            {/* Diesel / Gasoline segmented switch */}
             <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-white/[0.05] p-0.5">
               <button
                 type="button"
@@ -882,7 +1375,6 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
             {fuelMode === 'diesel' ? (
               <div className="space-y-3">
-                {/* Sliders */}
                 <CalcSlider
                   label="Air Mass (MAF)"
                   value={dieselAirMg}
@@ -912,7 +1404,6 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   onChange={setDieselRpm}
                 />
 
-                {/* Smoke Limit Indicator */}
                 <div
                   className={`rounded-lg border px-2.5 py-2 flex items-center justify-between text-[11px] font-semibold ${
                     dieselCalc.smokeStatus === 'clean'
@@ -935,7 +1426,6 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   </span>
                 </div>
 
-                {/* Output Readouts */}
                 <div className="rounded-lg bg-[#101115] border border-white/[0.06] p-2.5 space-y-1.5">
                   <KvRow label="Lambda (λ)" value={dieselCalc.lambda.toFixed(3)} mono highlight />
                   <KvRow label="AFR (Diesel 14.5:1)" value={`${dieselCalc.afr.toFixed(1)} : 1`} mono />
@@ -991,7 +1481,6 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   onChange={setGasRpm}
                 />
 
-                {/* Output Readouts */}
                 <div className="rounded-lg bg-[#101115] border border-white/[0.06] p-2.5 space-y-1.5">
                   <KvRow
                     label="Gauge Boost"
@@ -1033,9 +1522,77 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           </section>
         )}
 
-        {/* TAB 3: PROPERTIES */}
+        {/* TAB 4: ECU & PROPERTIES */}
         {activeTab === 'properties' && (
           <>
+            {/* ECU Identity Summary Card */}
+            <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                  <Cpu className="w-3 h-3 text-[#0a84ff]" />
+                  ECU Identity
+                </span>
+                {ecuIdentity.hasTPROT && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-[9.5px] font-mono font-semibold text-amber-300">
+                    <ShieldAlert className="w-2.5 h-2.5" />
+                    TPROT
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <KvRow label="Family" value={ecuIdentity.ecuFamily} highlight />
+                <KvRow label="HW Number" value={ecuIdentity.hardwareNumber} mono />
+                <KvRow label="SW Number" value={ecuIdentity.softwareNumber} mono />
+                {ecuIdentity.oemPartNumber && (
+                  <KvRow label="OEM / EPK" value={ecuIdentity.oemPartNumber} mono />
+                )}
+                <KvRow
+                  label="Arch"
+                  value={`${ecuIdentity.architecture} (${ecuIdentity.endianness})`}
+                  mono
+                />
+                <KvRow label="Binary Size" value={`${ecuIdentity.fileSizeKB} KB`} mono />
+              </div>
+            </section>
+
+            {/* Open BINs Quick-Switcher */}
+            {openBins && openBins.length > 0 && (
+              <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                    <HardDrive className="w-3 h-3 text-[#0a84ff]" />
+                    Open BINs
+                  </span>
+                  <span className="text-[10px] font-mono text-zinc-500">{openBins.length}</span>
+                </div>
+                <div className="space-y-1">
+                  {openBins.map((b) => {
+                    const active = b.id === activeBinId;
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => onSelectOpenBin?.(b.id)}
+                        className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[11px] border transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-[#0a84ff]/15 border-[#0a84ff]/40 text-sky-200 font-medium'
+                            : 'bg-[#101115] border-white/[0.05] text-zinc-300 hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        <span className="truncate">{b.name}</span>
+                        <span className="flex items-center gap-1.5 shrink-0 font-mono text-[10px] text-zinc-500">
+                          {b.modified && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title="Modified" />
+                          )}
+                          {b.size !== undefined ? `${Math.round(b.size / 1024)}K` : ''}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
             {!item || !mapMetrics ? (
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-5 text-center text-xs text-zinc-500">
                 Select a map in the workspace to inspect its binary layout and diff summary.

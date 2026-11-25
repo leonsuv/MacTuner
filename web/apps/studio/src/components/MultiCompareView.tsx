@@ -1,10 +1,12 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  ArrowRightLeft,
   ArrowUpRight,
   Binary,
   CheckCircle2,
   FileDiff,
   FilePlus2,
+  History,
   Layers,
   Plus,
   Search,
@@ -29,6 +31,7 @@ import {
   scalingValue,
   type DataLayout,
   type Scaling,
+  type Snapshot,
   type XDFDefinition,
   type XDFItem,
 } from '@mactuner/core';
@@ -39,9 +42,19 @@ export interface MultiCompareViewProps {
   compareBin?: Uint8Array | null;
   compareName?: string;
   xdf?: XDFDefinition | null;
+  snapshots?: Snapshot[];
   onSelectMap?: (itemId: number) => void;
   onJumpToHex?: (address: number) => void;
   onAddExtraBin?: (fileName: string, bytes: Uint8Array) => void;
+  onOpenPairInHex?: (
+    baseBytes: Uint8Array,
+    compareBytes: Uint8Array,
+    address: number,
+    baseName: string,
+    compareName: string,
+  ) => void;
+  onPortTune?: () => void;
+  onSwitchSection?: (section: string) => void;
 }
 
 type CompareDisplayMode = 'values' | 'delta' | 'percent';
@@ -128,11 +141,16 @@ export const MultiCompareView: React.FC<MultiCompareViewProps> = ({
   compareBin = null,
   compareName = 'Stock Baseline',
   xdf = null,
+  snapshots = [],
   onSelectMap,
   onJumpToHex,
   onAddExtraBin,
+  onOpenPairInHex,
+  onPortTune,
+  onSwitchSection,
 }) => {
   const [extraSlots, setExtraSlots] = useState<ExtraSlot[]>([]);
+  const [snapshotMenuOpen, setSnapshotMenuOpen] = useState<boolean>(false);
   const [baselineId, setBaselineId] = useState<string>(compareBin ? 'compare' : 'active');
   const [mode, setMode] = useState<CompareDisplayMode>('values');
   const [onlyChanged, setOnlyChanged] = useState<boolean>(true);
@@ -453,6 +471,59 @@ export const MultiCompareView: React.FC<MultiCompareViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {snapshots.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setSnapshotMenuOpen((v) => !v)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
+                >
+                  <History className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Add Snapshot</span>
+                </button>
+                {snapshotMenuOpen && (
+                  <div className="absolute right-0 mt-1.5 w-60 rounded-xl bg-[#17181d] border border-white/[0.1] shadow-2xl z-30 py-1 overflow-hidden">
+                    {snapshots.map((snap) => (
+                      <button
+                        key={snap.id}
+                        type="button"
+                        onClick={() => {
+                          setExtraSlots((prev) => [
+                            ...prev,
+                            {
+                              id: `snap-slot-${snap.id}-${Date.now()}`,
+                              name: snap.name,
+                              bytes: snap.bytes.slice(),
+                            },
+                          ]);
+                          setSnapshotMenuOpen(false);
+                          setNotice(`Added snapshot "${snap.name}" to multi-compare.`);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-white/[0.06] text-xs text-zinc-200 flex items-center justify-between gap-2 cursor-pointer"
+                      >
+                        <span className="truncate">{snap.name}</span>
+                        <span className="font-mono text-[10px] text-zinc-500 shrink-0">
+                          {Math.round(snap.bytes.length / 1024)} KB
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (onPortTune) onPortTune();
+                else if (onSwitchSection) onSwitchSection('discovery');
+                else setNotice('Open Discovery → Tune Porting to transfer deltas across versions.');
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
+              title="Port tune deltas to another software version"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5 text-[#5ac8fa]" />
+              <span>Port Tune</span>
+            </button>
             <button
               type="button"
               onClick={handleAddSimulatedStage2}
@@ -943,13 +1014,34 @@ export const MultiCompareView: React.FC<MultiCompareViewProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/[0.045]">
-                    {rawClusters.slice(0, 200).map((cl) => (
+                    {rawClusters.slice(0, 200).map((cl) => {
+                      const diffSlot =
+                        slots.find(
+                          (s, idx) =>
+                            idx !== baseIdx &&
+                            baseSlot &&
+                            s.bytes[cl.start] !== baseSlot.bytes[cl.start],
+                        ) ?? slots.find((_, idx) => idx !== baseIdx);
+                      const handleClusterClick = () => {
+                        if (onOpenPairInHex && baseSlot && diffSlot) {
+                          onOpenPairInHex(
+                            baseSlot.bytes,
+                            diffSlot.bytes,
+                            cl.start,
+                            baseSlot.name,
+                            diffSlot.name,
+                          );
+                        } else {
+                          onJumpToHex?.(cl.start);
+                        }
+                      };
+                      return (
                       <tr key={cl.start} className="hover:bg-white/[0.03]">
                         <td className="py-2 px-3.5 whitespace-nowrap">
-                          {onJumpToHex ? (
+                          {onOpenPairInHex || onJumpToHex ? (
                             <button
                               type="button"
-                              onClick={() => onJumpToHex(cl.start)}
+                              onClick={handleClusterClick}
                               className="text-[#5ac8fa] hover:underline cursor-pointer"
                             >
                               {formatHexAddr(cl.start)}–{formatHexAddr(cl.end - 1)}
@@ -983,7 +1075,8 @@ export const MultiCompareView: React.FC<MultiCompareViewProps> = ({
                           );
                         })}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

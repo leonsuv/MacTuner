@@ -2,16 +2,20 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
   Cpu,
+  Download,
   Eye,
   FilePlus2,
+  FolderPlus,
   FunctionSquare,
   Grid3X3,
   Hash,
+  Plus,
   SlidersHorizontal,
   Tag,
   ToggleLeft,
   Trash2,
   TriangleAlert,
+  Wrench,
   X,
 } from 'lucide-react';
 import {
@@ -23,6 +27,7 @@ import {
   Scaling,
   XDFItem,
   XDFItemKind,
+  XdfPatchEntry,
   createScaling,
   elementBytes,
   scalingDisplay,
@@ -36,12 +41,26 @@ export interface XdfEditorModalProps {
   bin: Uint8Array;
   categories: Record<number, string>;
   onSave: (updatedItem: XDFItem) => void;
-  onCreateNew?: () => void;
+  onCreateNew?: (item?: XDFItem) => void;
   onDelete?: (id: number) => void;
   onClose: () => void;
+  /** Optional pre-populated draft when creating a new item from Hex Selection, Potential Map, etc. */
+  initialDraft?: Partial<XDFItem> | null;
+  /** Optional category map alias */
+  xdfCategories?: Record<number, string>;
+  /** Optional callback to persist a newly added category */
+  onAddCategory?: (name: string) => number | void;
 }
 
-type EditorKind = 'table' | 'constant' | 'flag';
+type EditorKind = 'table' | 'constant' | 'flag' | 'patch';
+
+interface PatchEntryDraft {
+  id: string;
+  name: string;
+  addressText: string;
+  baseHex: string;
+  patchHex: string;
+}
 
 interface ScalingPreset {
   label: string;
@@ -109,6 +128,44 @@ function formatHex(addr: number): string {
   return `0x${Math.max(0, Math.floor(addr)).toString(16).toUpperCase()}`;
 }
 
+function bytesToHexStr(bytes: number[]): string {
+  return bytes.map((b) => (b & 0xff).toString(16).toUpperCase().padStart(2, '0')).join(' ');
+}
+
+function parseHexBytes(text: string): number[] | null {
+  const cleaned = text.replace(/0x/gi, '').replace(/[^0-9a-fA-F\s,]/g, '').trim();
+  if (!cleaned) return [];
+  const tokens = cleaned.split(/[\s,]+/).filter(Boolean);
+  const out: number[] = [];
+  for (const tok of tokens) {
+    if (tok.length <= 2) {
+      const v = parseInt(tok, 16);
+      if (!Number.isFinite(v)) return null;
+      out.push(v & 0xff);
+    } else if (tok.length % 2 === 0) {
+      for (let i = 0; i < tok.length; i += 2) {
+        const v = parseInt(tok.slice(i, i + 2), 16);
+        if (!Number.isFinite(v)) return null;
+        out.push(v & 0xff);
+      }
+    } else {
+      return null;
+    }
+  }
+  return out;
+}
+
+let draftSeq = 1;
+function makeEmptyPatchDraft(address = 0): PatchEntryDraft {
+  return {
+    id: `pe-${draftSeq++}`,
+    name: '',
+    addressText: formatHex(address),
+    baseHex: '',
+    patchHex: '90 90',
+  };
+}
+
 export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
   open,
   item,
@@ -118,11 +175,17 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
   onCreateNew,
   onDelete,
   onClose,
+  initialDraft = null,
+  xdfCategories,
+  onAddCategory,
 }) => {
   const [kind, setKind] = useState<EditorKind>('table');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState<number>(-1);
+  const [extraCategories, setExtraCategories] = useState<Record<number, string>>({});
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   // Data layout
   const [addressText, setAddressText] = useState('0x0');
@@ -160,114 +223,177 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
   const [flagMaskText, setFlagMaskText] = useState<string>('0x01');
   const [flagInvert, setFlagInvert] = useState<boolean>(false);
 
+  // Patch (XDFPATCH)
+  const [patchDrafts, setPatchDrafts] = useState<PatchEntryDraft[]>([makeEmptyPatchDraft(0)]);
+
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Sync form state whenever modal opens or item changes
+  const mergedCategories = useMemo(
+    () => ({
+      ...(xdfCategories ?? categories),
+      ...extraCategories,
+    }),
+    [xdfCategories, categories, extraCategories],
+  );
+
+  const resetToBlank = () => {
+    setKind('table');
+    setTitle('New Map');
+    setDescription('');
+    setCategoryId(-1);
+    setAddressText('0x0');
+    setBits(16);
+    setSigned(false);
+    setLsbFirst(true);
+    setColumnMajor(false);
+    setIsFloat(false);
+    setRows(8);
+    setCols(8);
+    setEquation('X');
+    setUnits('');
+    setDecimals(1);
+    setOutputType(1);
+    setXAddrText('');
+    setXBits(16);
+    setXSigned(false);
+    setXIsFloat(false);
+    setXEq('X');
+    setXUnits('');
+    setYAddrText('');
+    setYBits(16);
+    setYSigned(false);
+    setYIsFloat(false);
+    setYEq('X');
+    setYUnits('');
+    setFlagMaskText('0x01');
+    setFlagInvert(false);
+    setPatchDrafts([makeEmptyPatchDraft(0)]);
+  };
+
+  // Sync form state whenever modal opens or item/initialDraft changes
   useEffect(() => {
     if (!open) return;
-    if (item) {
-      setTitle(item.title);
-      setDescription(item.description);
-      setCategoryId(item.categories[0] ?? -1);
-      setAddressText(formatHex(item.data.address));
-      setBits(item.data.bits === 8 || item.data.bits === 16 || item.data.bits === 32 ? item.data.bits : 16);
-      setSigned(item.data.signed);
-      setLsbFirst(item.data.lsbFirst);
-      setColumnMajor(item.data.columnMajor);
-      setIsFloat(item.data.isFloat);
-      setRows(Math.max(1, item.data.rows));
-      setCols(Math.max(1, item.data.cols));
-      setEquation(item.scaling.equation || 'X');
-      setUnits(item.scaling.units || '');
-      setDecimals(Math.max(0, Math.min(6, item.scaling.decimals)));
-      setOutputType(item.scaling.output);
+    setAddingCategory(false);
+    setNewCategoryName('');
 
-      if (item.itemKind.kind === 'table') {
+    const source: Partial<XDFItem> | null = item ?? initialDraft ?? null;
+
+    if (source) {
+      setTitle(source.title ?? 'New Map');
+      setDescription(source.description ?? '');
+      setCategoryId(source.categories?.[0] ?? -1);
+      const d = source.data;
+      setAddressText(formatHex(d?.address ?? 0));
+      setBits(d && (d.bits === 8 || d.bits === 16 || d.bits === 32) ? d.bits : 16);
+      setSigned(d?.signed ?? false);
+      setLsbFirst(d?.lsbFirst ?? true);
+      setColumnMajor(d?.columnMajor ?? false);
+      setIsFloat(d?.isFloat ?? false);
+      setRows(Math.max(1, d?.rows ?? 8));
+      setCols(Math.max(1, d?.cols ?? 8));
+
+      const sc = source.scaling;
+      setEquation(sc?.equation || 'X');
+      setUnits(sc?.units || '');
+      setDecimals(Math.max(0, Math.min(6, sc?.decimals ?? 1)));
+      setOutputType(sc?.output ?? 1);
+
+      const ik = source.itemKind;
+      if (!ik || ik.kind === 'table') {
         setKind('table');
-        const { x, y } = item.itemKind;
-        if (x.source.kind === 'data') {
-          setXAddrText(formatHex(x.source.layout.address));
-          setXBits(x.source.layout.bits);
-          setXSigned(x.source.layout.signed);
-          setXIsFloat(x.source.layout.isFloat);
+        if (ik && ik.kind === 'table') {
+          const { x, y } = ik;
+          if (x.source.kind === 'data') {
+            setXAddrText(formatHex(x.source.layout.address));
+            setXBits(x.source.layout.bits);
+            setXSigned(x.source.layout.signed);
+            setXIsFloat(x.source.layout.isFloat);
+          } else {
+            setXAddrText('');
+            setXBits(16);
+            setXSigned(false);
+            setXIsFloat(false);
+          }
+          setXEq(x.scaling.equation || 'X');
+          setXUnits(x.scaling.units || '');
+
+          if (y.source.kind === 'data') {
+            setYAddrText(formatHex(y.source.layout.address));
+            setYBits(y.source.layout.bits);
+            setYSigned(y.source.layout.signed);
+            setYIsFloat(y.source.layout.isFloat);
+          } else {
+            setYAddrText('');
+            setYBits(16);
+            setYSigned(false);
+            setYIsFloat(false);
+          }
+          setYEq(y.scaling.equation || 'X');
+          setYUnits(y.scaling.units || '');
         } else {
           setXAddrText('');
           setXBits(16);
           setXSigned(false);
           setXIsFloat(false);
-        }
-        setXEq(x.scaling.equation || 'X');
-        setXUnits(x.scaling.units || '');
-
-        if (y.source.kind === 'data') {
-          setYAddrText(formatHex(y.source.layout.address));
-          setYBits(y.source.layout.bits);
-          setYSigned(y.source.layout.signed);
-          setYIsFloat(y.source.layout.isFloat);
-        } else {
+          setXEq('X');
+          setXUnits('');
           setYAddrText('');
           setYBits(16);
           setYSigned(false);
           setYIsFloat(false);
+          setYEq('X');
+          setYUnits('');
         }
-        setYEq(y.scaling.equation || 'X');
-        setYUnits(y.scaling.units || '');
         setFlagMaskText('0x01');
         setFlagInvert(false);
-      } else if (item.itemKind.kind === 'constant') {
+        setPatchDrafts([makeEmptyPatchDraft(d?.address ?? 0)]);
+      } else if (ik.kind === 'constant') {
         setKind('constant');
         setXAddrText('');
         setYAddrText('');
-      } else {
+        setFlagMaskText('0x01');
+        setFlagInvert(false);
+        setPatchDrafts([makeEmptyPatchDraft(d?.address ?? 0)]);
+      } else if (ik.kind === 'flag') {
         setKind('flag');
-        setFlagMaskText(formatHex(item.itemKind.mask));
-        setFlagInvert(item.itemKind.invert);
+        setFlagMaskText(formatHex(ik.mask));
+        setFlagInvert(ik.invert);
         setXAddrText('');
         setYAddrText('');
+        setPatchDrafts([makeEmptyPatchDraft(d?.address ?? 0)]);
+      } else if (ik.kind === 'patch') {
+        setKind('patch');
+        setXAddrText('');
+        setYAddrText('');
+        const entries = source.patchEntries ?? ik.entries ?? [];
+        if (entries.length > 0) {
+          setPatchDrafts(
+            entries.map((e, idx) => ({
+              id: `pe-${draftSeq++}-${idx}`,
+              name: e.name ?? '',
+              addressText: formatHex(e.address),
+              baseHex: bytesToHexStr(e.baseBytes),
+              patchHex: bytesToHexStr(e.patchBytes),
+            })),
+          );
+        } else {
+          setPatchDrafts([makeEmptyPatchDraft(d?.address ?? 0)]);
+        }
       }
     } else {
-      setKind('table');
-      setTitle('New Map');
-      setDescription('');
-      setCategoryId(-1);
-      setAddressText('0x0');
-      setBits(16);
-      setSigned(false);
-      setLsbFirst(true);
-      setColumnMajor(false);
-      setIsFloat(false);
-      setRows(8);
-      setCols(8);
-      setEquation('X');
-      setUnits('');
-      setDecimals(1);
-      setOutputType(1);
-      setXAddrText('');
-      setXBits(16);
-      setXSigned(false);
-      setXIsFloat(false);
-      setXEq('X');
-      setXUnits('');
-      setYAddrText('');
-      setYBits(16);
-      setYSigned(false);
-      setYIsFloat(false);
-      setYEq('X');
-      setYUnits('');
-      setFlagMaskText('0x01');
-      setFlagInvert(false);
+      resetToBlank();
     }
-  }, [open, item]);
+  }, [open, item, initialDraft]);
 
   // Close on Escape
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !addingCategory) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, onClose, addingCategory]);
 
   const parsedAddress = useMemo(() => parseHexOrDec(addressText), [addressText]);
   const parsedFlagMask = useMemo(() => parseHexOrDec(flagMaskText) ?? 1, [flagMaskText]);
@@ -276,7 +402,45 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
     return Expr.parse(eq) !== null;
   }, [equation]);
 
+  // Parse patch entries
+  const parsedPatchEntries = useMemo(() => {
+    if (kind !== 'patch') return { entries: [] as XdfPatchEntry[], valid: true };
+    const entries: XdfPatchEntry[] = [];
+    for (const d of patchDrafts) {
+      const addr = parseHexOrDec(d.addressText);
+      const pBytes = parseHexBytes(d.patchHex);
+      const bBytes = parseHexBytes(d.baseHex);
+      if (addr === null || pBytes === null || bBytes === null || pBytes.length === 0) {
+        return { entries: [], valid: false };
+      }
+      entries.push({
+        address: addr,
+        patchBytes: pBytes,
+        baseBytes: bBytes.length === pBytes.length ? bBytes : bBytes,
+        ...(d.name.trim() ? { name: d.name.trim() } : {}),
+      });
+    }
+    return { entries, valid: entries.length > 0 };
+  }, [kind, patchDrafts]);
+
   const activeLayout: DataLayout | null = useMemo(() => {
+    if (kind === 'patch') {
+      const firstAddr = parsedPatchEntries.entries[0]?.address ?? parsedAddress ?? 0;
+      const totalPatchBytes = parsedPatchEntries.entries.reduce(
+        (acc, e) => acc + e.patchBytes.length,
+        0,
+      );
+      return {
+        address: firstAddr,
+        bits: 8,
+        signed: false,
+        lsbFirst: true,
+        columnMajor: false,
+        isFloat: false,
+        rows: 1,
+        cols: Math.max(1, totalPatchBytes),
+      };
+    }
     if (parsedAddress === null) return null;
     const safeRows = kind === 'table' ? Math.max(1, Math.min(256, Math.floor(rows) || 1)) : 1;
     const safeCols = kind === 'table' ? Math.max(1, Math.min(256, Math.floor(cols) || 1)) : 1;
@@ -290,7 +454,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
       rows: safeRows,
       cols: safeCols,
     };
-  }, [parsedAddress, kind, rows, cols, bits, signed, lsbFirst, columnMajor, isFloat]);
+  }, [parsedAddress, parsedPatchEntries, kind, rows, cols, bits, signed, lsbFirst, columnMajor, isFloat]);
 
   const activeScaling: Scaling = useMemo(() => {
     const cleanEq = equation.trim() || 'X';
@@ -298,14 +462,61 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
   }, [equation, units, decimals, outputType]);
 
   const byteCount = useMemo(() => {
+    if (kind === 'patch') {
+      return parsedPatchEntries.entries.reduce((sum, e) => sum + e.patchBytes.length, 0);
+    }
     if (!activeLayout) return 0;
     return activeLayout.rows * activeLayout.cols * elementBytes(activeLayout);
-  }, [activeLayout]);
+  }, [kind, parsedPatchEntries, activeLayout]);
 
-  const isOutOfBounds = activeLayout !== null && activeLayout.address + byteCount > bin.length;
+  const isOutOfBounds = useMemo(() => {
+    if (kind === 'patch') {
+      return parsedPatchEntries.entries.some(
+        (e) => e.address < 0 || e.address + e.patchBytes.length > bin.length,
+      );
+    }
+    return activeLayout !== null && activeLayout.address + byteCount > bin.length;
+  }, [kind, parsedPatchEntries, activeLayout, byteCount, bin.length]);
 
   // Compute live preview stats & mini matrix
   const preview = useMemo(() => {
+    if (kind === 'patch') {
+      if (!parsedPatchEntries.valid || bin.length === 0) return null;
+      const items = parsedPatchEntries.entries.map((entry, idx) => {
+        const inRange = entry.address >= 0 && entry.address + entry.patchBytes.length <= bin.length;
+        const currentBytes = inRange
+          ? Array.from(bin.slice(entry.address, entry.address + entry.patchBytes.length))
+          : [];
+        const matchesPatch =
+          inRange &&
+          currentBytes.length === entry.patchBytes.length &&
+          currentBytes.every((b, i) => b === entry.patchBytes[i]);
+        const matchesBase =
+          inRange &&
+          entry.baseBytes.length === currentBytes.length &&
+          currentBytes.every((b, i) => b === entry.baseBytes[i]);
+        const status: 'applied' | 'base' | 'custom' | 'oob' = !inRange
+          ? 'oob'
+          : matchesPatch
+            ? 'applied'
+            : matchesBase
+              ? 'base'
+              : 'custom';
+        return {
+          idx,
+          entry,
+          currentBytes,
+          status,
+        };
+      });
+      return {
+        kind: 'patch' as const,
+        items,
+        totalBytes: items.reduce((s, it) => s + it.entry.patchBytes.length, 0),
+        appliedCount: items.filter((it) => it.status === 'applied').length,
+      };
+    }
+
     if (!activeLayout || bin.length === 0 || activeLayout.address >= bin.length) {
       return null;
     }
@@ -436,6 +647,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
     yUnits,
     parsedFlagMask,
     flagInvert,
+    parsedPatchEntries,
   ]);
 
   // Paint crisp jewel-tile 2D Mini-Heatmap or 1D Sparkline preview on canvas
@@ -468,7 +680,6 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
         y: H - pad - ((v - min) / span) * (H - pad * 2),
       }));
 
-      // Area fill
       const grad = ctx.createLinearGradient(0, pad, 0, H - pad);
       grad.addColorStop(0, 'rgba(10, 132, 255, 0.35)');
       grad.addColorStop(1, 'rgba(10, 132, 255, 0)');
@@ -481,7 +692,6 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
       ctx.fillStyle = grad;
       ctx.fill();
 
-      // Stroke
       ctx.beginPath();
       ctx.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
@@ -489,7 +699,6 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Nodes
       ctx.fillStyle = '#ffffff';
       for (const p of pts) {
         ctx.beginPath();
@@ -499,7 +708,6 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
       return;
     }
 
-    // Jewel-tile 2D Mini-Heatmap
     ctx.fillStyle = '#0c0d10';
     ctx.fillRect(0, 0, W, H);
     const gap = maxC <= 16 && maxR <= 16 ? 1.5 : 0.75;
@@ -536,6 +744,22 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
     setOutputType(1);
   };
 
+  const handleConfirmAddCategory = () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) {
+      setAddingCategory(false);
+      return;
+    }
+    const existingIds = Object.keys(mergedCategories).map(Number).filter(Number.isFinite);
+    const fallbackId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+    const returned = onAddCategory?.(trimmed);
+    const newId = typeof returned === 'number' && Number.isFinite(returned) ? returned : fallbackId;
+    setExtraCategories((prev) => ({ ...prev, [newId]: trimmed }));
+    setCategoryId(newId);
+    setNewCategoryName('');
+    setAddingCategory(false);
+  };
+
   const buildAxis = (
     addrStr: string,
     axBits: number,
@@ -563,11 +787,16 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
     return { source: { kind: 'none' }, count, scaling: sc };
   };
 
-  const canSave = title.trim().length > 0 && activeLayout !== null && parsedEquationValid;
+  const canSave =
+    title.trim().length > 0 &&
+    activeLayout !== null &&
+    (kind === 'patch' ? parsedPatchEntries.valid : parsedEquationValid);
 
   const handleSave = () => {
     if (!canSave || !activeLayout) return;
     let itemKind: XDFItemKind;
+    let patchEntries: XdfPatchEntry[] | undefined;
+
     if (kind === 'table') {
       itemKind = {
         kind: 'table',
@@ -576,8 +805,11 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
       };
     } else if (kind === 'constant') {
       itemKind = { kind: 'constant' };
-    } else {
+    } else if (kind === 'flag') {
       itemKind = { kind: 'flag', mask: parsedFlagMask >>> 0, invert: flagInvert };
+    } else {
+      patchEntries = parsedPatchEntries.entries;
+      itemKind = { kind: 'patch', entries: patchEntries };
     }
 
     const updated: XDFItem = {
@@ -588,11 +820,30 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
       itemKind,
       data: activeLayout,
       scaling: activeScaling,
+      ...(patchEntries ? { patchEntries } : {}),
     };
-    onSave(updated);
+
+    if (!item && onCreateNew && onCreateNew.length >= 1) {
+      onCreateNew(updated);
+    } else {
+      onSave(updated);
+    }
   };
 
-  const sortedCategoryEntries = Object.entries(categories)
+  const updatePatchDraft = (id: string, patch: Partial<PatchEntryDraft>) => {
+    setPatchDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+  };
+
+  const readBaseFromBin = (draft: PatchEntryDraft) => {
+    const addr = parseHexOrDec(draft.addressText);
+    const pBytes = parseHexBytes(draft.patchHex);
+    if (addr === null || !pBytes || pBytes.length === 0) return;
+    if (addr < 0 || addr + pBytes.length > bin.length) return;
+    const baseSlice = Array.from(bin.slice(addr, addr + pBytes.length));
+    updatePatchDraft(draft.id, { baseHex: bytesToHexStr(baseSlice) });
+  };
+
+  const sortedCategoryEntries = Object.entries(mergedCategories)
     .map(([k, v]) => [Number(k), v] as const)
     .sort((a, b) => a[0] - b[0]);
 
@@ -619,7 +870,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[920px] h-[min(88vh,680px)] flex flex-col rounded-2xl bg-[#121317] border border-white/[0.09] shadow-[0_30px_90px_rgba(0,0,0,0.75)] overflow-hidden text-zinc-100"
+        className="w-full max-w-[940px] h-[min(88vh,690px)] flex flex-col rounded-2xl bg-[#121317] border border-white/[0.09] shadow-[0_30px_90px_rgba(0,0,0,0.75)] overflow-hidden text-zinc-100"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -630,8 +881,10 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 <Grid3X3 className="w-4 h-4" />
               ) : kind === 'constant' ? (
                 <Hash className="w-4 h-4" />
-              ) : (
+              ) : kind === 'flag' ? (
                 <ToggleLeft className="w-4 h-4" />
+              ) : (
+                <Wrench className="w-4 h-4" />
               )}
             </div>
             <div className="min-w-0">
@@ -639,9 +892,11 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 {item ? 'Edit XDF Item' : 'New XDF Item'}
               </div>
               <div className="text-[11px] font-mono tabular-nums text-zinc-400">
-                {parsedAddress !== null && byteCount > 0
-                  ? `${formatHex(parsedAddress)} – ${formatHex(parsedAddress + byteCount - 1)} · ${byteCount} bytes`
-                  : 'Enter a valid start address'}
+                {kind === 'patch'
+                  ? `${parsedPatchEntries.entries.length} patch ${parsedPatchEntries.entries.length === 1 ? 'entry' : 'entries'} · ${byteCount} bytes`
+                  : parsedAddress !== null && byteCount > 0
+                    ? `${formatHex(parsedAddress)} – ${formatHex(parsedAddress + byteCount - 1)} · ${byteCount} bytes`
+                    : 'Enter a valid start address'}
               </div>
             </div>
           </div>
@@ -654,6 +909,7 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                   ['table', 'Map / Table'],
                   ['constant', 'Constant'],
                   ['flag', 'Flag'],
+                  ['patch', 'Patch'],
                 ] as const
               ).map(([k, lbl]) => (
                 <button
@@ -674,7 +930,10 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
             {onCreateNew && (
               <button
                 type="button"
-                onClick={onCreateNew}
+                onClick={() => {
+                  if (onCreateNew.length === 0) onCreateNew();
+                  else resetToBlank();
+                }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 transition-colors cursor-pointer"
                 title="Create a blank XDF item"
               >
@@ -738,139 +997,295 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 />
 
                 <label className="text-[11.5px] text-zinc-400">Category</label>
-                <select
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(Number(e.target.value))}
-                  className={`${inputCls} cursor-pointer`}
-                >
-                  <option value={-1}>Uncategorized</option>
-                  {sortedCategoryEntries.map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </section>
-
-            {/* Data Layout Card */}
-            <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5 space-y-2.5">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
-                <Cpu className="w-3.5 h-3.5 text-[#0a84ff]" />
-                Data Layout
-              </div>
-
-              <div className="grid grid-cols-[88px_1fr] items-center gap-2.5">
-                <label className="text-[11.5px] text-zinc-400">Hex Address</label>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="text"
-                    value={addressText}
-                    onChange={(e) => setAddressText(e.target.value)}
-                    placeholder="0x20044"
-                    className={`${inputCls} w-28 font-mono tabular-nums`}
-                  />
-                  <div className="inline-flex rounded-lg bg-white/[0.04] border border-white/[0.065] overflow-hidden">
-                    {[-2, -1, 1, 2].map((d) => (
+                <div className="flex items-center gap-1.5">
+                  {addingCategory ? (
+                    <>
+                      <input
+                        type="text"
+                        autoFocus
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleConfirmAddCategory();
+                          if (e.key === 'Escape') {
+                            setAddingCategory(false);
+                            setNewCategoryName('');
+                          }
+                        }}
+                        placeholder="New category name…"
+                        className={`${inputCls} flex-1`}
+                      />
                       <button
-                        key={d}
                         type="button"
-                        onClick={() => nudgeAddress(d)}
-                        className="px-2 py-1 text-[10.5px] font-mono text-zinc-300 hover:bg-white/[0.08] hover:text-white transition-colors border-r last:border-r-0 border-white/[0.065] cursor-pointer"
-                        title={`Shift address by ${d > 0 ? `+${d}` : d} byte(s)`}
+                        onClick={handleConfirmAddCategory}
+                        className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-[#0a84ff] hover:bg-[#1e8fff] text-white cursor-pointer"
                       >
-                        {d > 0 ? `+${d}` : d}
+                        Add
                       </button>
-                    ))}
-                  </div>
-
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <span className="text-[11px] text-zinc-500">Bits</span>
-                    <div className="inline-flex rounded-md bg-white/[0.05] p-0.5">
-                      {[8, 16, 32].map((b) => (
-                        <button
-                          key={b}
-                          type="button"
-                          onClick={() => {
-                            setBits(b);
-                            if (b !== 32 && isFloat) setIsFloat(false);
-                          }}
-                          className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors cursor-pointer ${
-                            bits === b
-                              ? 'bg-[#0a84ff] text-white'
-                              : 'text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          {b}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {kind === 'table' && (
-                  <>
-                    <label className="text-[11.5px] text-zinc-400">Dimensions</label>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] text-zinc-500">Rows</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={256}
-                          value={rows}
-                          onChange={(e) => setRows(Math.max(1, Math.min(256, parseInt(e.target.value, 10) || 1)))}
-                          className={`${inputCls} w-16 font-mono text-center tabular-nums`}
-                        />
-                      </div>
-                      <span className="text-zinc-500 text-xs">×</span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] text-zinc-500">Cols</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={256}
-                          value={cols}
-                          onChange={(e) => setCols(Math.max(1, Math.min(256, parseInt(e.target.value, 10) || 1)))}
-                          className={`${inputCls} w-16 font-mono text-center tabular-nums`}
-                        />
-                      </div>
                       <button
                         type="button"
                         onClick={() => {
-                          setRows(cols);
-                          setCols(rows);
+                          setAddingCategory(false);
+                          setNewCategoryName('');
                         }}
-                        className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white transition-colors cursor-pointer"
-                        title="Swap rows and columns"
+                        className="px-2 py-1.5 rounded-lg text-[11px] bg-white/[0.05] hover:bg-white/[0.1] text-zinc-400 cursor-pointer"
                       >
-                        <ArrowLeftRight className="w-3 h-3" />
-                        Swap
+                        Cancel
                       </button>
-                    </div>
-                  </>
-                )}
-
-                <label className="text-[11.5px] text-zinc-400">Encoding</label>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {kind !== 'flag' && pillToggle('Signed (±)', signed, () => setSigned((v) => !v))}
-                  {pillToggle('LSB First (LE)', lsbFirst, () => setLsbFirst((v) => !v))}
-                  {kind === 'table' &&
-                    pillToggle('Column-Major', columnMajor, () => setColumnMajor((v) => !v))}
-                  {kind !== 'flag' &&
-                    pillToggle('Float32', isFloat, () => {
-                      setIsFloat((v) => {
-                        const next = !v;
-                        if (next) setBits(32);
-                        return next;
-                      });
-                    })}
+                    </>
+                  ) : (
+                    <>
+                      <select
+                        value={categoryId}
+                        onChange={(e) => setCategoryId(Number(e.target.value))}
+                        className={`${inputCls} flex-1 cursor-pointer`}
+                      >
+                        <option value={-1}>Uncategorized</option>
+                        {sortedCategoryEntries.map(([id, name]) => (
+                          <option key={id} value={id}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setAddingCategory(true)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white transition-colors cursor-pointer shrink-0"
+                        title="Create a new XDF category"
+                      >
+                        <FolderPlus className="w-3.5 h-3.5 text-[#0a84ff]" />
+                        New
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </section>
 
+            {/* Patch Entries Card (XDFPATCH) */}
+            {kind === 'patch' && (
+              <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
+                    <Wrench className="w-3.5 h-3.5 text-[#0a84ff]" />
+                    Patch Entries (XDFPATCH)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPatchDrafts((prev) => [...prev, makeEmptyPatchDraft(0)])}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 text-sky-300 border border-[#0a84ff]/30 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Add Entry
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {patchDrafts.map((draft, idx) => (
+                    <div
+                      key={draft.id}
+                      className="rounded-lg bg-[#121317] border border-white/[0.065] p-2.5 space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10.5px] font-mono font-semibold text-zinc-400">
+                          Entry #{idx + 1}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => readBaseFromBin(draft)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10.5px] bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 transition-colors cursor-pointer"
+                            title="Populate Base Bytes from current BIN at this address"
+                          >
+                            <Download className="w-3 h-3 text-sky-400" />
+                            Read Base
+                          </button>
+                          {patchDrafts.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPatchDrafts((prev) => prev.filter((d) => d.id !== draft.id))
+                              }
+                              className="p-1 rounded text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer"
+                              title="Remove patch entry"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-[120px_1fr] gap-2">
+                        <div>
+                          <label className="block text-[10px] text-zinc-500 mb-1">Hex Address</label>
+                          <input
+                            type="text"
+                            value={draft.addressText}
+                            onChange={(e) => updatePatchDraft(draft.id, { addressText: e.target.value })}
+                            placeholder="0x24000"
+                            className={`${inputCls} w-full font-mono`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-zinc-500 mb-1">Label (Optional)</label>
+                          <input
+                            type="text"
+                            value={draft.name}
+                            onChange={(e) => updatePatchDraft(draft.id, { name: e.target.value })}
+                            placeholder="e.g. NOP speed limiter check"
+                            className={`${inputCls} w-full`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-zinc-500 mb-1">Base Bytes (Hex)</label>
+                          <input
+                            type="text"
+                            value={draft.baseHex}
+                            onChange={(e) => updatePatchDraft(draft.id, { baseHex: e.target.value })}
+                            placeholder="e.g. 0F 85 12 00"
+                            className={`${inputCls} w-full font-mono uppercase`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-zinc-500 mb-1">Patch Bytes (Hex)</label>
+                          <input
+                            type="text"
+                            value={draft.patchHex}
+                            onChange={(e) => updatePatchDraft(draft.id, { patchHex: e.target.value })}
+                            placeholder="e.g. 90 90 90 90"
+                            className={`${inputCls} w-full font-mono uppercase`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Data Layout Card */}
+            {kind !== 'patch' && (
+              <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5 space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
+                  <Cpu className="w-3.5 h-3.5 text-[#0a84ff]" />
+                  Data Layout
+                </div>
+
+                <div className="grid grid-cols-[88px_1fr] items-center gap-2.5">
+                  <label className="text-[11.5px] text-zinc-400">Hex Address</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      value={addressText}
+                      onChange={(e) => setAddressText(e.target.value)}
+                      placeholder="0x20044"
+                      className={`${inputCls} w-28 font-mono tabular-nums`}
+                    />
+                    <div className="inline-flex rounded-lg bg-white/[0.04] border border-white/[0.065] overflow-hidden">
+                      {[-2, -1, 1, 2].map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => nudgeAddress(d)}
+                          className="px-2 py-1 text-[10.5px] font-mono text-zinc-300 hover:bg-white/[0.08] hover:text-white transition-colors border-r last:border-r-0 border-white/[0.065] cursor-pointer"
+                          title={`Shift address by ${d > 0 ? `+${d}` : d} byte(s)`}
+                        >
+                          {d > 0 ? `+${d}` : d}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <span className="text-[11px] text-zinc-500">Bits</span>
+                      <div className="inline-flex rounded-md bg-white/[0.05] p-0.5">
+                        {[8, 16, 32].map((b) => (
+                          <button
+                            key={b}
+                            type="button"
+                            onClick={() => {
+                              setBits(b);
+                              if (b !== 32 && isFloat) setIsFloat(false);
+                            }}
+                            className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors cursor-pointer ${
+                              bits === b
+                                ? 'bg-[#0a84ff] text-white'
+                                : 'text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {b}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {kind === 'table' && (
+                    <>
+                      <label className="text-[11.5px] text-zinc-400">Dimensions</label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-zinc-500">Rows</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={256}
+                            value={rows}
+                            onChange={(e) => setRows(Math.max(1, Math.min(256, parseInt(e.target.value, 10) || 1)))}
+                            className={`${inputCls} w-16 font-mono text-center tabular-nums`}
+                          />
+                        </div>
+                        <span className="text-zinc-500 text-xs">×</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-zinc-500">Cols</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={256}
+                            value={cols}
+                            onChange={(e) => setCols(Math.max(1, Math.min(256, parseInt(e.target.value, 10) || 1)))}
+                            className={`${inputCls} w-16 font-mono text-center tabular-nums`}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRows(cols);
+                            setCols(rows);
+                          }}
+                          className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                          title="Swap rows and columns"
+                        >
+                          <ArrowLeftRight className="w-3 h-3" />
+                          Swap
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  <label className="text-[11.5px] text-zinc-400">Encoding</label>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {kind !== 'flag' && pillToggle('Signed (±)', signed, () => setSigned((v) => !v))}
+                    {pillToggle('LSB First (LE)', lsbFirst, () => setLsbFirst((v) => !v))}
+                    {kind === 'table' &&
+                      pillToggle('Column-Major', columnMajor, () => setColumnMajor((v) => !v))}
+                    {kind !== 'flag' &&
+                      pillToggle('Float32', isFloat, () => {
+                        setIsFloat((v) => {
+                          const next = !v;
+                          if (next) setBits(32);
+                          return next;
+                        });
+                      })}
+                  </div>
+                </div>
+              </section>
+            )}
+
             {/* Scaling & Presets Card */}
-            {kind !== 'flag' && (
+            {kind !== 'flag' && kind !== 'patch' && (
               <section className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5 space-y-2.5">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
                   <FunctionSquare className="w-3.5 h-3.5 text-[#0a84ff]" />
@@ -1138,12 +1553,16 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 <Eye className="w-3.5 h-3.5 text-[#0a84ff]" />
                 Live Preview
               </div>
-              {activeLayout && (
+              {kind === 'patch' ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-[#0a84ff]/15 text-sky-300">
+                  XDFPATCH
+                </span>
+              ) : activeLayout ? (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-[#0a84ff]/15 text-sky-300">
                   {activeLayout.isFloat ? 'F32' : `${activeLayout.bits}b`}{' '}
                   {activeLayout.lsbFirst ? 'LE' : 'BE'}
                 </span>
-              )}
+              ) : null}
             </div>
 
             {!preview ? (
@@ -1152,7 +1571,69 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 <div className="text-xs text-zinc-400">
                   {bin.length === 0
                     ? 'No BIN file loaded.'
-                    : 'Invalid address or offset outside BIN range.'}
+                    : kind === 'patch'
+                      ? 'Enter at least one valid address and hex patch bytes.'
+                      : 'Invalid address or offset outside BIN range.'}
+                </div>
+              </div>
+            ) : preview.kind === 'patch' ? (
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="rounded-lg bg-[#17181d] border border-white/[0.065] px-2.5 py-2">
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">Entries</div>
+                    <div className="text-xs font-mono font-semibold text-zinc-100">
+                      {preview.items.length} ({preview.totalBytes} B)
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[#17181d] border border-white/[0.065] px-2.5 py-2">
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">Applied</div>
+                    <div className="text-xs font-mono font-semibold text-emerald-300">
+                      {preview.appliedCount} / {preview.items.length}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {preview.items.map((it) => (
+                    <div
+                      key={it.idx}
+                      className="rounded-lg bg-[#17181d] border border-white/[0.065] p-2.5 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-mono font-semibold text-zinc-200 truncate">
+                          {formatHex(it.entry.address)}
+                          {it.entry.name ? ` · ${it.entry.name}` : ''}
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[9.5px] font-semibold uppercase ${
+                            it.status === 'applied'
+                              ? 'bg-emerald-500/15 text-emerald-300'
+                              : it.status === 'base'
+                                ? 'bg-white/[0.06] text-zinc-400'
+                                : it.status === 'oob'
+                                  ? 'bg-rose-500/15 text-rose-300'
+                                  : 'bg-amber-500/15 text-amber-300'
+                          }`}
+                        >
+                          {it.status === 'applied'
+                            ? 'Applied'
+                            : it.status === 'base'
+                              ? 'Base'
+                              : it.status === 'oob'
+                                ? 'OOB'
+                                : 'Custom'}
+                        </span>
+                      </div>
+                      <div className="text-[10px] font-mono text-zinc-400 break-all">
+                        <span className="text-zinc-500">BIN: </span>
+                        {it.currentBytes.length > 0 ? bytesToHexStr(it.currentBytes) : '—'}
+                      </div>
+                      <div className="text-[10px] font-mono text-sky-300 break-all">
+                        <span className="text-zinc-500">PAT: </span>
+                        {bytesToHexStr(it.entry.patchBytes)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : preview.kind === 'table' ? (
@@ -1293,12 +1774,17 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
                 <TriangleAlert className="w-3.5 h-3.5 shrink-0" />
                 Enter a title to save
               </span>
-            ) : parsedAddress === null ? (
+            ) : kind === 'patch' && !parsedPatchEntries.valid ? (
+              <span className="inline-flex items-center gap-1.5 text-rose-400">
+                <TriangleAlert className="w-3.5 h-3.5 shrink-0" />
+                Each patch entry requires a valid hex address and patch bytes
+              </span>
+            ) : kind !== 'patch' && parsedAddress === null ? (
               <span className="inline-flex items-center gap-1.5 text-rose-400">
                 <TriangleAlert className="w-3.5 h-3.5 shrink-0" />
                 Invalid hex address
               </span>
-            ) : !parsedEquationValid ? (
+            ) : kind !== 'patch' && !parsedEquationValid ? (
               <span className="inline-flex items-center gap-1.5 text-rose-400">
                 <TriangleAlert className="w-3.5 h-3.5 shrink-0" />
                 Invalid scaling equation syntax

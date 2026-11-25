@@ -1,5 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Eye, Layers, Lock } from 'lucide-react';
+import {
+  Activity,
+  Binary,
+  Check,
+  Eye,
+  Grid,
+  Layers,
+  Lock,
+  RotateCcw,
+  Settings2,
+  Sparkles,
+} from 'lucide-react';
 import { Cell, parseCellKey } from '@mactuner/core';
 
 export interface Curves2DCanvasProps {
@@ -15,6 +26,14 @@ export interface Curves2DCanvasProps {
   onHoverCell?: (cell: Cell | null) => void;
   onEditCell?: (cell: Cell, newValue: number) => void;
   isLocked?: boolean;
+  /** Optional live datalog active cell crosshair indicator */
+  datalogActiveCell?: Cell | null;
+  /** Optional callbacks for right-click context menu */
+  onSelectAll?: () => void;
+  onSmoothSelection?: () => void;
+  onResetToOriginal?: () => void;
+  onJumpToHex?: () => void;
+  onOpenXdfEditor?: () => void;
 }
 
 type PlotMode = 'curves' | 'slices';
@@ -88,15 +107,23 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
   onHoverCell,
   onEditCell,
   isLocked = false,
+  datalogActiveCell = null,
+  onSelectAll,
+  onSmoothSelection,
+  onResetToOriginal,
+  onJumpToHex,
+  onOpenXdfEditor,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 480, h: 240 });
   const [showAll, setShowAll] = useState<boolean>(false);
   const [mode, setMode] = useState<PlotMode>('curves');
   const [showCompare, setShowCompare] = useState<boolean>(true);
   const [dragState, setDragState] = useState<CurveDragState | null>(null);
   const [nearDraggable, setNearDraggable] = useState<boolean>(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const canEdit = Boolean(onEditCell && !isLocked);
 
@@ -108,6 +135,25 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
     maxY: 1,
     spanY: 1,
   });
+
+  // Close context menu on outside click or Escape
+  useEffect(() => {
+    if (!contextMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
 
   // Cancel active drag on Escape or if editing becomes disabled
   useEffect(() => {
@@ -421,6 +467,52 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
 
     plottedPtsRef.current = pickList;
 
+    // Live Datalog Crosshair Indicator
+    if (
+      datalogActiveCell &&
+      datalogActiveCell.r >= 0 &&
+      datalogActiveCell.r < rows &&
+      datalogActiveCell.c >= 0 &&
+      datalogActiveCell.c < cols
+    ) {
+      const dlAxisIdx = isCurves ? datalogActiveCell.c : datalogActiveCell.r;
+      const dlVal = getCellVal(datalogActiveCell.r, datalogActiveCell.c);
+      const dlPx = xFor(dlAxisIdx);
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(52, 211, 153, 0.55)';
+      ctx.lineWidth = 1.25;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(dlPx, padT);
+      ctx.lineTo(dlPx, padT + plotH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (dlVal !== null && dlVal !== undefined && Number.isFinite(dlVal)) {
+        const dlPy = yFor(dlVal);
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.35)';
+        ctx.beginPath();
+        ctx.moveTo(padL, dlPy);
+        ctx.lineTo(padL + plotW, dlPy);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(dlPx, dlPy, 11, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.25)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(dlPx, dlPy, 4.4, 0, Math.PI * 2);
+        ctx.fillStyle = '#10b981';
+        ctx.fill();
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     // Crosshair synced to activeCell (dragged or hovered)
     if (
       activeCell &&
@@ -488,6 +580,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
     mode,
     activeIndices,
     hoveredCell,
+    datalogActiveCell,
     dragState,
     canEdit,
     rows,
@@ -520,6 +613,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (contextMenu) setContextMenu(null);
       if (!canEdit || e.button !== 0) return;
       const hit = findNearestPoint(e.clientX, e.clientY, 20);
       if (!hit) return;
@@ -539,7 +633,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
       });
       onHoverCell?.(hit);
     },
-    [canEdit, findNearestPoint, values, onHoverCell],
+    [canEdit, findNearestPoint, values, onHoverCell, contextMenu],
   );
 
   const handlePointerMove = useCallback(
@@ -588,6 +682,15 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
     [dragState, onEditCell],
   );
 
+  const handleContextMenu = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const menuW = 200;
+    const menuH = 220;
+    const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
+    const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
+    setContextMenu({ x: Math.max(8, x), y: Math.max(8, y) });
+  }, []);
+
   const displayCell = dragState ? dragState.cell : hoveredCell;
   const hoveredVal = dragState
     ? dragState.liveVal
@@ -611,6 +714,12 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
           <span className="text-xs font-semibold tracking-[-0.01em] text-zinc-100 shrink-0">
             2D Curves
           </span>
+          {datalogActiveCell && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-mono text-emerald-300 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              LOG
+            </span>
+          )}
           {dragState ? (
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[10.5px] font-mono font-semibold tabular-nums text-amber-300 truncate">
               {yLabels[dragState.cell.r] ?? dragState.cell.r} × {xLabels[dragState.cell.c] ?? dragState.cell.c} →{' '}
@@ -701,6 +810,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onContextMenu={handleContextMenu}
           onPointerCancel={() => setDragState(null)}
           onPointerLeave={() => {
             if (!dragState) {
@@ -766,6 +876,109 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
           </span>
         )}
       </div>
+
+      {/* Right-Click Context Menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          className="fixed z-50 w-48 rounded-xl glass-popover py-1.5 text-xs text-zinc-200 shadow-2xl"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setShowAll((v) => !v);
+              setContextMenu(null);
+            }}
+            className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+          >
+            <span className="inline-flex items-center gap-2">
+              <Eye className="w-3.5 h-3.5 text-zinc-400" />
+              Show All Curves
+            </span>
+            {showAll && <Check className="w-3.5 h-3.5 text-[#0a84ff]" />}
+          </button>
+
+          {onSelectAll && (
+            <button
+              type="button"
+              onClick={() => {
+                onSelectAll();
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Grid className="w-3.5 h-3.5 text-zinc-400" />
+                Select All
+              </span>
+              <span className="text-[10px] font-mono text-zinc-500">⌘A</span>
+            </button>
+          )}
+
+          {onSmoothSelection && (
+            <button
+              type="button"
+              disabled={isLocked || selectedKeys.size < 2}
+              onClick={() => {
+                onSmoothSelection();
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed text-left cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-zinc-400" />
+              Smooth Selection
+            </button>
+          )}
+
+          {onResetToOriginal && (
+            <button
+              type="button"
+              disabled={isLocked || !compareValues}
+              onClick={() => {
+                onResetToOriginal();
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed text-left text-amber-300 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Reset to Original
+            </button>
+          )}
+
+          {(onJumpToHex || onOpenXdfEditor) && (
+            <div className="my-1 border-t border-white/[0.08]" />
+          )}
+
+          {onJumpToHex && (
+            <button
+              type="button"
+              onClick={() => {
+                onJumpToHex();
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+            >
+              <Binary className="w-3.5 h-3.5 text-zinc-400" />
+              Show in Hex
+            </button>
+          )}
+
+          {onOpenXdfEditor && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenXdfEditor();
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+            >
+              <Settings2 className="w-3.5 h-3.5 text-zinc-400" />
+              Edit in XDF…
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

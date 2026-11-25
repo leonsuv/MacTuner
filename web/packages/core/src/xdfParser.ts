@@ -6,8 +6,24 @@ import {
   Scaling,
   XDFDefinition,
   XDFItem,
+  XdfPatchEntry,
   createScaling,
 } from './types';
+
+function parseHexBytes(hexStr: string | undefined): number[] {
+  if (!hexStr) return [];
+  const cleaned = hexStr.replace(/0x/gi, '').replace(/[^0-9a-fA-F]/g, '');
+  const out: number[] = [];
+  for (let i = 0; i + 1 < cleaned.length; i += 2) {
+    const byte = parseInt(cleaned.slice(i, i + 2), 16);
+    if (Number.isFinite(byte)) out.push(byte & 0xff);
+  }
+  return out;
+}
+
+function encodeHexBytes(bytes: number[]): string {
+  return bytes.map((b) => (b & 0xff).toString(16).toUpperCase().padStart(2, '0')).join('');
+}
 
 function parseIntAttr(val: string | undefined, fallback = 0): number {
   if (!val) return fallback;
@@ -229,6 +245,53 @@ export function parseXDF(xmlText: string): XDFDefinition {
     });
   }
 
+  // Parse XDFPATCH
+  for (const pch of extractBlocks(xmlText, 'XDFPATCH')) {
+    const entries: XdfPatchEntry[] = [];
+    const eRe = /<XDFPATCHENTRY\b([^>]*)\/?>/gi;
+    let em: RegExpExecArray | null;
+    while ((em = eRe.exec(pch.body)) !== null) {
+      const ea = parseAttrs(em[1]);
+      const rawAddr = parseIntAttr(ea.address, -1);
+      if (rawAddr < 0) continue;
+      const patchBytes = parseHexBytes(ea.patchdata);
+      const baseBytes = parseHexBytes(ea.basedata);
+      const dataSize = parseIntAttr(ea.datasize, Math.max(patchBytes.length, baseBytes.length));
+      if (patchBytes.length === 0 && baseBytes.length === 0 && dataSize <= 0) continue;
+      entries.push({
+        address: rawAddr + baseOffset,
+        patchBytes,
+        baseBytes,
+        ...(ea.name ? { name: ea.name } : {}),
+      });
+    }
+    if (entries.length === 0) continue;
+    const firstAddr = entries[0].address;
+    const totalBytes = entries.reduce(
+      (acc, e) => acc + Math.max(1, e.patchBytes.length, e.baseBytes.length),
+      0,
+    );
+    items.push({
+      id: nextId++,
+      title: extractTagText(pch.body, 'title') || `Patch ${nextId + 1}`,
+      description: extractTagText(pch.body, 'description'),
+      categories: parseCategoryRefs(pch.body),
+      itemKind: { kind: 'patch', entries },
+      patchEntries: entries,
+      data: {
+        address: firstAddr,
+        bits: 8,
+        signed: false,
+        lsbFirst: true,
+        columnMajor: false,
+        isFloat: false,
+        rows: 1,
+        cols: Math.max(1, totalBytes),
+      },
+      scaling: IDENTITY_SCALING,
+    });
+  }
+
   return { title, description, baseOffset, categories, items };
 }
 
@@ -311,6 +374,23 @@ export function serializeXDF(def: XDFDefinition): string {
       );
       lines.push(`    <mask>0x${item.itemKind.mask.toString(16).toUpperCase()}</mask>`);
       lines.push('  </XDFFLAG>');
+    } else if (item.itemKind.kind === 'patch') {
+      const entries = item.patchEntries ?? item.itemKind.entries ?? [];
+      lines.push('  <XDFPATCH>');
+      lines.push(`    <title>${escapeXml(item.title)}</title>`);
+      if (item.description) lines.push(`    <description>${escapeXml(item.description)}</description>`);
+      for (const cat of item.categories) {
+        lines.push(`    <CATEGORYMEM index="0" category="${cat + 1}" />`);
+      }
+      entries.forEach((entry, idx) => {
+        const size = Math.max(entry.patchBytes.length, entry.baseBytes.length);
+        const nameAttr = entry.name ? ` name="${escapeXml(entry.name)}"` : ` name="Entry ${idx + 1}"`;
+        const baseAttr = entry.baseBytes.length > 0 ? ` basedata="${encodeHexBytes(entry.baseBytes)}"` : '';
+        lines.push(
+          `    <XDFPATCHENTRY${nameAttr} address="0x${entry.address.toString(16).toUpperCase()}" datasize="0x${size.toString(16).toUpperCase()}" patchdata="${encodeHexBytes(entry.patchBytes)}"${baseAttr} />`,
+        );
+      });
+      lines.push('  </XDFPATCH>');
     }
   }
 

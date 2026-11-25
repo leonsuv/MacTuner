@@ -146,10 +146,20 @@ export interface Axis {
   scaling: Scaling;
 }
 
+export interface XdfPatchEntry {
+  address: number;
+  patchBytes: number[];
+  baseBytes: number[];
+  name?: string;
+}
+
 export type XDFItemKind =
   | { kind: 'table'; x: Axis; y: Axis }
   | { kind: 'constant' }
-  | { kind: 'flag'; mask: number; invert: boolean };
+  | { kind: 'flag'; mask: number; invert: boolean }
+  | { kind: 'patch'; entries?: XdfPatchEntry[] };
+
+export type XdfItemKind = XDFItemKind;
 
 export interface XDFItem {
   id: number;
@@ -159,7 +169,12 @@ export interface XDFItem {
   itemKind: XDFItemKind;
   data: DataLayout;
   scaling: Scaling;
+  patchEntries?: XdfPatchEntry[];
+  safeRange?: { min?: number; max?: number };
+  alignConfidence?: number;
 }
+
+export type XdfItem = XDFItem;
 
 export interface XDFDefinition {
   title: string;
@@ -168,6 +183,8 @@ export interface XDFDefinition {
   categories: Record<number, string>;
   items: XDFItem[];
 }
+
+export type XdfDocument = XDFDefinition;
 
 export interface Patch {
   offset: number;
@@ -179,4 +196,125 @@ export interface DiffCluster {
   start: number;
   end: number; // exclusive
   changedBytes: number;
+}
+
+export type HeatmapPalette = 'classic' | 'viridis' | 'cividis' | 'plasma' | 'high-contrast';
+
+export interface DtcEntry {
+  id: number;
+  pCode: string;
+  rawCode: number;
+  vagCode?: number;
+  codeAddress: number;
+  switchAddress: number;
+  switchBytes: number;
+  errorClass: number;
+  currentValue: number;
+  isDisabled: boolean;
+  tableIndex: number;
+  familyHint: string;
+}
+
+export interface DtcScanResult {
+  entries: DtcEntry[];
+  codeTableAddress: number;
+  switchTableAddress: number;
+  stride: number;
+  endianness: 'LE' | 'BE';
+  familyHint: string;
+  p0607Anchored: boolean;
+}
+
+export interface PortingMatch {
+  itemId: number;
+  title: string;
+  sourceAddr: number;
+  targetAddr: number;
+  delta: number;
+  confidence: number;
+  candidateCount?: number;
+  selected?: boolean;
+}
+
+export interface ContentPortMatch {
+  id: string;
+  sourceStart: number;
+  sourceEnd: number;
+  changedBytes: number;
+  targetStart: number | null;
+  delta: number | null;
+  candidateCount: number;
+  confidence: number;
+  unique: boolean;
+  selected: boolean;
+}
+
+export interface MtPatchCellChange {
+  r: number;
+  c: number;
+  oldValue: number;
+  newValue: number;
+  delta: number;
+  percent: number | null;
+}
+
+export interface MtPatchItem {
+  itemId?: number;
+  title: string;
+  address: number;
+  rows: number;
+  cols: number;
+  bits: number;
+  signed: boolean;
+  lsbFirst: boolean;
+  isFloat: boolean;
+  columnMajor?: boolean;
+  equation: string;
+  units: string;
+  decimals: number;
+  changes: MtPatchCellChange[];
+  xAxisChanges?: MtPatchCellChange[];
+  yAxisChanges?: MtPatchCellChange[];
+  xAxisLayout?: DataLayout;
+  yAxisLayout?: DataLayout;
+  xAxisEquation?: string;
+  yAxisEquation?: string;
+}
+
+export interface MtPatchPackage {
+  format: 'mactuner-patch-v1';
+  name: string;
+  description?: string;
+  author?: string;
+  ecuFamily?: string;
+  softwareNumber?: string;
+  xdfTitle: string;
+  createdAt: string;
+  items: MtPatchItem[];
+}
+
+export interface SyncBlockGroup {
+  id: string;
+  name: string;
+  itemIds: number[];
+  rows: number;
+  cols: number;
+  bits: number;
+  similarity: number;
+  keepInSync: boolean;
+}
+
+export type PflashPartitionKind = 'boot' | 'tprot' | 'asw' | 'cal' | 'checksum' | 'empty';
+
+export interface PflashPartition {
+  id: string;
+  name: string;
+  start: number;
+  end: number;
+  size: number;
+  kind: PflashPartitionKind;
+  tprotLocked: boolean;
+  blockTypeId?: number;
+  swIdentifier?: string;
+  variantString?: string;
 }

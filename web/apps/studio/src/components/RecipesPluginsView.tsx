@@ -22,6 +22,7 @@ import {
   cellOffset,
   crc32,
   elementBytes,
+  exportDefinition,
   identifyECU,
   layoutByteRange,
   parseBinaryFile,
@@ -39,6 +40,18 @@ export interface RecipesPluginsViewProps {
   onApplyPatches: (patches: Patch[], label: string) => void;
   onSelectMap?: (itemId: number) => void;
   onJumpToHex?: (address: number) => void;
+  onSaveSnapshot?: (name: string, note?: string) => void;
+  onLoadReferenceXdf?: (entry: {
+    id: string;
+    name: string;
+    xdfTitle: string;
+    xdfXml?: string;
+  }) => void;
+  onCompareReferenceBin?: (entry: {
+    id: string;
+    name: string;
+    bytes?: Uint8Array;
+  }) => void;
 }
 
 type SubTab = 'recipes' | 'plugins' | 'library';
@@ -531,12 +544,35 @@ interface ReferenceEntry {
   fileSizeKB: number;
   crc32Hex: string;
   xdfTitle: string;
+  xdfXml?: string;
   mapCount: number;
   mapTitles: string[];
   indexedAt: number;
   histogram: number[]; // 16 normalized byte-value buckets
   samples: number[]; // 32 evenly spaced byte samples
 }
+
+const EXAMPLE_PLUGIN_TEMPLATE = `// MacTunerPluginAPI Example Script
+const api = MacTunerPluginAPI;
+log("Binary Size:", (api.binSize / 1024).toFixed(0), "KB");
+
+const allMaps = api.maps();
+log("Loaded XDF Maps:", allMaps.length);
+for (const m of allMaps.slice(0, 5)) {
+  log("  -", m.title, "@" + "0x" + m.address.toString(16).toUpperCase(), "(" + m.rows + "x" + m.cols + ")");
+}
+
+// Inspect header bytes
+const head = api.readBytes(0, 16).map(b => b.toString(16).toUpperCase().padStart(2, "0")).join(" ");
+log("First 16 bytes:", head);
+
+// Search hex signature (supports ?? wildcards)
+const hits = api.findBytes("FE CA DE FA");
+log("MED17 PFLASH headers found:", hits.length);
+
+// Example: stage a byte patch (uncomment to test)
+// api.patchBytes(0x10000, [0x90, 0x90]);
+`;
 
 function computeFingerprint(bin: Uint8Array): {
   crc32Hex: string;
@@ -617,8 +653,12 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
   binName = 'ecu_active.bin',
   onApplyPatches,
   onSelectMap,
+  onSaveSnapshot,
+  onLoadReferenceXdf,
+  onCompareReferenceBin,
 }) => {
   const [subTab, setSubTab] = useState<SubTab>('recipes');
+  const refBinCacheRef = useRef<Map<string, Uint8Array>>(new Map());
 
   // --- Recipes State ---
   const [recipes, setRecipes] = useState<TuneRecipe[]>(BUILTIN_RECIPES);
@@ -678,11 +718,15 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
 
   const handleApplyRecipe = useCallback(() => {
     if (!dryRun || dryRun.allPatches.length === 0) return;
+    onSaveSnapshot?.(
+      `Pre-Recipe: ${dryRun.recipe.name}`,
+      `Auto-saved safety checkpoint before applying ${dryRun.recipe.name}`,
+    );
     onApplyPatches(dryRun.allPatches, `Recipe: ${dryRun.recipe.name}`);
     setRecipeStatus(
-      `Applied "${dryRun.recipe.name}" — ${dryRun.matchedItems.length} map(s), ${dryRun.totalChangedBytes} bytes patched (undoable with ⌘Z).`,
+      `Saved safety snapshot & applied "${dryRun.recipe.name}" — ${dryRun.matchedItems.length} map(s), ${dryRun.totalChangedBytes} bytes patched (undoable with ⌘Z).`,
     );
-  }, [dryRun, onApplyPatches]);
+  }, [dryRun, onApplyPatches, onSaveSnapshot]);
 
   // --- Safe JS Plugin Sandbox Runner ---
   const handleRunPlugin = useCallback(() => {
@@ -789,6 +833,73 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
 
     const crc32Helper = (start = 0, end = binCopy.length) => crc32(binCopy, start, end);
 
+    const mapsHelper = () =>
+      (xdf?.items ?? []).map((it) => ({
+        id: it.id,
+        title: it.title,
+        address: it.data.address,
+        rows: it.data.rows,
+        cols: it.data.cols,
+        bits: it.data.bits,
+        units: it.scaling.units,
+        kind: it.itemKind.kind,
+      }));
+
+    const readBytesHelper = (addr: number, count: number): number[] => {
+      const start = Math.max(0, Math.floor(addr));
+      const end = Math.min(binCopy.length, start + Math.max(0, Math.floor(count)));
+      const out: number[] = [];
+      for (let i = start; i < end; i++) out.push(binCopy[i]);
+      return out;
+    };
+
+    const findBytesHelper = (hexPattern: string): number[] => {
+      const tokens = hexPattern
+        .trim()
+        .split(/[\s,]+/)
+        .filter(Boolean);
+      if (tokens.length === 0) return [];
+      const parsed = tokens.map((tok) =>
+        tok === '??' || tok === '?' ? null : parseInt(tok, 16) & 0xff,
+      );
+      if (parsed.some((v) => v !== null && Number.isNaN(v))) return [];
+      const hits: number[] = [];
+      const limit = binCopy.length - parsed.length;
+      for (let i = 0; i <= limit && hits.length < 256; i++) {
+        let match = true;
+        for (let j = 0; j < parsed.length; j++) {
+          if (parsed[j] !== null && binCopy[i + j] !== parsed[j]) {
+            match = false;
+            break;
+          }
+        }
+        if (match) hits.push(i);
+      }
+      return hits;
+    };
+
+    const patchBytesHelper = (addr: number, nextArr: number[] | Uint8Array): boolean => {
+      const off = Math.floor(addr);
+      const nextBytes = nextArr instanceof Uint8Array ? nextArr : Uint8Array.from(nextArr.map((b) => b & 0xff));
+      if (off < 0 || off + nextBytes.length > binCopy.length || nextBytes.length === 0) return false;
+      const oldBytes = binCopy.slice(off, off + nextBytes.length);
+      binCopy.set(nextBytes, off);
+      collectedPatches.push({ offset: off, old: oldBytes, next: nextBytes });
+      return true;
+    };
+
+    const MacTunerPluginAPI = {
+      binSize: binCopy.length,
+      maps: mapsHelper,
+      readMap,
+      scaleMap,
+      readBytes: readBytesHelper,
+      findBytes: findBytesHelper,
+      patchBytes: patchBytesHelper,
+      crc32: crc32Helper,
+      log: logFn,
+    };
+
     const safeConsole = {
       log: logFn,
       info: logFn,
@@ -806,6 +917,12 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
         'crc32',
         'log',
         'console',
+        'MacTunerPluginAPI',
+        'binSize',
+        'maps',
+        'readBytes',
+        'findBytes',
+        'patchBytes',
         'window',
         'document',
         'fetch',
@@ -820,6 +937,12 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
         crc32Helper,
         logFn,
         safeConsole,
+        MacTunerPluginAPI,
+        binCopy.length,
+        mapsHelper,
+        readBytesHelper,
+        findBytesHelper,
+        patchBytesHelper,
         undefined,
         undefined,
         undefined,
@@ -858,6 +981,14 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
   const handleIndexCurrentEcu = useCallback(() => {
     const fp = computeFingerprint(bin);
     const id = `ref-${fp.crc32Hex}-${bin.length}`;
+    let xdfXml: string | undefined;
+    if (xdf) {
+      const exported = exportDefinition(xdf, 'xdf');
+      if (typeof exported === 'string' && exported.length < 250_000) {
+        xdfXml = exported;
+      }
+    }
+    refBinCacheRef.current.set(id, bin.slice());
     const entry: ReferenceEntry = {
       id,
       name: binName,
@@ -868,6 +999,7 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
       fileSizeKB: activeIdentity.fileSizeKB,
       crc32Hex: fp.crc32Hex,
       xdfTitle: xdf?.title ?? 'No XDF attached',
+      xdfXml,
       mapCount: xdf?.items.length ?? 0,
       mapTitles: xdf ? xdf.items.slice(0, 12).map((i) => i.title) : [],
       indexedAt: Date.now(),
@@ -1201,17 +1333,32 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
         <div className="flex-1 min-h-0 flex overflow-hidden">
           {/* Sample Plugin Selector */}
           <aside className="w-72 shrink-0 border-r border-white/[0.065] bg-[#121317] flex flex-col min-h-0">
-            <div className="p-3 border-b border-white/[0.065]">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                Sample Plugins
+            <div className="p-3 border-b border-white/[0.065] space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                  Sample Plugins
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPluginId('custom-example');
+                    setPluginCode(EXAMPLE_PLUGIN_TEMPLATE);
+                    setStagedPatches([]);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 rounded-md bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 border border-[#0a84ff]/35 text-[10.5px] font-medium text-[#5ac8fa] cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Create Example Plugin</span>
+                </button>
               </div>
-              <p className="text-[10.5px] text-zinc-500 mt-0.5">
-                Sandbox helpers: <code className="text-zinc-300">bin</code>,{' '}
-                <code className="text-zinc-300">xdf</code>,{' '}
-                <code className="text-zinc-300">readMap(title)</code>,{' '}
-                <code className="text-zinc-300">scaleMap(title, factor)</code>,{' '}
-                <code className="text-zinc-300">crc32()</code>,{' '}
-                <code className="text-zinc-300">log()</code>
+              <p className="text-[10.5px] text-zinc-500">
+                <code className="text-zinc-300">MacTunerPluginAPI</code>: <code className="text-zinc-300">binSize</code>,{' '}
+                <code className="text-zinc-300">maps()</code>,{' '}
+                <code className="text-zinc-300">readBytes()</code>,{' '}
+                <code className="text-zinc-300">findBytes()</code>,{' '}
+                <code className="text-zinc-300">patchBytes()</code>,{' '}
+                <code className="text-zinc-300">readMap()</code>,{' '}
+                <code className="text-zinc-300">scaleMap()</code>
               </p>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
@@ -1501,14 +1648,58 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
                           />
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRef(entry.id)}
-                        className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-rose-500/20 hover:text-rose-300 border border-white/[0.07] text-zinc-400 transition-colors cursor-pointer"
-                        title="Remove from Reference Library"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onLoadReferenceXdf) {
+                              onLoadReferenceXdf({
+                                id: entry.id,
+                                name: entry.name,
+                                xdfTitle: entry.xdfTitle,
+                                xdfXml: entry.xdfXml,
+                              });
+                            }
+                            setLibStatus(
+                              entry.xdfXml
+                                ? `Loaded XDF "${entry.xdfTitle}" from reference "${entry.name}".`
+                                : `Reference "${entry.name}" (${entry.xdfTitle}) has no embedded XDF XML — re-index with XDF loaded.`,
+                            );
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 border border-[#0a84ff]/35 text-[11px] font-medium text-[#5ac8fa] transition-colors cursor-pointer"
+                        >
+                          Load XDF
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cached = refBinCacheRef.current.get(entry.id);
+                            if (onCompareReferenceBin) {
+                              onCompareReferenceBin({
+                                id: entry.id,
+                                name: entry.name,
+                                bytes: cached,
+                              });
+                            }
+                            setLibStatus(
+                              cached
+                                ? `Set "${entry.name}" as comparison BIN.`
+                                : `Indexed fingerprint "${entry.name}" selected for comparison (re-index in this session to attach raw bytes).`,
+                            );
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] font-medium text-zinc-200 transition-colors cursor-pointer"
+                        >
+                          Compare BIN
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRef(entry.id)}
+                          className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-rose-500/20 hover:text-rose-300 border border-white/[0.07] text-zinc-400 transition-colors cursor-pointer"
+                          title="Remove from Reference Library"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

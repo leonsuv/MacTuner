@@ -37,6 +37,9 @@ pub fn run() {
                 .accelerator("CmdOrCtrl+S")
                 .build(app)?;
             let export_xdf = MenuItemBuilder::with_id("export-xdf", "Export XDF Definition…").build(app)?;
+            let print_report = MenuItemBuilder::with_id("print-report", "Print / Save PDF…")
+                .accelerator("CmdOrCtrl+P")
+                .build(app)?;
 
             let file_menu = SubmenuBuilder::new(app, "File")
                 .item(&open_file)
@@ -45,6 +48,8 @@ pub fn run() {
                 .item(&save_project)
                 .item(&export_bin)
                 .item(&export_xdf)
+                .separator()
+                .item(&print_report)
                 .separator()
                 .close_window()
                 .build()?;
@@ -66,6 +71,9 @@ pub fn run() {
                 .select_all()
                 .build()?;
 
+            let view_overview = MenuItemBuilder::with_id("view-overview", "Overview")
+                .accelerator("CmdOrCtrl+0")
+                .build(app)?;
             let view_hex = MenuItemBuilder::with_id("view-hex", "Hex Editor")
                 .accelerator("CmdOrCtrl+1")
                 .build(app)?;
@@ -81,6 +89,9 @@ pub fn run() {
             let view_flash = MenuItemBuilder::with_id("view-flash", "Flash Preflight & Checksums")
                 .accelerator("CmdOrCtrl+5")
                 .build(app)?;
+            let toggle_bottom_drawer = MenuItemBuilder::with_id("toggle-bottom-drawer", "Toggle Bottom Drawer")
+                .accelerator("Shift+CmdOrCtrl+Y")
+                .build(app)?;
             let toggle_inspector = MenuItemBuilder::with_id("toggle-inspector", "Toggle Inspector")
                 .accelerator("Alt+CmdOrCtrl+I")
                 .build(app)?;
@@ -89,12 +100,15 @@ pub fn run() {
                 .build(app)?;
 
             let view_menu = SubmenuBuilder::new(app, "View")
+                .item(&view_overview)
+                .separator()
                 .item(&view_hex)
                 .item(&view_map)
                 .item(&view_compare)
                 .item(&view_memory)
                 .item(&view_flash)
                 .separator()
+                .item(&toggle_bottom_drawer)
                 .item(&toggle_inspector)
                 .item(&cmd_palette)
                 .separator()
@@ -103,9 +117,22 @@ pub fn run() {
 
             let fix_cs = MenuItemBuilder::with_id("fix-checksums", "Fix Checksums").build(app)?;
             let swap_bins = MenuItemBuilder::with_id("swap-bins", "Swap Active & Comparison BIN").build(app)?;
+            let toggle_favorite = MenuItemBuilder::with_id("toggle-favorite", "Toggle Favorite")
+                .accelerator("CmdOrCtrl+D")
+                .build(app)?;
+            let next_changed_map = MenuItemBuilder::with_id("next-changed-map", "Next Changed Map")
+                .accelerator("Alt+CmdOrCtrl+Down")
+                .build(app)?;
+            let prev_changed_map = MenuItemBuilder::with_id("prev-changed-map", "Previous Changed Map")
+                .accelerator("Alt+CmdOrCtrl+Up")
+                .build(app)?;
             let tools_menu = SubmenuBuilder::new(app, "Tools")
                 .item(&fix_cs)
                 .item(&swap_bins)
+                .separator()
+                .item(&toggle_favorite)
+                .item(&next_changed_map)
+                .item(&prev_changed_map)
                 .build()?;
 
             let window_menu = SubmenuBuilder::new(app, "Window")

@@ -203,4 +203,254 @@ export const TableOps = {
     while (rows.length > 0 && rows[rows.length - 1].every((c) => c === '')) rows.pop();
     return rows;
   },
+
+  setToAverage(
+    selKeys: Set<string>,
+    value: (cell: Cell) => number | null,
+  ): Map<string, number> {
+    const cells = Array.from(selKeys, parseCellKey);
+    const vals = cells
+      .map(value)
+      .filter((v): v is number => v !== null && Number.isFinite(v));
+    if (vals.length === 0) return new Map();
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const out = new Map<string, number>();
+    for (const c of cells) out.set(cellKey(c), avg);
+    return out;
+  },
+
+  clamp(
+    selKeys: Set<string>,
+    minVal: number | undefined,
+    maxVal: number | undefined,
+    value: (cell: Cell) => number | null,
+  ): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const key of selKeys) {
+      const cell = parseCellKey(key);
+      const raw = value(cell);
+      if (raw === null || !Number.isFinite(raw)) continue;
+      let v = raw;
+      if (minVal !== undefined && Number.isFinite(minVal)) v = Math.max(v, minVal);
+      if (maxVal !== undefined && Number.isFinite(maxVal)) v = Math.min(v, maxVal);
+      out.set(key, v);
+    }
+    return out;
+  },
+
+  isMonotonic(values: readonly number[]): boolean {
+    return isMonotonic(values);
+  },
+
+  eval1D(xs: readonly number[], zs: readonly number[], q: number, extrapolate = false): number {
+    return eval1D(xs, zs, q, extrapolate);
+  },
+
+  reinterpolateSurface(
+    oldX: readonly number[],
+    oldY: readonly number[],
+    oldZ: readonly (readonly number[])[],
+    newX: readonly number[],
+    newY: readonly number[],
+    extrapolate = false,
+  ): number[][] {
+    return reinterpolateSurface(oldX, oldY, oldZ, newX, newY, extrapolate);
+  },
 };
+
+export type GridSelection = ReadonlyArray<Cell> | ReadonlySet<string>;
+
+export interface RescaleAxisOptions {
+  extrapolate?: boolean;
+}
+
+function normalizeSelection(selection: GridSelection): Cell[] {
+  if (Array.isArray(selection)) return selection as Cell[];
+  return Array.from(selection as ReadonlySet<string>, parseCellKey);
+}
+
+function cloneGrid(grid: readonly (readonly number[])[]): number[][] {
+  return grid.map((row) => [...row]);
+}
+
+/**
+ * Sets every selected cell in `grid` to the arithmetic mean of all finite selected cells.
+ */
+export function fillAverage(
+  grid: readonly (readonly number[])[],
+  selection: GridSelection,
+): number[][] {
+  const out = cloneGrid(grid);
+  const cells = normalizeSelection(selection);
+  const vals: number[] = [];
+  for (const { r, c } of cells) {
+    const v = out[r]?.[c];
+    if (typeof v === 'number' && Number.isFinite(v)) vals.push(v);
+  }
+  if (vals.length === 0) return out;
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  for (const { r, c } of cells) {
+    if (out[r] !== undefined && c >= 0 && c < out[r].length) {
+      out[r][c] = avg;
+    }
+  }
+  return out;
+}
+
+/**
+ * Flattens every selected cell in `grid` to a constant `targetValue`.
+ */
+export function flattenRange(
+  grid: readonly (readonly number[])[],
+  selection: GridSelection,
+  targetValue: number,
+): number[][] {
+  const out = cloneGrid(grid);
+  if (!Number.isFinite(targetValue)) return out;
+  const cells = normalizeSelection(selection);
+  for (const { r, c } of cells) {
+    if (out[r] !== undefined && c >= 0 && c < out[r].length) {
+      out[r][c] = targetValue;
+    }
+  }
+  return out;
+}
+
+/**
+ * Clamps every selected cell in `grid` into `[minVal, maxVal]`.
+ */
+export function clampRange(
+  grid: readonly (readonly number[])[],
+  selection: GridSelection,
+  minVal?: number,
+  maxVal?: number,
+): number[][] {
+  const out = cloneGrid(grid);
+  const hasMin = minVal !== undefined && Number.isFinite(minVal);
+  const hasMax = maxVal !== undefined && Number.isFinite(maxVal);
+  const cells = normalizeSelection(selection);
+  for (const { r, c } of cells) {
+    const v = out[r]?.[c];
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    let clamped = v;
+    if (hasMin) clamped = Math.max(clamped, minVal as number);
+    if (hasMax) clamped = Math.min(clamped, maxVal as number);
+    out[r][c] = clamped;
+  }
+  return out;
+}
+
+/**
+ * True if values are strictly increasing or strictly decreasing (or have <= 1 elements).
+ */
+export function isMonotonic(values: readonly number[]): boolean {
+  if (values.length <= 1) return true;
+  let increasing = true;
+  let decreasing = true;
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] <= values[i - 1]) increasing = false;
+    if (values[i] >= values[i - 1]) decreasing = false;
+  }
+  return increasing || decreasing;
+}
+
+/**
+ * Evaluates a 1D piecewise-linear curve `(xs, zs)` at `q` (clamped at ends or linearly extrapolated).
+ */
+export function eval1D(
+  xs: readonly number[],
+  zs: readonly number[],
+  q: number,
+  extrapolate = false,
+): number {
+  const n = Math.min(xs.length, zs.length);
+  if (n <= 0) return 0;
+  if (n === 1) return zs[0];
+  const ascending = xs[n - 1] >= xs[0];
+  if (!ascending) {
+    return eval1D([...xs].slice(0, n).reverse(), [...zs].slice(0, n).reverse(), q, extrapolate);
+  }
+  if (q <= xs[0]) {
+    if (!extrapolate || xs[1] === xs[0]) return zs[0];
+    return zs[0] + ((q - xs[0]) / (xs[1] - xs[0])) * (zs[1] - zs[0]);
+  }
+  if (q >= xs[n - 1]) {
+    if (!extrapolate || xs[n - 1] === xs[n - 2]) return zs[n - 1];
+    return zs[n - 1] + ((q - xs[n - 1]) / (xs[n - 1] - xs[n - 2])) * (zs[n - 1] - zs[n - 2]);
+  }
+  for (let i = 0; i < n - 1; i++) {
+    if (q >= xs[i] && q <= xs[i + 1]) {
+      const span = xs[i + 1] - xs[i];
+      const t = span === 0 ? 0 : (q - xs[i]) / span;
+      return zs[i] + t * (zs[i + 1] - zs[i]);
+    }
+  }
+  return zs[n - 1];
+}
+
+/**
+ * Re-interpolates a 2D surface `(oldX, oldY, oldZ)` onto new breakpoints `(newX, newY)`.
+ */
+export function reinterpolateSurface(
+  oldX: readonly number[],
+  oldY: readonly number[],
+  oldZ: readonly (readonly number[])[],
+  newX: readonly number[],
+  newY: readonly number[],
+  extrapolate = false,
+): number[][] {
+  const rows = newY.length;
+  const cols = newX.length;
+  if (rows === 0 || cols === 0 || oldZ.length === 0) return cloneGrid(oldZ);
+
+  const mid: number[][] = oldZ.map((row) =>
+    newX.map((qx) => eval1D(oldX, row, qx, extrapolate)),
+  );
+  if (rows === 1 || oldY.length <= 1) {
+    return mid.slice(0, rows);
+  }
+
+  const out: number[][] = Array.from({ length: rows }, () => new Array<number>(cols).fill(0));
+  for (let c = 0; c < cols; c++) {
+    const colVals = mid.map((row) => row[c]);
+    for (let r = 0; r < rows; r++) {
+      out[r][c] = eval1D(oldY, colVals, newY[r], extrapolate);
+    }
+  }
+  return out;
+}
+
+/**
+ * Rescales a 2D table grid along `'x'` (columns) or `'y'` (rows) from `oldBreakpoints`
+ * onto `newBreakpoints`, supporting optional linear extrapolation (`opts.extrapolate`).
+ */
+export function rescaleTableAxis(
+  grid: readonly (readonly number[])[],
+  axis: 'x' | 'y',
+  oldBreakpoints: readonly number[],
+  newBreakpoints: readonly number[],
+  opts?: RescaleAxisOptions,
+): number[][] {
+  const extrapolate = opts?.extrapolate ?? false;
+  if (grid.length === 0 || newBreakpoints.length === 0) return cloneGrid(grid);
+
+  if (axis === 'x') {
+    return grid.map((row) =>
+      newBreakpoints.map((qx) => eval1D(oldBreakpoints, row, qx, extrapolate)),
+    );
+  }
+
+  const cols = grid[0]?.length ?? 0;
+  const out: number[][] = Array.from({ length: newBreakpoints.length }, () =>
+    new Array<number>(cols).fill(0),
+  );
+  for (let c = 0; c < cols; c++) {
+    const colVals = grid.map((row) => row[c] ?? 0);
+    for (let r = 0; r < newBreakpoints.length; r++) {
+      out[r][c] = eval1D(oldBreakpoints, colVals, newBreakpoints[r], extrapolate);
+    }
+  }
+  return out;
+}
+
+export const rescaleAxis = rescaleTableAxis;

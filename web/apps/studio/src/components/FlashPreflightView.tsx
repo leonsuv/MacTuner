@@ -1,44 +1,63 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
   ArrowLeftRight,
   Binary,
   Camera,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock,
+  Copy,
   Cpu,
   Download,
   ExternalLink,
   FileText,
   History,
   Info,
+  Layers,
   Lock,
+  Pencil,
+  Printer,
   RotateCcw,
   Scissors,
   Search,
   ShieldAlert,
   ShieldCheck,
   Sliders,
+  Sparkles,
   Stethoscope,
   Table2,
   Trash2,
   Undo2,
+  Upload,
   Wrench,
 } from 'lucide-react';
 import {
+  BinCodec,
+  DiagnosticFinding,
   DiagnosticSeverity,
   Snapshot,
   XDFDefinition,
+  computeCVN,
+  correctCvnInPlace,
   countChangedBytes,
   countChangedCells,
   crc32,
+  detectChecksumPlugin,
   diffClusters,
+  findSyncBlocks,
+  fixChecksums,
   generateHtmlReport,
   identifyECU,
+  layoutByteRange,
+  parseBinaryFile,
   runDiagnostics,
+  scalingRawFor,
+  scalingValue,
+  verifyChecksums,
 } from '@mactuner/core';
 
 export interface ChecksumBlock {
@@ -52,9 +71,27 @@ export interface ChecksumBlock {
   actualHex: string;
   valid: boolean;
   protected?: boolean;
+  triageStatus?: 'fixable' | 'tprot' | 'unchecked';
 }
 
-export type FlashToolPreset = 'KESSv2 / KESS3' | 'Autotuner' | 'Flex';
+export type FlashToolPreset =
+  | 'KESSv2 / KESS3'
+  | 'Autotuner'
+  | 'Flex'
+  | 'KTAG / Bench (2 MB padded)'
+  | 'PCMFlash'
+  | 'CMDFlash / WinOLS'
+  | 'MPPS';
+
+const ALL_FLASH_PRESETS: readonly FlashToolPreset[] = [
+  'KESSv2 / KESS3',
+  'Autotuner',
+  'Flex',
+  'KTAG / Bench (2 MB padded)',
+  'PCMFlash',
+  'CMDFlash / WinOLS',
+  'MPPS',
+] as const;
 
 type FlashSubTab = 'preflight' | 'diagnostics' | 'snapshots' | 'history' | 'report';
 
@@ -62,6 +99,7 @@ export interface EditHistoryItem {
   label: string;
   bytes: number;
   timestamp?: number;
+  note?: string;
 }
 
 export interface EcuChecksumProfile {
@@ -183,6 +221,14 @@ export interface FlashPreflightViewProps {
   onUndo?: () => void;
   selectedProfileId?: string;
   onSelectProfile?: (profileId: string) => void;
+  snapshots?: Snapshot[];
+  onSaveSnapshot?: (name: string, note?: string) => void;
+  onRestoreSnapshot?: (snapshot: Snapshot) => void;
+  onDeleteSnapshot?: (id: string) => void;
+  onSetCompareFromSnapshot?: (snapshot: Snapshot) => void;
+  onAddSnapshotToMultiCompare?: (snapshot: Snapshot) => void;
+  onUpdateHistoryNote?: (index: number, note: string) => void;
+  onAutoFixDiagnostic?: (finding: DiagnosticFinding) => void;
 }
 
 function formatHex(addr: number): string {
@@ -276,6 +322,14 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
   onUndo,
   selectedProfileId,
   onSelectProfile,
+  snapshots: propSnapshots,
+  onSaveSnapshot,
+  onRestoreSnapshot,
+  onDeleteSnapshot,
+  onSetCompareFromSnapshot,
+  onAddSnapshotToMultiCompare,
+  onUpdateHistoryNote,
+  onAutoFixDiagnostic,
 }) => {
   const [subTab, setSubTab] = useState<FlashSubTab>('preflight');
   const [preset, setPreset] = useState<FlashToolPreset>('KESSv2 / KESS3');
@@ -286,6 +340,19 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
     `0x${Math.min(bytes.length, 0x30000).toString(16).toUpperCase()}`,
   );
   const [utilityNotice, setUtilityNotice] = useState<string | null>(null);
+
+  // Padding & Inject Segment states
+  const [padTargetSize, setPadTargetSize] = useState<number>(2_097_152);
+  const [padFillByte, setPadFillByte] = useState<0xff | 0x00>(0xff);
+  const [injectOffsetHex, setInjectOffsetHex] = useState<string>('0x20000');
+  const injectInputRef = useRef<HTMLInputElement | null>(null);
+
+  // CVN Recovery state
+  const baselineCvnHex = useMemo(
+    () => (baselineBytes ? computeCVN(baselineBytes).cvnHex : cvnHex),
+    [baselineBytes, cvnHex],
+  );
+  const [targetCvnInput, setTargetCvnInput] = useState<string>(baselineCvnHex);
 
   // ECU Checksum Profile Selector state (11 ECU/TCU families)
   const [localProfileId, setLocalProfileId] = useState<string>('bosch-med17');
@@ -307,14 +374,20 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
   );
   const [patchLittleEndian, setPatchLittleEndian] = useState<boolean>(true);
 
-  // Edit History filter
+  // Edit History filter & inline notes
   const [historySearch, setHistorySearch] = useState<string>('');
+  const [localHistoryNotes, setLocalHistoryNotes] = useState<Record<number, string>>({});
+  const [editingNoteIdx, setEditingNoteIdx] = useState<number | null>(null);
+  const [editingNoteDraft, setEditingNoteDraft] = useState<string>('');
 
   // Diagnostics filter
   const [diagFilter, setDiagFilter] = useState<'all' | DiagnosticSeverity>('all');
 
-  // Snapshots state
-  const [snapshots, setSnapshots] = useState<Snapshot[]>(() =>
+  // Report copy feedback
+  const [copiedMd, setCopiedMd] = useState(false);
+
+  // Snapshots state (controlled if propSnapshots passed, else local)
+  const [localSnapshots, setLocalSnapshots] = useState<Snapshot[]>(() =>
     baselineBytes
       ? [
           {
@@ -328,8 +401,16 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
         ]
       : [],
   );
+  const snapshots = propSnapshots ?? localSnapshots;
   const [snapshotName, setSnapshotName] = useState('');
   const [snapshotNote, setSnapshotNote] = useState('');
+  const [cmpSnapA, setCmpSnapA] = useState<string>('');
+  const [cmpSnapB, setCmpSnapB] = useState<string>('');
+
+  const triageReport = useMemo(
+    () => verifyChecksums(bytes, baselineBytes ?? undefined, activeProfileId),
+    [bytes, baselineBytes, activeProfileId],
+  );
 
   const invalidFixableBlocks = useMemo(
     () => blocks.filter((b) => !b.valid && !b.protected),
@@ -339,6 +420,114 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
     () => blocks.filter((b) => b.valid).length,
     [blocks],
   );
+
+  // Forgotten Twins (via findSyncBlocks)
+  const forgottenTwins = useMemo(() => {
+    if (!xdf || !baselineBytes) return [];
+    const groups = findSyncBlocks(baselineBytes, xdf, 0.92);
+    const out: Array<{
+      groupId: string;
+      editedItem: NonNullable<XDFDefinition['items'][number]>;
+      untouchedItem: NonNullable<XDFDefinition['items'][number]>;
+      similarity: number;
+    }> = [];
+    const byId = new Map(xdf.items.map((it) => [it.id, it]));
+    for (const g of groups) {
+      const members = g.itemIds.map((id) => byId.get(id)).filter((x): x is NonNullable<typeof x> => Boolean(x));
+      const edited = members.filter((m) => countChangedCells(m, bytes, baselineBytes) > 0);
+      const untouched = members.filter((m) => countChangedCells(m, bytes, baselineBytes) === 0);
+      if (edited.length > 0 && untouched.length > 0) {
+        for (const u of untouched) {
+          out.push({
+            groupId: `${g.id}-${u.id}`,
+            editedItem: edited[0],
+            untouchedItem: u,
+            similarity: g.similarity,
+          });
+        }
+      }
+    }
+    return out;
+  }, [xdf, bytes, baselineBytes]);
+
+  // Physics Invariants (Boost / Lambda / Timing / Torque cross-checks)
+  const physicsInvariants = useMemo(() => {
+    if (!xdf) return [];
+    const checks: Array<{
+      id: string;
+      label: string;
+      status: 'ok' | 'warn';
+      detail: string;
+      itemId: number;
+    }> = [];
+
+    for (const item of xdf.items) {
+      const [lo, hi] = layoutByteRange(item.data);
+      if (lo < 0 || hi > bytes.length) continue;
+      const t = item.title.toLowerCase();
+      let minV = Infinity;
+      let maxV = -Infinity;
+      for (let r = 0; r < item.data.rows; r++) {
+        for (let c = 0; c < item.data.cols; c++) {
+          const raw = BinCodec.raw(item.data, { r, c }, bytes);
+          if (raw === null) continue;
+          const v = scalingValue(item.scaling, raw);
+          if (v < minV) minV = v;
+          if (v > maxV) maxV = v;
+        }
+      }
+      if (!Number.isFinite(minV)) continue;
+
+      if (/boost|ldrxn|ladedruck|charge pressure/.test(t)) {
+        const isMbar = /mbar|hpa/i.test(item.scaling.units) || maxV > 500;
+        const limit = isMbar ? 3400 : 2.4;
+        checks.push({
+          id: `phys-boost-${item.id}`,
+          label: `Boost Envelope (${item.title})`,
+          status: maxV > limit ? 'warn' : 'ok',
+          detail:
+            maxV > limit
+              ? `Peak ${maxV.toFixed(1)} ${item.scaling.units} exceeds safe stock turbo threshold (${limit})`
+              : `Peak ${maxV.toFixed(1)} ${item.scaling.units} within safe envelope`,
+          itemId: item.id,
+        });
+      } else if (/lambda|lamfa/.test(t)) {
+        const lean = minV > 0.9;
+        checks.push({
+          id: `phys-lambda-${item.id}`,
+          label: `WOT Lambda Safety (${item.title})`,
+          status: lean ? 'warn' : 'ok',
+          detail: lean
+            ? `Minimum target λ = ${minV.toFixed(3)} (> 0.90 — lean under WOT risk)`
+            : `Target λ range [${minV.toFixed(3)} .. ${maxV.toFixed(3)}] safe`,
+          itemId: item.id,
+        });
+      } else if (/ignition|kfzw|timing/.test(t)) {
+        const high = maxV > 42;
+        checks.push({
+          id: `phys-ign-${item.id}`,
+          label: `Ignition Advance (${item.title})`,
+          status: high ? 'warn' : 'ok',
+          detail: high
+            ? `Max advance ${maxV.toFixed(1)}° exceeds 42°BTDC — verify knock margin`
+            : `Advance range [${minV.toFixed(1)}° .. ${maxV.toFixed(1)}°] plausible`,
+          itemId: item.id,
+        });
+      } else if (/torque|moment|drehmoment/.test(t)) {
+        const high = maxV > 1200;
+        checks.push({
+          id: `phys-trq-${item.id}`,
+          label: `Torque Ceiling (${item.title})`,
+          status: high ? 'warn' : 'ok',
+          detail: high
+            ? `Peak ${maxV.toFixed(0)} ${item.scaling.units} unusually high — check scaling`
+            : `Range [${minV.toFixed(0)} .. ${maxV.toFixed(0)} ${item.scaling.units}]`,
+          itemId: item.id,
+        });
+      }
+    }
+    return checks.slice(0, 8);
+  }, [xdf, bytes]);
 
   const modifiedBytes = useMemo(() => {
     if (!baselineBytes || baselineBytes.length !== bytes.length) return 0;
@@ -383,24 +572,47 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
     return { ecu, clusterCount: clusters.length, modifiedMaps };
   }, [bytes, baselineBytes, xdf]);
 
+  // FIX STALE-BYTES EXPORT BUG: compute fixed bytes synchronously before downloading!
   const handleExportBin = () => {
+    let exportBytes: Uint8Array = new Uint8Array(bytes);
+    let fixedNotice = '';
+
     if (correctBeforeExport && invalidFixableBlocks.length > 0) {
-      onFixChecksums();
+      const fixed = fixChecksums(exportBytes, activeProfileId);
+      if (fixed.fixedCount > 0) {
+        exportBytes = fixed.bytes;
+        fixedNotice = ` (checksum-corrected: ${fixed.fixedCount} block${fixed.fixedCount === 1 ? '' : 's'})`;
+        if (onReplaceBytes) {
+          onReplaceBytes(fixed.bytes, `Pre-Export Checksum Fix (${fixed.fixedCount})`);
+        } else {
+          onFixChecksums();
+        }
+      } else {
+        onFixChecksums();
+      }
     }
+
+    if (preset === 'KTAG / Bench (2 MB padded)' && exportBytes.length < 2_097_152) {
+      const padded = new Uint8Array(2_097_152);
+      padded.fill(0xff);
+      padded.set(exportBytes, 0);
+      exportBytes = padded;
+    }
+
     const baseName = fileName.replace(/\.bin$/i, '');
     const presetSlug = preset.toLowerCase().replace(/[^a-z0-9]+/g, '_');
     const outBinName = `${baseName}_${presetSlug}.bin`;
-    triggerDownload(bytes, outBinName, 'application/octet-stream');
+    triggerDownload(exportBytes, outBinName, 'application/octet-stream');
 
     if (attachChangeList) {
       const lines = [
         `MacTuner Flash Preflight Change List`,
         `Export Preset: ${preset}`,
         `File: ${outBinName}`,
-        `Size: ${bytes.length} bytes`,
+        `Size: ${exportBytes.length} bytes`,
         `Modified Bytes: ${modifiedBytes}`,
         `CVN: ${cvnHex}`,
-        `Checksum Blocks: ${validBlocksCount}/${blocks.length} valid`,
+        `Checksum Blocks: ${validBlocksCount}/${blocks.length} valid${fixedNotice}`,
         '',
         'Blocks:',
         ...blocks.map(
@@ -410,7 +622,149 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
       ];
       triggerDownload(lines.join('\n'), `${baseName}_changes.txt`, 'text/plain;charset=utf-8');
     }
-    setUtilityNotice(`Exported ${outBinName}${attachChangeList ? ' + change list (.txt)' : ''}.`);
+    setUtilityNotice(`Exported ${outBinName}${fixedNotice}${attachChangeList ? ' + change list (.txt)' : ''}.`);
+  };
+
+  const handleAutoDetectProfile = () => {
+    const detected = detectChecksumPlugin(bytes);
+    const mappedId = detected.id === 'simos18' ? 'simos-18' : detected.id;
+    setLocalProfileId(mappedId);
+    onSelectProfile?.(detected.id);
+    setUtilityNotice(`Auto-detected ECU profile: ${detected.name}.`);
+  };
+
+  const handleFixCvnInPlace = () => {
+    const res = correctCvnInPlace(bytes, targetCvnInput, activeProfileId);
+    if (!res.ok) {
+      setUtilityNotice(`CVN recovery failed for target 0x${targetCvnInput.replace(/^0x/i, '')}. Check 8-digit hex input.`);
+      return;
+    }
+    if (onReplaceBytes) {
+      onReplaceBytes(
+        res.bytes,
+        `CVN Recovery → 0x${res.achievedCvn} @ ${formatHex(res.patchedAddress)}`,
+      );
+      setUtilityNotice(`CVN restored to 0x${res.achievedCvn} (patched 4B @ ${formatHex(res.patchedAddress)}).`);
+    } else {
+      triggerDownload(res.bytes, `${fileName.replace(/\.bin$/i, '')}_cvn_${res.achievedCvn}.bin`);
+      setUtilityNotice(`Downloaded CVN-matched binary (0x${res.achievedCvn}).`);
+    }
+  };
+
+  const handleCopyToTwin = (
+    editedItem: XDFDefinition['items'][number],
+    untouchedItem: XDFDefinition['items'][number],
+  ) => {
+    const [srcLo, srcHi] = layoutByteRange(editedItem.data);
+    const [dstLo, dstHi] = layoutByteRange(untouchedItem.data);
+    const len = srcHi - srcLo;
+    if (len <= 0 || srcHi > bytes.length || dstHi > bytes.length || dstHi - dstLo !== len) return;
+    const next = new Uint8Array(bytes);
+    next.set(bytes.slice(srcLo, srcHi), dstLo);
+    if (onReplaceBytes) {
+      onReplaceBytes(next, `Copy Twin: ${editedItem.title} → ${untouchedItem.title}`);
+      setUtilityNotice(`Copied ${len} B from "${editedItem.title}" to twin "${untouchedItem.title}".`);
+    }
+  };
+
+  const handlePadBinary = () => {
+    if (padTargetSize <= bytes.length) {
+      setUtilityNotice(`Binary is already ${(bytes.length / 1024).toFixed(0)} KB (≥ target ${(padTargetSize / 1024).toFixed(0)} KB).`);
+      return;
+    }
+    const padded = new Uint8Array(padTargetSize);
+    padded.fill(padFillByte);
+    padded.set(bytes, 0);
+    const label = `Pad BIN to ${(padTargetSize / 1024).toFixed(0)} KB (0x${padFillByte.toString(16).toUpperCase().padStart(2, '0')})`;
+    if (onReplaceBytes) {
+      onReplaceBytes(padded, label);
+      setUtilityNotice(`Padded active BIN to ${(padTargetSize / 1024).toFixed(0)} KB with 0x${padFillByte.toString(16).toUpperCase().padStart(2, '0')}.`);
+    } else {
+      triggerDownload(padded, `${fileName.replace(/\.bin$/i, '')}_${Math.round(padTargetSize / 1024)}KB.bin`);
+    }
+  };
+
+  const handleInjectSegment = async (file: File) => {
+    const off = parseHexOrDec(injectOffsetHex);
+    const raw = new Uint8Array(await file.arrayBuffer());
+    const seg = parseBinaryFile(file.name, raw);
+    if (!Number.isFinite(off) || off < 0 || off + seg.length > bytes.length) {
+      setUtilityNotice(
+        `Inject failed: ${file.name} (${seg.length} B) at ${injectOffsetHex} exceeds binary length (${formatHex(bytes.length)}).`,
+      );
+      return;
+    }
+    const next = new Uint8Array(bytes);
+    next.set(seg, off);
+    if (onReplaceBytes) {
+      onReplaceBytes(next, `Inject ${file.name} (${seg.length} B) @ ${formatHex(off)}`);
+      setUtilityNotice(`Injected ${seg.length.toLocaleString()} B from ${file.name} at ${formatHex(off)}.`);
+    } else {
+      triggerDownload(next, `${fileName.replace(/\.bin$/i, '')}_injected.bin`);
+    }
+  };
+
+  const handleAutoFixFinding = (f: DiagnosticFinding) => {
+    if (onAutoFixDiagnostic) {
+      onAutoFixDiagnostic(f);
+      return;
+    }
+    if (!xdf || f.itemId === undefined || !onReplaceBytes) return;
+    const item = xdf.items.find((it) => it.id === f.itemId);
+    if (!item) return;
+
+    if (f.category === 'Forgotten Twin' && f.address !== undefined) {
+      const [srcLo, srcHi] = layoutByteRange(item.data);
+      const len = srcHi - srcLo;
+      if (len > 0 && f.address + len <= bytes.length) {
+        const next = new Uint8Array(bytes);
+        next.set(bytes.slice(srcLo, srcHi), f.address);
+        onReplaceBytes(next, `Auto-Fix Forgotten Twin @ ${formatHex(f.address)}`);
+        setUtilityNotice(`Synced forgotten twin at ${formatHex(f.address)}.`);
+      }
+      return;
+    }
+
+    if (f.category === 'Outlier Spike' && item.itemKind.kind === 'table') {
+      const l = item.data;
+      const next = new Uint8Array(bytes);
+      let fixed = 0;
+      for (let r = 1; r < l.rows - 1; r++) {
+        for (let c = 1; c < l.cols - 1; c++) {
+          const curRaw = BinCodec.raw(l, { r, c }, bytes);
+          if (curRaw === null) continue;
+          const cur = scalingValue(item.scaling, curRaw);
+          const nVals = [
+            BinCodec.raw(l, { r: r - 1, c }, bytes),
+            BinCodec.raw(l, { r: r + 1, c }, bytes),
+            BinCodec.raw(l, { r, c: c - 1 }, bytes),
+            BinCodec.raw(l, { r, c: c + 1 }, bytes),
+          ]
+            .filter((v): v is number => v !== null)
+            .map((v) => scalingValue(item.scaling, v));
+          if (nVals.length < 4) continue;
+          const avg = nVals.reduce((a, b) => a + b, 0) / nVals.length;
+          const sd = Math.sqrt(nVals.reduce((a, b) => a + (b - avg) ** 2, 0) / nVals.length);
+          if (Math.abs(cur - avg) > Math.max(sd * 3.5, Math.abs(avg) * 0.25)) {
+            const newRaw = scalingRawFor(item.scaling, avg, l);
+            if (newRaw !== null) {
+              const enc = BinCodec.encode(l, newRaw);
+              const off =
+                l.address +
+                (l.columnMajor ? c * l.rows + r : r * l.cols + c) * Math.max(1, Math.floor(l.bits / 8));
+              if (off >= 0 && off + enc.length <= next.length) {
+                next.set(enc, off);
+                fixed++;
+              }
+            }
+          }
+        }
+      }
+      if (fixed > 0) {
+        onReplaceBytes(next, `Auto-Fix ${fixed} Outlier Spike(s) in ${item.title}`);
+        setUtilityNotice(`Smoothed ${fixed} outlier spike cell(s) in ${item.title}.`);
+      }
+    }
   };
 
   const handleSwap = (size: 2 | 4) => {
@@ -444,23 +798,33 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
     setUtilityNotice(`Extracted ${slice.length.toLocaleString()} bytes to ${outName}.`);
   };
 
-  const handleSaveSnapshot = () => {
-    const name = snapshotName.trim() || `Snapshot ${snapshots.length + 1}`;
-    const nextSnap: Snapshot = {
-      id: `snap-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      name,
-      createdAt: Date.now(),
-      changedBytes: modifiedBytes,
-      bytes: bytes.slice(),
-      note: snapshotNote.trim() || undefined,
-    };
-    setSnapshots((prev) => [nextSnap, ...prev]);
-    setSnapshotName('');
-    setSnapshotNote('');
+  const handleSaveSnapshot = (overrideName?: string, overrideNote?: string) => {
+    const name = (overrideName ?? snapshotName).trim() || `Snapshot ${snapshots.length + 1}`;
+    const note = (overrideNote ?? snapshotNote).trim() || undefined;
+    if (onSaveSnapshot) {
+      onSaveSnapshot(name, note);
+    } else {
+      const nextSnap: Snapshot = {
+        id: `snap-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name,
+        createdAt: Date.now(),
+        changedBytes: modifiedBytes,
+        bytes: bytes.slice(),
+        note,
+      };
+      setLocalSnapshots((prev) => [nextSnap, ...prev]);
+    }
+    if (!overrideName) {
+      setSnapshotName('');
+      setSnapshotNote('');
+    }
   };
 
   const handleRestoreSnapshot = (snap: Snapshot) => {
-    if (onReplaceBytes) {
+    if (onRestoreSnapshot) {
+      onRestoreSnapshot(snap);
+      setUtilityNotice(`Restored "${snap.name}" into active BIN buffer.`);
+    } else if (onReplaceBytes) {
       onReplaceBytes(snap.bytes.slice(), `Restored snapshot: ${snap.name}`);
       setUtilityNotice(`Restored "${snap.name}" into active BIN buffer.`);
     } else {
@@ -470,6 +834,21 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
       );
     }
   };
+
+  const handleDeleteSnapshot = (id: string) => {
+    if (onDeleteSnapshot) onDeleteSnapshot(id);
+    else setLocalSnapshots((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const snapshotComparison = useMemo(() => {
+    if (!cmpSnapA || !cmpSnapB || cmpSnapA === cmpSnapB) return null;
+    const a = snapshots.find((s) => s.id === cmpSnapA);
+    const b = snapshots.find((s) => s.id === cmpSnapB);
+    if (!a || !b) return null;
+    const diffB = countChangedBytes(a.bytes, b.bytes);
+    const clusters = diffClusters(a.bytes, b.bytes, 16);
+    return { a, b, diffB, clusterCount: clusters.length };
+  }, [cmpSnapA, cmpSnapB, snapshots]);
 
   const manualPatchPreview = useMemo(() => {
     const start = parseHexOrDec(patchStartHex);
@@ -613,6 +992,67 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank', 'noopener,noreferrer');
     window.setTimeout(() => URL.revokeObjectURL(url), 15000);
+  };
+
+  const handlePrintPdfReport = () => {
+    const html = generateHtmlReport(fileName, compareName, bytes, baselineBytes, xdf ?? null);
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      window.setTimeout(() => win.print(), 250);
+    }
+  };
+
+  const handleDownloadTxtChangelog = () => {
+    const lines = [
+      `MacTuner Calibration Changelog`,
+      `File: ${fileName} (${Math.round(bytes.length / 1024)} KB) vs ${compareName}`,
+      `ECU: ${reportSummary.ecu.ecuFamily} (${reportSummary.ecu.architecture})`,
+      `Modified Maps: ${reportSummary.modifiedMaps} | Modified Bytes: ${modifiedBytes} B | Clusters: ${reportSummary.clusterCount}`,
+      `Checksums: ${allValid ? `OK (${validBlocksCount}/${blocks.length})` : `${invalidFixableBlocks.length} invalid`}`,
+      '',
+      ...(xdf && baselineBytes
+        ? xdf.items
+            .filter((it) => countChangedCells(it, bytes, baselineBytes) > 0)
+            .map(
+              (it) =>
+                `  - ${it.title} [${formatHex(it.data.address)}]: ${countChangedCells(it, bytes, baselineBytes)}/${it.data.rows * it.data.cols} cells changed`,
+            )
+        : []),
+    ];
+    triggerDownload(
+      lines.join('\n'),
+      `${fileName.replace(/\.bin$/i, '')}_changelog.txt`,
+      'text/plain;charset=utf-8',
+    );
+    setUtilityNotice('Downloaded TXT changelog.');
+  };
+
+  const handleCopyMarkdownReport = () => {
+    const rows =
+      xdf && baselineBytes
+        ? xdf.items
+            .filter((it) => countChangedCells(it, bytes, baselineBytes) > 0)
+            .map(
+              (it) =>
+                `| ${it.title} | \`${formatHex(it.data.address)}\` | ${countChangedCells(it, bytes, baselineBytes)}/${it.data.rows * it.data.cols} |`,
+            )
+        : [];
+    const md = [
+      `# MacTuner Tune Report — \`${fileName}\``,
+      `- **ECU:** ${reportSummary.ecu.ecuFamily} (${reportSummary.ecu.architecture})`,
+      `- **Modified:** ${reportSummary.modifiedMaps} maps · ${modifiedBytes.toLocaleString()} B · ${reportSummary.clusterCount} clusters`,
+      `- **Checksums:** ${allValid ? 'Valid' : `${invalidFixableBlocks.length} invalid`}`,
+      '',
+      '| Map | Address | Changed Cells |',
+      '| --- | --- | --- |',
+      ...rows,
+    ].join('\n');
+    void navigator.clipboard?.writeText(md);
+    setCopiedMd(true);
+    window.setTimeout(() => setCopiedMd(false), 1800);
   };
 
   return (
@@ -774,18 +1214,44 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               <div className="mt-2 text-xl font-mono tabular-nums font-bold text-[#5ac8fa]">
                 0x{cvnHex}
               </div>
-              <div className="mt-0.5 text-[11px] text-zinc-500">Calibration Verification No.</div>
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={targetCvnInput}
+                  onChange={(e) => setTargetCvnInput(e.target.value)}
+                  placeholder="Target CVN"
+                  className="w-24 px-1.5 py-0.5 rounded bg-[#0c0d10] border border-white/[0.08] font-mono text-[10.5px] text-zinc-200 focus:outline-none focus:border-[#0a84ff]"
+                />
+                <button
+                  type="button"
+                  onClick={handleFixCvnInPlace}
+                  className="px-2 py-0.5 rounded bg-[#0a84ff]/20 hover:bg-[#0a84ff]/35 border border-[#0a84ff]/40 text-[10px] font-semibold text-[#5ac8fa] cursor-pointer"
+                  title="In-place GF(2) CVN recovery"
+                >
+                  Fix CVN In-Place
+                </button>
+              </div>
             </div>
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                TPROT / PROTECTED
+                TPROT / 3-WAY TRIAGE
               </div>
               <div className="mt-2 text-xl font-mono tabular-nums font-bold text-zinc-200 flex items-center gap-2">
                 <Lock className="w-4 h-4 text-indigo-400" />
                 <span>{tprotProtectedCount}</span>
               </div>
-              <div className="mt-0.5 text-[11px] text-zinc-500">Read-only RSA / OTP zones</div>
+              <div className="mt-1 flex items-center gap-1.5 flex-wrap text-[10px] font-mono">
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">
+                  {invalidFixableBlocks.length} Fixable
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300">
+                  {tprotProtectedCount} TPROT
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-zinc-500/15 text-zinc-400">
+                  {triageReport.uncheckedBytes}B Unchecked
+                </span>
+              </div>
             </div>
 
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
@@ -819,7 +1285,15 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleAutoDetectProfile}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 border border-[#0a84ff]/35 text-[11px] font-semibold text-[#5ac8fa] cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Auto-Detect</span>
+              </button>
               <label className="text-[11px] text-zinc-400" htmlFor="ecu-profile-select">
                 Profile
               </label>
@@ -889,9 +1363,13 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                           </div>
                         </td>
                         <td className="py-2.5 px-3.5 text-right">
-                          {blk.protected ? (
+                          {blk.protected || blk.triageStatus === 'tprot' ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-[11px] font-medium">
-                              <Lock className="w-3 h-3" /> Protected
+                              <Lock className="w-3 h-3" /> TPROT-Protected
+                            </span>
+                          ) : blk.triageStatus === 'unchecked' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-500/15 text-zinc-300 border border-zinc-500/30 text-[11px] font-medium">
+                              Unchecked
                             </span>
                           ) : blk.valid ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-semibold">
@@ -1073,17 +1551,18 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                   <label className="block text-[11px] text-zinc-400 mb-1.5">
                     Target Flasher Preset
                   </label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {(['KESSv2 / KESS3', 'Autotuner', 'Flex'] as const).map((p) => (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {ALL_FLASH_PRESETS.map((p) => (
                       <button
                         key={p}
                         type="button"
                         onClick={() => setPreset(p)}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition-all cursor-pointer ${
+                        className={`py-1.5 px-2 rounded-lg text-[10.5px] font-medium border transition-all cursor-pointer truncate ${
                           preset === p
                             ? 'bg-[#0a84ff]/20 border-[#0a84ff]/55 text-white'
                             : 'bg-[#0c0d10] border-white/[0.07] text-zinc-400 hover:text-zinc-200'
                         }`}
+                        title={p}
                       >
                         {p}
                       </button>
@@ -1176,12 +1655,171 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                   </button>
                 </div>
 
+                {/* Padding Utility */}
+                <div className="pt-2 border-t border-white/[0.065] space-y-2">
+                  <div className="text-[11px] text-zinc-400">Pad Binary to Target Size</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                      value={padTargetSize}
+                      onChange={(e) => setPadTargetSize(Number(e.target.value))}
+                      className="col-span-2 px-2 py-1.5 rounded-md bg-[#0c0d10] border border-white/[0.08] text-xs font-mono text-zinc-100"
+                    >
+                      <option value={524_288}>512 KB</option>
+                      <option value={1_048_576}>1 MB</option>
+                      <option value={2_097_152}>2 MB</option>
+                      <option value={4_194_304}>4 MB</option>
+                    </select>
+                    <select
+                      value={padFillByte}
+                      onChange={(e) => setPadFillByte(Number(e.target.value) as 0xff | 0x00)}
+                      className="px-2 py-1.5 rounded-md bg-[#0c0d10] border border-white/[0.08] text-xs font-mono text-zinc-100"
+                    >
+                      <option value={0xff}>0xFF</option>
+                      <option value={0x00}>0x00</option>
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePadBinary}
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 cursor-pointer"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Pad Binary</span>
+                  </button>
+                </div>
+
+                {/* Inject Segment at 0x... */}
+                <div className="pt-2 border-t border-white/[0.065] space-y-2">
+                  <input
+                    ref={injectInputRef}
+                    type="file"
+                    accept=".bin,.ori,.mod"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void handleInjectSegment(f);
+                      e.target.value = '';
+                    }}
+                  />
+                  <div className="text-[11px] text-zinc-400">Inject Segment at Offset</div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={injectOffsetHex}
+                      onChange={(e) => setInjectOffsetHex(e.target.value)}
+                      className="w-28 px-2.5 py-1.5 rounded-md bg-[#0c0d10] border border-white/[0.08] text-xs font-mono text-zinc-100"
+                      placeholder="0x20000"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => injectInputRef.current?.click()}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-[#5ac8fa]" />
+                      <span>Inject .bin at {injectOffsetHex}</span>
+                    </button>
+                  </div>
+                </div>
+
                 {utilityNotice && (
                   <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 rounded-lg px-2.5 py-1.5">
                     {utilityNotice}
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* Forgotten Twins & Physics Invariants Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Forgotten Twins Card */}
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="px-4 py-3 border-b border-white/[0.065] flex items-center justify-between">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
+                  Forgotten Twins (Sync Blocks)
+                </h3>
+                <span className="text-[11px] font-mono text-amber-300">
+                  {forgottenTwins.length} found
+                </span>
+              </div>
+              {forgottenTwins.length === 0 ? (
+                <div className="p-5 text-xs text-zinc-500 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>All parallel / twin calibration maps are in sync.</span>
+                </div>
+              ) : (
+                <div className="divide-y divide-white/[0.05]">
+                  {forgottenTwins.map((tw) => (
+                    <div
+                      key={tw.groupId}
+                      className="px-4 py-2.5 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium text-zinc-100 truncate">
+                          {tw.editedItem.title} → <span className="text-amber-300">{tw.untouchedItem.title}</span>
+                        </div>
+                        <div className="text-[10.5px] font-mono text-zinc-500">
+                          {Math.round(tw.similarity * 100)}% twin · untouched @ {formatHex(tw.untouchedItem.data.address)}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyToTwin(tw.editedItem, tw.untouchedItem)}
+                        className="px-2.5 py-1 rounded-md bg-[#0a84ff]/15 hover:bg-[#0a84ff]/30 border border-[#0a84ff]/35 text-[#5ac8fa] text-[11px] font-semibold shrink-0 cursor-pointer"
+                      >
+                        Copy to Twin
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Physics Invariants Card */}
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="px-4 py-3 border-b border-white/[0.065] flex items-center justify-between">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
+                  Physics Invariants (Boost / Lambda / Timing / Torque)
+                </h3>
+                <span className="text-[11px] font-mono text-zinc-400">
+                  {physicsInvariants.length} checks
+                </span>
+              </div>
+              {physicsInvariants.length === 0 ? (
+                <div className="p-5 text-xs text-zinc-500">
+                  Load an XDF with boost, lambda, timing, or torque maps to verify physical safety envelopes.
+                </div>
+              ) : (
+                <div className="divide-y divide-white/[0.05]">
+                  {physicsInvariants.map((chk) => (
+                    <div
+                      key={chk.id}
+                      className="px-4 py-2.5 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="flex items-start gap-2 min-w-0">
+                        {chk.status === 'ok' ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 mt-0.5 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <div className="font-medium text-zinc-100 truncate">{chk.label}</div>
+                          <div className="text-[10.5px] text-zinc-400 truncate">{chk.detail}</div>
+                        </div>
+                      </div>
+                      {onSelectMap && (
+                        <button
+                          type="button"
+                          onClick={() => onSelectMap(chk.itemId)}
+                          className="px-2 py-1 rounded-md bg-white/[0.05] hover:bg-[#0a84ff]/20 text-zinc-200 hover:text-[#5ac8fa] border border-white/[0.08] text-[11px] shrink-0 cursor-pointer"
+                        >
+                          Open Map
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1289,7 +1927,19 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                    {(f.category === 'Forgotten Twin' ||
+                      f.category === 'Outlier Spike' ||
+                      onAutoFixDiagnostic) && (
+                      <button
+                        type="button"
+                        onClick={() => handleAutoFixFinding(f)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/35 text-[11px] font-semibold transition-colors cursor-pointer"
+                      >
+                        <Wrench className="w-3 h-3" />
+                        <span>Auto-Fix</span>
+                      </button>
+                    )}
                     {f.itemId !== undefined && onSelectMap && (
                       <button
                         type="button"
@@ -1321,15 +1971,30 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
       {/* TAB 3: SNAPSHOTS */}
       {subTab === 'snapshots' && (
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {/* Save Snapshot Bar */}
+          {/* Save Snapshot Bar + Quick Snapshot */}
           <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 space-y-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <div>
-              <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
-                Binary Checkpoints &amp; Snapshots
-              </h2>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Capture named in-memory checkpoints of the active BIN, compare byte deltas, and restore instantly.
-              </p>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-sm font-semibold tracking-[-0.01em] text-white">
+                  Binary Checkpoints &amp; Snapshots
+                </h2>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Capture named in-memory checkpoints of the active BIN, compare any two snapshots, and restore instantly.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  handleSaveSnapshot(
+                    `Quick ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
+                    'Quick checkpoint',
+                  )
+                }
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 text-xs font-semibold cursor-pointer"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>Quick Snapshot</span>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
@@ -1349,7 +2014,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               />
               <button
                 type="button"
-                onClick={handleSaveSnapshot}
+                onClick={() => handleSaveSnapshot()}
                 className="md:col-span-3 flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_2px_10px_rgba(10,132,255,0.3)] transition-colors cursor-pointer"
               >
                 <Camera className="w-3.5 h-3.5" />
@@ -1357,6 +2022,84 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               </button>
             </div>
           </div>
+
+          {/* 4 Snapshot KPI Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                Total Snapshots
+              </div>
+              <div className="mt-1 text-xl font-mono tabular-nums font-bold text-[#5ac8fa]">
+                {snapshots.length}
+              </div>
+            </div>
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                Latest Checkpoint
+              </div>
+              <div className="mt-1 text-xs font-semibold text-white truncate">
+                {snapshots[0]?.name ?? 'None'}
+              </div>
+            </div>
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                Current Delta vs Stock
+              </div>
+              <div className="mt-1 text-xl font-mono tabular-nums font-bold text-amber-400">
+                {modifiedBytes.toLocaleString()} B
+              </div>
+            </div>
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                Active Buffer
+              </div>
+              <div className="mt-1 text-xl font-mono tabular-nums font-bold text-zinc-200">
+                {(bytes.length / 1024).toFixed(0)} KB
+              </div>
+            </div>
+          </div>
+
+          {/* Compare Two Snapshots Bar */}
+          {snapshots.length >= 2 && (
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3.5 flex items-center justify-between gap-3 flex-wrap text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                  Compare Two Snapshots:
+                </span>
+                <select
+                  value={cmpSnapA}
+                  onChange={(e) => setCmpSnapA(e.target.value)}
+                  className="px-2.5 py-1 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
+                >
+                  <option value="">Select Snapshot A…</option>
+                  {snapshots.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-zinc-500">vs</span>
+                <select
+                  value={cmpSnapB}
+                  onChange={(e) => setCmpSnapB(e.target.value)}
+                  className="px-2.5 py-1 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
+                >
+                  <option value="">Select Snapshot B…</option>
+                  {snapshots.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {snapshotComparison && (
+                <div className="font-mono text-[11px] px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                  Δ {snapshotComparison.diffB.toLocaleString()} B · {snapshotComparison.clusterCount}{' '}
+                  cluster{snapshotComparison.clusterCount === 1 ? '' : 's'}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Saved Snapshots List */}
           {snapshots.length === 0 ? (
@@ -1405,18 +2148,49 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                      {onSetCompareFromSnapshot && (
+                        <button
+                          type="button"
+                          onClick={() => onSetCompareFromSnapshot(snap)}
+                          className="px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] font-medium text-zinc-200 cursor-pointer"
+                        >
+                          Set Compare
+                        </button>
+                      )}
+                      {onAddSnapshotToMultiCompare && (
+                        <button
+                          type="button"
+                          onClick={() => onAddSnapshotToMultiCompare(snap)}
+                          className="px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] font-medium text-zinc-200 cursor-pointer"
+                        >
+                          Add to Multi-Compare
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          triggerDownload(
+                            snap.bytes,
+                            `${snap.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.bin`,
+                          )
+                        }
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] font-medium text-zinc-200 cursor-pointer"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>Export .bin</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleRestoreSnapshot(snap)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-[#0a84ff]/20 hover:text-[#5ac8fa] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 border border-[#0a84ff]/35 text-[11px] font-semibold text-[#5ac8fa] cursor-pointer"
                       >
-                        <RotateCcw className="w-3.5 h-3.5" />
+                        <RotateCcw className="w-3 h-3" />
                         <span>Restore</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setSnapshots((prev) => prev.filter((s) => s.id !== snap.id))}
+                        onClick={() => handleDeleteSnapshot(snap.id)}
                         className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-rose-500/20 hover:text-rose-300 border border-white/[0.07] text-zinc-400 transition-colors cursor-pointer"
                         title="Delete Snapshot"
                       >
@@ -1535,7 +2309,13 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
           ) : (
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 space-y-2.5">
               {filteredHistory.map(({ entry, stepNumber }, idx) => {
+                const origIdx = stepNumber - 1;
                 const isLatest = stepNumber === historyEntries.length;
+                const matchedItem = xdf?.items.find((it) =>
+                  entry.label.toLowerCase().includes(it.title.toLowerCase()),
+                );
+                const noteText = localHistoryNotes[origIdx] ?? entry.note ?? '';
+                const isEditingNote = editingNoteIdx === origIdx;
                 return (
                   <div
                     key={`${stepNumber}-${entry.label}`}
@@ -1545,7 +2325,7 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                         : 'bg-[#0c0d10] border-white/[0.06]'
                     }`}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div
                         className={`w-7 h-7 rounded-full flex items-center justify-center font-mono text-[11px] font-bold shrink-0 ${
                           isLatest
@@ -1555,30 +2335,93 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                       >
                         #{stepNumber}
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-semibold text-white truncate">
-                            {entry.label}
-                          </span>
+                          {matchedItem && onSelectMap ? (
+                            <button
+                              type="button"
+                              onClick={() => onSelectMap(matchedItem.id)}
+                              className="text-xs font-semibold text-[#5ac8fa] hover:underline truncate cursor-pointer"
+                            >
+                              {entry.label}
+                            </button>
+                          ) : (
+                            <span className="text-xs font-semibold text-white truncate">
+                              {entry.label}
+                            </span>
+                          )}
                           {isLatest && (
                             <span className="px-1.5 py-0.5 rounded-full bg-[#0a84ff]/20 text-[#5ac8fa] text-[9.5px] font-semibold uppercase">
                               Latest
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] font-mono text-zinc-500 mt-0.5">
-                          {entry.timestamp
-                            ? new Date(entry.timestamp).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                              })
-                            : `Session edit ${idx === 0 ? 'most recent' : ''}`}
+                        <div className="text-[11px] font-mono text-zinc-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                          <span>
+                            {entry.timestamp
+                              ? new Date(entry.timestamp).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit',
+                                })
+                              : `Session edit ${idx === 0 ? 'most recent' : ''}`}
+                          </span>
+                          {!isEditingNote && noteText && (
+                            <span className="text-zinc-300 font-sans">· {noteText}</span>
+                          )}
                         </div>
+                        {isEditingNote && (
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={editingNoteDraft}
+                              onChange={(e) => setEditingNoteDraft(e.target.value)}
+                              placeholder="Add audit note…"
+                              className="flex-1 max-w-xs px-2 py-1 rounded bg-[#17181d] border border-[#0a84ff]/50 text-xs text-zinc-100 focus:outline-none"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  setLocalHistoryNotes((prev) => ({
+                                    ...prev,
+                                    [origIdx]: editingNoteDraft.trim(),
+                                  }));
+                                  onUpdateHistoryNote?.(origIdx, editingNoteDraft.trim());
+                                  setEditingNoteIdx(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingNoteIdx(null);
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLocalHistoryNotes((prev) => ({
+                                  ...prev,
+                                  [origIdx]: editingNoteDraft.trim(),
+                                }));
+                                onUpdateHistoryNote?.(origIdx, editingNoteDraft.trim());
+                                setEditingNoteIdx(null);
+                              }}
+                              className="px-2 py-1 rounded bg-[#0a84ff] text-white text-[11px] font-semibold cursor-pointer"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2.5 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingNoteIdx(origIdx);
+                          setEditingNoteDraft(noteText);
+                        }}
+                        className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-zinc-400 hover:text-zinc-100 cursor-pointer"
+                        title="Edit Note"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
                       <span className="px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 font-mono tabular-nums text-[11px] font-semibold text-amber-300">
                         {entry.bytes.toLocaleString()} B
                       </span>
@@ -1619,11 +2462,35 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleDownloadTxtChangelog}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Download TXT Changelog</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyMarkdownReport}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
+              >
+                {copiedMd ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
+                <span>{copiedMd ? 'Copied Markdown' : 'Copy Markdown'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintPdfReport}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Print / Save PDF</span>
+              </button>
               <button
                 type="button"
                 onClick={handlePreviewHtmlReport}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
               >
                 <ExternalLink className="w-3.5 h-3.5 text-zinc-400" />
                 <span>Preview in Tab</span>

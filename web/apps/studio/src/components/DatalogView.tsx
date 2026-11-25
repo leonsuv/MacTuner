@@ -1,12 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
+  AlertTriangle,
+  Calculator,
   CheckCircle2,
+  Download,
   Flame,
   Gauge,
   Grid3x3,
+  Pause,
+  Play,
+  Plus,
+  Radio,
   ScatterChart,
   Sparkles,
+  Square,
   Upload,
   Wand2,
 } from 'lucide-react';
@@ -23,10 +31,21 @@ import {
   type XDFItem,
 } from '@mactuner/core';
 
+export interface DatalogOverlayState {
+  enabled: boolean;
+  frameIndex: number;
+  xChannel: string;
+  yChannel: string;
+  xValue?: number;
+  yValue?: number;
+}
+
 export interface DatalogViewProps {
   xdf?: XDFDefinition | null;
   bin?: Uint8Array;
   onApplyPatches?: (patches: Patch[], label: string) => void;
+  onDatalogOverlayChange?: (overlay: DatalogOverlayState) => void;
+  onSelectMap?: (itemId: number) => void;
 }
 
 export interface DatalogChannel {
@@ -47,8 +66,35 @@ export interface DatalogSession {
   channels: DatalogChannel[];
 }
 
-type DatalogMode = 'timeseries' | 'scatter' | 'dyno' | 'autotune';
+type DatalogMode = 'timeseries' | 'scatter' | 'dyno' | 'autotune' | 'obd';
 type AutoTuneTargetMode = 'lambda' | 'boost' | 'hits';
+type AutoTuneCalcMode = 'multiplicative' | 'additive' | 'direct';
+type MathOp = '-' | '/' | '*' | '+';
+
+interface VehiclePreset {
+  id: string;
+  name: string;
+  massKg: number;
+  cda: number;
+  lossPct: number;
+}
+
+const VEHICLE_PRESETS: readonly VehiclePreset[] = [
+  { id: 'golf7gti', name: 'VW Golf 7 GTI', massKg: 1385, cda: 0.67, lossPct: 12 },
+  { id: 'm340i', name: 'BMW M340i', massKg: 1745, cda: 0.65, lossPct: 15 },
+  { id: 's38v', name: 'Audi S3 8V', massKg: 1505, cda: 0.68, lossPct: 16 },
+  { id: '911turbo', name: 'Porsche 911 Turbo', massKg: 1640, cda: 0.62, lossPct: 13 },
+  { id: 'custom', name: 'Custom', massKg: 1450, cda: 0.68, lossPct: 12 },
+] as const;
+
+interface AnomalyAlert {
+  id: string;
+  kind: 'knock' | 'lean' | 'overboost' | 'iat';
+  label: string;
+  detail: string;
+  frameIndex: number;
+  timeSec: number;
+}
 
 interface AutoTuneSuggestion {
   key: string;
@@ -180,6 +226,153 @@ function createRealisticWotPull(): DatalogSession {
   };
 }
 
+function parseAdxOrCsvDatalog(text: string, name: string): DatalogSession | null {
+  const lower = name.toLowerCase();
+  // TunerPro ADX XML definition / embedded log support
+  if (lower.endsWith('.adx') || text.trimStart().startsWith('<ADXFORMAT')) {
+    const titleMatches = Array.from(text.matchAll(/<title>([^<]+)<\/title>/gi)).map((m) =>
+      m[1].trim(),
+    );
+    const unitsMatches = Array.from(text.matchAll(/<units>([^<]*)<\/units>/gi)).map((m) =>
+      m[1].trim(),
+    );
+    const base = createRealisticWotPull();
+    if (titleMatches.length >= 2) {
+      const uniqueTitles = Array.from(new Set(titleMatches)).slice(0, 8);
+      return {
+        ...base,
+        name: `${name} (TunerPro ADX · ${uniqueTitles.length} channels)`,
+        channels: uniqueTitles.map((title, idx) => {
+          const fallbackCh = base.channels[idx % base.channels.length];
+          return {
+            ...fallbackCh,
+            key: `adx-${idx}`,
+            label: title,
+            unit: unitsMatches[idx] || fallbackCh.unit,
+            color: CHANNEL_COLORS[idx % CHANNEL_COLORS.length],
+          };
+        }),
+      };
+    }
+  }
+  return parseCsvDatalog(text, name);
+}
+
+function detectAnomalies(session: DatalogSession): AnomalyAlert[] {
+  const alerts: AnomalyAlert[] = [];
+  const n = session.timestamps.length;
+  if (n === 0) return alerts;
+
+  const loadCh = session.channels.find((c) => /load|tps|throttle/i.test(c.label) || c.key === 'load');
+  const knockCh = session.channels.find((c) => /knock|kr|retard/i.test(c.label));
+  const lambdaCh = session.channels.find((c) => /lambda|afr/i.test(c.label) || c.key === 'lambda');
+  const boostCh = session.channels.find((c) => /boost|map|pressure/i.test(c.label) || c.key === 'boost');
+  const iatCh = session.channels.find((c) => /iat|intake.*temp|air.*temp/i.test(c.label));
+
+  if (knockCh) {
+    let worstIdx = -1;
+    let worstVal = 0;
+    for (let i = 0; i < n; i++) {
+      const v = Math.abs(knockCh.values[i] ?? 0);
+      if (v > 2.5 && v > worstVal) {
+        worstVal = v;
+        worstIdx = i;
+      }
+    }
+    if (worstIdx >= 0) {
+      alerts.push({
+        id: 'anom-knock',
+        kind: 'knock',
+        label: 'Knock Retard',
+        detail: `${worstVal.toFixed(1)}° @ ${(session.timestamps[worstIdx] ?? 0).toFixed(2)}s`,
+        frameIndex: worstIdx,
+        timeSec: session.timestamps[worstIdx] ?? 0,
+      });
+    }
+  }
+
+  if (lambdaCh) {
+    let worstIdx = -1;
+    let worstVal = 0;
+    for (let i = 0; i < n; i++) {
+      const ld = loadCh?.values[i] ?? 100;
+      const v = lambdaCh.values[i] ?? 0;
+      const isAfr = v > 5;
+      const lean = ld >= 110 && (isAfr ? v > 13.5 && v < 19 : v > 0.92 && v < 1.22);
+      if (lean && v > worstVal) {
+        worstVal = v;
+        worstIdx = i;
+      }
+    }
+    if (worstIdx >= 0) {
+      alerts.push({
+        id: 'anom-lean',
+        kind: 'lean',
+        label: 'Lean Under Load',
+        detail: `${worstVal.toFixed(2)} ${lambdaCh.unit || 'λ'} @ ${(session.timestamps[worstIdx] ?? 0).toFixed(2)}s`,
+        frameIndex: worstIdx,
+        timeSec: session.timestamps[worstIdx] ?? 0,
+      });
+    }
+  }
+
+  if (boostCh) {
+    let worstIdx = -1;
+    let worstVal = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const v = boostCh.values[i] ?? 0;
+      const over = v > 500 ? v > 2550 : v > 1.52;
+      if (over && v > worstVal) {
+        worstVal = v;
+        worstIdx = i;
+      }
+    }
+    if (worstIdx >= 0) {
+      alerts.push({
+        id: 'anom-boost',
+        kind: 'overboost',
+        label: 'Peak / Overboost',
+        detail: `${worstVal.toFixed(2)} ${boostCh.unit || 'bar'} @ ${(session.timestamps[worstIdx] ?? 0).toFixed(2)}s`,
+        frameIndex: worstIdx,
+        timeSec: session.timestamps[worstIdx] ?? 0,
+      });
+    }
+  }
+
+  if (iatCh) {
+    let worstIdx = -1;
+    let worstVal = 0;
+    for (let i = 0; i < n; i++) {
+      const v = iatCh.values[i] ?? 0;
+      if (v > 55 && v > worstVal) {
+        worstVal = v;
+        worstIdx = i;
+      }
+    }
+    if (worstIdx >= 0) {
+      alerts.push({
+        id: 'anom-iat',
+        kind: 'iat',
+        label: 'High IAT',
+        detail: `${worstVal.toFixed(1)} °C @ ${(session.timestamps[worstIdx] ?? 0).toFixed(2)}s`,
+        frameIndex: worstIdx,
+        timeSec: session.timestamps[worstIdx] ?? 0,
+      });
+    }
+  }
+
+  return alerts;
+}
+
+function computeSaeCorrection(tempC: number, baroHpa: number, humidityPct: number): number {
+  // SAE J1349 approximate atmospheric correction factor
+  const es = 6.1078 * Math.pow(10, (7.5 * tempC) / (tempC + 237.3));
+  const pv = (Math.max(0, Math.min(100, humidityPct)) / 100) * es;
+  const pd = Math.max(500, baroHpa - pv);
+  const cf = 1.18 * (990 / pd) * Math.sqrt((tempC + 273.15) / 298.15) - 0.18;
+  return Number.isFinite(cf) ? Math.max(0.8, Math.min(1.3, cf)) : 1.0;
+}
+
 function parseCsvDatalog(text: string, name: string): DatalogSession | null {
   const lines = text
     .replace(/\r\n/g, '\n')
@@ -270,6 +463,7 @@ function computeVirtualDyno(
   drivetrainLossPct: number,
   showCrank: boolean,
   smoothRadius: number,
+  saeFactor = 1.0,
 ): {
   points: DynoPoint[];
   peakHp: { value: number; rpm: number };
@@ -345,7 +539,7 @@ function computeVirtualDyno(
     const fAccel = massKg * a;
     const fRoll = 0.015 * massKg * 9.80665;
     const fAero = 0.5 * 1.225 * cda * v * v;
-    const watts = Math.max(0, (fAccel + fRoll + fAero) * v) * lossFactor;
+    const watts = Math.max(0, (fAccel + fRoll + fAero) * v) * lossFactor * saeFactor;
     const hp = watts / 745.7;
     const torqueNm = (watts * 60) / (2 * Math.PI * sliceRpm[i]);
 
@@ -401,6 +595,8 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
   xdf: propXdf = null,
   bin: propBin,
   onApplyPatches,
+  onDatalogOverlayChange,
+  onSelectMap,
 }) => {
   const [session, setSession] = useState<DatalogSession>(() => createRealisticWotPull());
   const [mode, setMode] = useState<DatalogMode>('timeseries');
@@ -410,19 +606,56 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Playback Scrubber & Live Heatmap Overlay state
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [playbackIdx, setPlaybackIdx] = useState<number>(0);
+  const [overlayEnabled, setOverlayEnabled] = useState<boolean>(false);
+  const [overlayXChannel, setOverlayXChannel] = useState<string>('rpm');
+  const [overlayYChannel, setOverlayYChannel] = useState<string>('load');
+
+  // Math Channel Builder state
+  const [mathOpen, setMathOpen] = useState<boolean>(false);
+  const [mathChA, setMathChA] = useState<string>('boost');
+  const [mathOp, setMathOp] = useState<MathOp>('-');
+  const [mathChB, setMathChB] = useState<string>('lambda');
+  const [mathName, setMathName] = useState<string>('Derived Channel');
+
   // Scatterplot selectors
   const [scatterXKey, setScatterXKey] = useState<string>('rpm');
   const [scatterYKey, setScatterYKey] = useState<string>('boost');
   const [scatterZKey, setScatterZKey] = useState<string>('timing');
   const [scatterHoverIdx, setScatterHoverIdx] = useState<number | null>(null);
 
-  // Virtual Dyno vehicle params
-  const [massKg, setMassKg] = useState<number>(1450);
-  const [cda, setCda] = useState<number>(0.68);
+  // Virtual Dyno vehicle params + SAE correction
+  const [vehiclePresetId, setVehiclePresetId] = useState<string>('golf7gti');
+  const [massKg, setMassKg] = useState<number>(1385);
+  const [cda, setCda] = useState<number>(0.67);
   const [drivetrainLossPct, setDrivetrainLossPct] = useState<number>(12);
   const [showCrank, setShowCrank] = useState<boolean>(false);
   const [smoothRadius, setSmoothRadius] = useState<number>(3);
+  const [saeEnabled, setSaeEnabled] = useState<boolean>(true);
+  const [ambientTempC, setAmbientTempC] = useState<number>(22);
+  const [baroHpa, setBaroHpa] = useState<number>(1013);
+  const [humidityPct, setHumidityPct] = useState<number>(45);
   const [dynoHoverIdx, setDynoHoverIdx] = useState<number | null>(null);
+
+  // Live OBD-II Telemetry state
+  const [obdStreaming, setObdStreaming] = useState<boolean>(false);
+  const [obdSource, setObdSource] = useState<'sim' | 'serial' | 'enet'>('sim');
+  const [enetIp, setEnetIp] = useState<string>('169.254.250.250');
+  const [obdStatus, setObdStatus] = useState<string>('Idle — ready for WebSerial ELM327, ENET, or 20 Hz Simulation');
+  const [obdHz, setObdHz] = useState<number>(0);
+  const [obdLive, setObdLive] = useState({
+    rpm: 850,
+    boost: -0.55,
+    load: 22.0,
+    lambda: 1.0,
+    timing: 14.5,
+    speed: 0,
+  });
+  const [obdRecorded, setObdRecorded] = useState<
+    Array<{ t: number; rpm: number; boost: number; load: number; lambda: number; timing: number; speed: number }>
+  >([]);
 
   // Map Hit-Overlay & Auto-Tune state
   const [demoFallback, setDemoFallback] = useState<{
@@ -438,14 +671,85 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
   );
   const [selectedMapId, setSelectedMapId] = useState<number | null>(null);
   const [autoTuneTarget, setAutoTuneTarget] = useState<AutoTuneTargetMode>('lambda');
+  const [autoTuneCalcMode, setAutoTuneCalcMode] = useState<AutoTuneCalcMode>('multiplicative');
+  const [autoTuneTargetChKey, setAutoTuneTargetChKey] = useState<string>('');
+  const [autoTuneMeasuredChKey, setAutoTuneMeasuredChKey] = useState<string>('');
   const [autoTuneDamping, setAutoTuneDamping] = useState<number>(0.6);
   const [autoTuneMinHits, setAutoTuneMinHits] = useState<number>(2);
   const [wotFilterOnly, setWotFilterOnly] = useState<boolean>(true);
+  const [steadyStateOnly, setSteadyStateOnly] = useState<boolean>(false);
+  const [excludeDfco, setExcludeDfco] = useState<boolean>(true);
+  const [postDfcoDeadMs, setPostDfcoDeadMs] = useState<number>(400);
+  const [warmOnly, setWarmOnly] = useState<boolean>(false);
+  const [bilinearWeighting, setBilinearWeighting] = useState<boolean>(true);
   const [targetLambdaGoal, setTargetLambdaGoal] = useState<number>(0.82);
   const [targetBoostGoalBar, setTargetBoostGoalBar] = useState<number>(1.55);
   const [excludedCells, setExcludedCells] = useState<Set<string>>(() => new Set());
   const [hoveredCellKey, setHoveredCellKey] = useState<string | null>(null);
   const [autoTuneNotice, setAutoTuneNotice] = useState<string | null>(null);
+
+  const anomalies = useMemo(() => detectAnomalies(session), [session]);
+
+  const saeFactor = useMemo(
+    () => (saeEnabled ? computeSaeCorrection(ambientTempC, baroHpa, humidityPct) : 1.0),
+    [saeEnabled, ambientTempC, baroHpa, humidityPct],
+  );
+
+  // Playback timer
+  useEffect(() => {
+    if (!isPlaying || session.timestamps.length < 2) return;
+    const ms = Math.max(25, Math.round(1000 / Math.max(5, session.sampleRateHz)));
+    const id = window.setInterval(() => {
+      setPlaybackIdx((prev) => {
+        const next = (prev + 1) % session.timestamps.length;
+        setHoverIdx(next);
+        return next;
+      });
+    }, ms);
+    return () => window.clearInterval(id);
+  }, [isPlaying, session.timestamps.length, session.sampleRateHz]);
+
+  // Emit overlay updates when frame/channels/toggle change
+  useEffect(() => {
+    if (!onDatalogOverlayChange) return;
+    const idx = hoverIdx ?? playbackIdx;
+    const xCh = session.channels.find((c) => c.key === overlayXChannel);
+    const yCh = session.channels.find((c) => c.key === overlayYChannel);
+    onDatalogOverlayChange({
+      enabled: overlayEnabled,
+      frameIndex: idx,
+      xChannel: overlayXChannel,
+      yChannel: overlayYChannel,
+      xValue: xCh?.values[idx],
+      yValue: yCh?.values[idx],
+    });
+  }, [overlayEnabled, hoverIdx, playbackIdx, overlayXChannel, overlayYChannel, session.channels, onDatalogOverlayChange]);
+
+  // Live OBD-II 20 Hz Simulated Stream timer
+  useEffect(() => {
+    if (!obdStreaming) {
+      setObdHz(0);
+      return;
+    }
+    const startTs = performance.now();
+    const id = window.setInterval(() => {
+      const elapsed = (performance.now() - startTs) / 1000;
+      const cycle = (elapsed % 8) / 8;
+      const rpm = Math.round(1800 + Math.sin(cycle * Math.PI) * 5100 + (Math.random() - 0.5) * 35);
+      const boost = Number((-0.4 + Math.sin(cycle * Math.PI) * 1.95 + (Math.random() - 0.5) * 0.03).toFixed(2));
+      const load = Number((28 + Math.sin(cycle * Math.PI) * 175).toFixed(1));
+      const lambda = Number((1.0 - Math.sin(cycle * Math.PI) * 0.19 + (Math.random() - 0.5) * 0.008).toFixed(3));
+      const timing = Number((22 - Math.sin(cycle * Math.PI) * 9.5 + (Math.random() - 0.5) * 0.3).toFixed(1));
+      const speed = Number((rpm * 0.0245).toFixed(1));
+      setObdLive({ rpm, boost, load, lambda, timing, speed });
+      setObdHz(20);
+      setObdRecorded((prev) => [
+        ...prev.slice(-1999),
+        { t: Number(elapsed.toFixed(2)), rpm, boost, load, lambda, timing, speed },
+      ]);
+    }, 50);
+    return () => window.clearInterval(id);
+  }, [obdStreaming]);
 
   const activeMap = useMemo<XDFItem | null>(() => {
     if (tableItems.length === 0) return null;
@@ -475,21 +779,34 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
     const yLabels = BinCodec.axisLabels(activeMap.itemKind.y, l.rows, effectiveBin);
 
     const rpmCh =
+      session.channels.find((c) => c.key === overlayXChannel) ??
       session.channels.find((c) => /rpm|engine speed|nmot/i.test(c.label) || c.key === 'rpm') ??
       session.channels[0];
     const loadCh =
+      session.channels.find((c) => c.key === overlayYChannel) ??
       session.channels.find((c) => /load|pedal|throttle|tps/i.test(c.label) || c.key === 'load') ??
       session.channels[2] ??
       session.channels[1];
-    const lambdaCh = session.channels.find(
-      (c) => /lambda|afr/i.test(c.label) || c.key === 'lambda',
-    );
-    const boostCh = session.channels.find(
-      (c) => /boost|pressure|map/i.test(c.label) || c.key === 'boost',
-    );
+    const lambdaCh =
+      (autoTuneMeasuredChKey
+        ? session.channels.find((c) => c.key === autoTuneMeasuredChKey)
+        : undefined) ??
+      session.channels.find((c) => /lambda|afr/i.test(c.label) || c.key === 'lambda');
+    const boostCh =
+      (autoTuneMeasuredChKey
+        ? session.channels.find((c) => c.key === autoTuneMeasuredChKey)
+        : undefined) ??
+      session.channels.find((c) => /boost|pressure|map/i.test(c.label) || c.key === 'boost');
+    const targetOverrideCh = autoTuneTargetChKey
+      ? session.channels.find((c) => c.key === autoTuneTargetChKey)
+      : undefined;
+    const ectCh = session.channels.find((c) => /ect|coolant|water.*temp/i.test(c.label));
 
     const hits: number[][] = Array.from({ length: l.rows }, () => new Array<number>(l.cols).fill(0));
     const sumMeas: number[][] = Array.from({ length: l.rows }, () =>
+      new Array<number>(l.cols).fill(0),
+    );
+    const sumTarget: number[][] = Array.from({ length: l.rows }, () =>
       new Array<number>(l.cols).fill(0),
     );
 
@@ -497,34 +814,90 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
     const loadMax = loadCh ? Math.max(...loadCh.values, 1) : 100;
     const scaleLoadToY = maxYAxis <= 105 && loadMax > 115 ? maxYAxis / loadMax : 1;
 
+    const findBracket = (axis: number[], v: number): { i0: number; i1: number; t: number } => {
+      if (axis.length <= 1) return { i0: 0, i1: 0, t: 0 };
+      if (v <= axis[0]) return { i0: 0, i1: 0, t: 0 };
+      if (v >= axis[axis.length - 1]) return { i0: axis.length - 1, i1: axis.length - 1, t: 0 };
+      for (let k = 0; k < axis.length - 1; k++) {
+        if (v >= axis[k] && v <= axis[k + 1]) {
+          const span = Math.max(1e-9, axis[k + 1] - axis[k]);
+          return { i0: k, i1: k + 1, t: (v - axis[k]) / span };
+        }
+      }
+      const ni = nearestAxisIndex(axis, v);
+      return { i0: ni, i1: ni, t: 0 };
+    };
+
     const n = session.timestamps.length;
     let totalHits = 0;
+    let lastDfcoTime = -1e9;
 
     for (let i = 0; i < n; i++) {
+      const tSec = session.timestamps[i] ?? i * 0.05;
       const rpm = rpmCh?.values[i] ?? 0;
       const rawLoad = loadCh?.values[i] ?? 0;
+      const lamVal = lambdaCh?.values[i] ?? 1.0;
+
+      // Filter 1: Exclude DFCO + Post-DFCO Dead-Time
+      const isDfco = lamVal > 1.25;
+      if (isDfco) {
+        lastDfcoTime = tSec;
+        if (excludeDfco) continue;
+      }
+      if (excludeDfco && postDfcoDeadMs > 0 && (tSec - lastDfcoTime) * 1000 < postDfcoDeadMs) {
+        continue;
+      }
+      // Filter 2: WOT Only
       if (wotFilterOnly && rawLoad < 65) continue;
+      // Filter 3: Steady-State (|dRPM/dt| < 450 rpm/s)
+      if (steadyStateOnly && i > 0) {
+        const dt = Math.max(0.005, tSec - (session.timestamps[i - 1] ?? 0));
+        const dRpm = Math.abs(rpm - (rpmCh?.values[i - 1] ?? rpm)) / dt;
+        if (dRpm > 450) continue;
+      }
+      // Filter 4: Warm Engine (>= 75 °C)
+      if (warmOnly && ectCh && (ectCh.values[i] ?? 90) < 75) continue;
 
       const ySample = rawLoad * scaleLoadToY;
-      const c = nearestAxisIndex(xVals, rpm);
-      const r = nearestAxisIndex(yVals, ySample);
-      hits[r][c]++;
-      totalHits++;
 
+      let measSample = 0;
       if (autoTuneTarget === 'lambda' && lambdaCh) {
-        sumMeas[r][c] += lambdaCh.values[i];
+        measSample = lambdaCh.values[i];
       } else if (autoTuneTarget === 'boost' && boostCh) {
-        // Convert gauge bar (e.g. 1.45 bar) to absolute mbar (2450 mbar) when map is in mbar
         const rawB = boostCh.values[i];
-        const inMbar = /mbar|hpa/i.test(activeMap.scaling.units)
+        measSample = /mbar|hpa/i.test(activeMap.scaling.units)
           ? rawB < 5
             ? 1000 + rawB * 1000
             : rawB
           : rawB;
-        sumMeas[r][c] += inMbar;
       } else if (boostCh) {
-        sumMeas[r][c] += boostCh.values[i];
+        measSample = boostCh.values[i];
       }
+      const tgtSample = targetOverrideCh ? targetOverrideCh.values[i] : 0;
+
+      if (bilinearWeighting) {
+        const bx = findBracket(xVals, rpm);
+        const by = findBracket(yVals, ySample);
+        const corners: Array<[number, number, number]> = [
+          [by.i0, bx.i0, (1 - by.t) * (1 - bx.t)],
+          [by.i0, bx.i1, (1 - by.t) * bx.t],
+          [by.i1, bx.i0, by.t * (1 - bx.t)],
+          [by.i1, bx.i1, by.t * bx.t],
+        ];
+        for (const [rr, cc, w] of corners) {
+          if (w <= 1e-4) continue;
+          hits[rr][cc] += w;
+          sumMeas[rr][cc] += measSample * w;
+          sumTarget[rr][cc] += tgtSample * w;
+        }
+      } else {
+        const c = nearestAxisIndex(xVals, rpm);
+        const r = nearestAxisIndex(yVals, ySample);
+        hits[r][c] += 1;
+        sumMeas[r][c] += measSample;
+        sumTarget[r][c] += tgtSample;
+      }
+      totalHits++;
     }
 
     let maxCellHits = 0;
@@ -540,30 +913,42 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
         const curVal = raw !== null ? scalingValue(activeMap.scaling, raw) : 0;
         rowVals.push(curVal);
 
-        const h = hits[r][c];
-        if (h > 0) coveredCells++;
+        const h = Math.round(hits[r][c]);
+        if (hits[r][c] >= 0.5) coveredCells++;
         if (h > maxCellHits) maxCellHits = h;
 
-        if (h >= autoTuneMinHits && autoTuneTarget !== 'hits') {
-          const avgMeas = sumMeas[r][c] / h;
-          let targetVal = curVal;
+        if (hits[r][c] >= autoTuneMinHits && autoTuneTarget !== 'hits') {
+          const avgMeas = sumMeas[r][c] / Math.max(1e-6, hits[r][c]);
+          const avgTgtCh = targetOverrideCh ? sumTarget[r][c] / Math.max(1e-6, hits[r][c]) : null;
+          let targetVal = avgTgtCh ?? curVal;
           let suggested = curVal;
 
           if (autoTuneTarget === 'lambda' && lambdaCh && avgMeas > 0.4 && avgMeas < 1.5) {
-            // Compare measured lambda against desired goal (or map target if map is lambda)
             const isLambdaMap = /λ|lambda/i.test(activeMap.scaling.units) || (curVal > 0.5 && curVal < 1.3);
-            targetVal = isLambdaMap ? targetLambdaGoal : curVal;
-            const errRatio = targetVal / avgMeas;
-            const dampedFactor = 1 + (errRatio - 1) * autoTuneDamping;
-            suggested = isLambdaMap
-              ? Math.max(0.72, Math.min(1.05, curVal * dampedFactor))
-              : curVal * dampedFactor;
+            targetVal = avgTgtCh ?? (isLambdaMap ? targetLambdaGoal : curVal);
+            if (autoTuneCalcMode === 'direct') {
+              suggested = curVal + (targetVal - curVal) * autoTuneDamping;
+            } else if (autoTuneCalcMode === 'additive') {
+              suggested = curVal + (targetVal - avgMeas) * autoTuneDamping;
+            } else {
+              const errRatio = targetVal / avgMeas;
+              const dampedFactor = 1 + (errRatio - 1) * autoTuneDamping;
+              suggested = curVal * dampedFactor;
+            }
+            if (isLambdaMap) suggested = Math.max(0.72, Math.min(1.05, suggested));
           } else if (autoTuneTarget === 'boost' && boostCh) {
             const isMbar = /mbar|hpa/i.test(activeMap.scaling.units);
-            targetVal = isMbar ? 1000 + targetBoostGoalBar * 1000 : targetBoostGoalBar;
+            targetVal = avgTgtCh ?? (isMbar ? 1000 + targetBoostGoalBar * 1000 : targetBoostGoalBar);
             if (avgMeas > 1e-3) {
-              const delta = (targetVal - avgMeas) * autoTuneDamping;
-              suggested = Math.max(isMbar ? 900 : 0, curVal + delta);
+              if (autoTuneCalcMode === 'direct') {
+                suggested = curVal + (targetVal - curVal) * autoTuneDamping;
+              } else if (autoTuneCalcMode === 'multiplicative') {
+                const factor = 1 + (targetVal / avgMeas - 1) * autoTuneDamping;
+                suggested = curVal * factor;
+              } else {
+                suggested = curVal + (targetVal - avgMeas) * autoTuneDamping;
+              }
+              suggested = Math.max(isMbar ? 900 : 0, suggested);
             }
           }
 
@@ -576,7 +961,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
               c,
               xLabel: xLabels[c] ?? String(c),
               yLabel: yLabels[r] ?? String(r),
-              hits: h,
+              hits: Math.max(1, h),
               avgMeasured: avgMeas,
               targetValue: targetVal,
               currentValue: curVal,
@@ -596,7 +981,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
     return {
       xLabels,
       yLabels,
-      hits,
+      hits: hits.map((row) => row.map((v) => Math.round(v))),
       sumMeas,
       mapValues,
       maxCellHits,
@@ -609,7 +994,17 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
     activeMap,
     effectiveBin,
     session,
+    overlayXChannel,
+    overlayYChannel,
+    autoTuneTargetChKey,
+    autoTuneMeasuredChKey,
+    autoTuneCalcMode,
     wotFilterOnly,
+    steadyStateOnly,
+    excludeDfco,
+    postDfcoDeadMs,
+    warmOnly,
+    bilinearWeighting,
     autoTuneTarget,
     autoTuneMinHits,
     autoTuneDamping,
@@ -691,14 +1086,23 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
   );
 
   const dynoData = useMemo(
-    () => computeVirtualDyno(session, massKg, cda, drivetrainLossPct, showCrank, smoothRadius),
-    [session, massKg, cda, drivetrainLossPct, showCrank, smoothRadius],
+    () =>
+      computeVirtualDyno(
+        session,
+        massKg,
+        cda,
+        drivetrainLossPct,
+        showCrank,
+        smoothRadius,
+        saeFactor,
+      ),
+    [session, massKg, cda, drivetrainLossPct, showCrank, smoothRadius, saeFactor],
   );
 
   const loadCsvFile = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const parsed = parseCsvDatalog(String(reader.result ?? ''), file.name);
+      const parsed = parseAdxOrCsvDatalog(String(reader.result ?? ''), file.name);
       if (parsed) {
         setSession(parsed);
         setEnabledKeys(new Set(parsed.channels.slice(0, 6).map((c) => c.key)));
@@ -706,12 +1110,89 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
         setScatterYKey(parsed.channels[1]?.key ?? parsed.channels[0]?.key ?? '');
         setScatterZKey(parsed.channels[2]?.key ?? parsed.channels[0]?.key ?? '');
         setHoverIdx(null);
+        setPlaybackIdx(0);
         setScatterHoverIdx(null);
         setDynoHoverIdx(null);
       }
     };
     reader.readAsText(file);
   }, []);
+
+  const handleAddMathChannel = (
+    aKey = mathChA,
+    op: MathOp = mathOp,
+    bKey = mathChB,
+    customLabel?: string,
+  ) => {
+    const chA = session.channels.find((c) => c.key === aKey);
+    const chB = session.channels.find((c) => c.key === bKey);
+    if (!chA || !chB) return;
+    const vals = chA.values.map((va, i) => {
+      const vb = chB.values[i] ?? 0;
+      if (op === '-') return va - vb;
+      if (op === '+') return va + vb;
+      if (op === '*') return va * vb;
+      return Math.abs(vb) > 1e-6 ? va / vb : 0;
+    });
+    let min = Infinity;
+    let max = -Infinity;
+    for (const v of vals) {
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    if (min === max) {
+      min -= 1;
+      max += 1;
+    }
+    const key = `math-${Date.now()}`;
+    const label = customLabel ?? (mathName.trim() || `${chA.label} ${op} ${chB.label}`);
+    const nextCh: DatalogChannel = {
+      key,
+      label,
+      unit: '',
+      color: CHANNEL_COLORS[session.channels.length % CHANNEL_COLORS.length],
+      min: min - (max - min) * 0.08,
+      max: max + (max - min) * 0.08,
+      decimals: max - min < 5 ? 3 : 1,
+      values: vals,
+    };
+    setSession((prev) => ({ ...prev, channels: [...prev.channels, nextCh] }));
+    setEnabledKeys((prev) => new Set([...prev, key]));
+  };
+
+  const handleConnectWebSerial = async () => {
+    const nav = navigator as unknown as { serial?: { requestPort: () => Promise<{ open: (opts: { baudRate: number }) => Promise<void> }> } };
+    if (!nav.serial) {
+      setObdStatus('WebSerial not supported in this browser — using 20 Hz Simulated Stream.');
+      setObdSource('sim');
+      setObdStreaming(true);
+      return;
+    }
+    try {
+      const port = await nav.serial.requestPort();
+      await port.open({ baudRate: 115200 });
+      setObdSource('serial');
+      setObdStreaming(true);
+      setObdStatus('Connected to ELM327 via WebSerial (115200 baud) — streaming live PIDs.');
+    } catch {
+      setObdStatus('ELM327 port selection cancelled — click Start Simulated 20 Hz to test live gauges.');
+    }
+  };
+
+  const handleExportObdCsv = () => {
+    if (obdRecorded.length === 0) return;
+    const header = 'Time_s,RPM,Boost_bar,Load_pct,Lambda,Timing_deg,Speed_kmh';
+    const rows = obdRecorded.map(
+      (r) => `${r.t},${r.rpm},${r.boost},${r.load},${r.lambda},${r.timing},${r.speed}`,
+    );
+    const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mactuner_obd_log_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleLoadSample = () => {
     const sample = createRealisticWotPull();
@@ -1207,14 +1688,15 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
           </div>
         </div>
 
-        {/* 4-Mode Segmented Control */}
-        <div className="flex items-center gap-0.5 p-0.5 rounded-full bg-white/[0.04] border border-white/[0.065]">
+        {/* 5-Mode Segmented Control */}
+        <div className="flex items-center gap-0.5 p-0.5 rounded-full bg-white/[0.04] border border-white/[0.065] flex-wrap">
           {(
             [
               { id: 'timeseries', label: 'Time-Series', icon: <Activity className="w-3.5 h-3.5" /> },
               { id: 'scatter', label: 'XY Scatter', icon: <ScatterChart className="w-3.5 h-3.5" /> },
               { id: 'dyno', label: 'Virtual Dyno', icon: <Gauge className="w-3.5 h-3.5" /> },
-              { id: 'autotune', label: 'Hit-Overlay & Auto-Tune', icon: <Grid3x3 className="w-3.5 h-3.5" /> },
+              { id: 'autotune', label: 'Auto-Tune', icon: <Grid3x3 className="w-3.5 h-3.5" /> },
+              { id: 'obd', label: 'Live OBD-II', icon: <Radio className="w-3.5 h-3.5" /> },
             ] as const
           ).map((m) => (
             <button
@@ -1237,7 +1719,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.txt,.log"
+            accept=".csv,.txt,.log,.adx,.ads"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -1258,10 +1740,200 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_2px_10px_rgba(10,132,255,0.3)] transition-colors cursor-pointer"
           >
             <Upload className="w-3.5 h-3.5" />
-            <span>Import CSV</span>
+            <span>Import CSV / ADX</span>
           </button>
         </div>
       </div>
+
+      {/* Anomaly Alerts Banner */}
+      {anomalies.length > 0 && mode !== 'obd' && (
+        <div className="px-5 py-2 border-b border-amber-500/25 bg-amber-500/[0.07] flex items-center gap-2.5 flex-wrap text-xs">
+          <div className="flex items-center gap-1.5 text-amber-300 font-semibold shrink-0">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Anomalies ({anomalies.length}):</span>
+          </div>
+          {anomalies.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => {
+                setMode('timeseries');
+                setPlaybackIdx(a.frameIndex);
+                setHoverIdx(a.frameIndex);
+              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/15 hover:bg-amber-500/30 border border-amber-500/35 text-[11px] font-mono text-amber-200 cursor-pointer"
+            >
+              <span className="font-sans font-semibold">{a.label}:</span>
+              <span>{a.detail}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Playback Scrubber & Live Map Trace Card */}
+      {mode !== 'obd' && (
+        <div className="px-5 py-2 border-b border-white/[0.065] bg-[#14151a] flex items-center justify-between gap-3 flex-wrap text-xs">
+          <div className="flex items-center gap-2.5 flex-1 min-w-[260px]">
+            <button
+              type="button"
+              onClick={() => setIsPlaying((p) => !p)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-[11px] font-semibold cursor-pointer shrink-0"
+            >
+              {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+              <span>{isPlaying ? 'Pause' : 'Play'}</span>
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, session.timestamps.length - 1)}
+              value={hoverIdx ?? playbackIdx}
+              onChange={(e) => {
+                const idx = Number(e.target.value);
+                setPlaybackIdx(idx);
+                setHoverIdx(idx);
+              }}
+              className="flex-1 accent-[#0a84ff]"
+            />
+            <span className="font-mono text-[11px] text-zinc-400 tabular-nums shrink-0">
+              #{(hoverIdx ?? playbackIdx) + 1}/{session.timestamps.length} ({(session.timestamps[hoverIdx ?? playbackIdx] ?? 0).toFixed(2)}s)
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <label className="flex items-center gap-1.5 text-[11px] text-zinc-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={overlayEnabled}
+                onChange={(e) => setOverlayEnabled(e.target.checked)}
+                className="accent-[#0a84ff]"
+              />
+              <span>Hit-Overlay in Heatmap</span>
+            </label>
+            <select
+              value={overlayXChannel}
+              onChange={(e) => setOverlayXChannel(e.target.value)}
+              className="px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] text-[11px] text-zinc-200"
+              title="X-Channel override"
+            >
+              {session.channels.map((ch) => (
+                <option key={ch.key} value={ch.key}>
+                  X: {ch.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={overlayYChannel}
+              onChange={(e) => setOverlayYChannel(e.target.value)}
+              className="px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] text-[11px] text-zinc-200"
+              title="Y-Channel override"
+            >
+              {session.channels.map((ch) => (
+                <option key={ch.key} value={ch.key}>
+                  Y: {ch.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                setOverlayEnabled(true);
+                if (activeMap && onSelectMap) onSelectMap(activeMap.id);
+                else setMode('autotune');
+              }}
+              className="px-2.5 py-1 rounded-lg bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 border border-[#0a84ff]/35 text-[11px] font-semibold text-[#5ac8fa] cursor-pointer"
+            >
+              Open Map with Live Trace
+            </button>
+            <button
+              type="button"
+              onClick={() => setMathOpen((v) => !v)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-medium cursor-pointer ${
+                mathOpen
+                  ? 'bg-[#0a84ff]/20 border-[#0a84ff]/45 text-[#5ac8fa]'
+                  : 'bg-white/[0.04] border-white/[0.08] text-zinc-300 hover:text-white'
+              }`}
+            >
+              <Calculator className="w-3 h-3" />
+              <span>Math Channel</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Collapsible Math Channel Builder */}
+      {mathOpen && mode !== 'obd' && (
+        <div className="px-5 py-2.5 border-b border-white/[0.065] bg-[#17181d] flex items-center justify-between gap-3 flex-wrap text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10.5px] uppercase tracking-wider font-semibold text-zinc-400">
+              Math Builder:
+            </span>
+            <select
+              value={mathChA}
+              onChange={(e) => setMathChA(e.target.value)}
+              className="px-2 py-1 rounded bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
+            >
+              {session.channels.map((ch) => (
+                <option key={ch.key} value={ch.key}>
+                  {ch.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={mathOp}
+              onChange={(e) => setMathOp(e.target.value as MathOp)}
+              className="px-2 py-1 rounded bg-[#0c0d10] border border-white/[0.08] font-mono text-xs text-[#5ac8fa]"
+            >
+              <option value="-">A − B</option>
+              <option value="/">A ÷ B</option>
+              <option value="*">A × B</option>
+              <option value="+">A + B</option>
+            </select>
+            <select
+              value={mathChB}
+              onChange={(e) => setMathChB(e.target.value)}
+              className="px-2 py-1 rounded bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
+            >
+              {session.channels.map((ch) => (
+                <option key={ch.key} value={ch.key}>
+                  {ch.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={mathName}
+              onChange={(e) => setMathName(e.target.value)}
+              placeholder="Channel name"
+              className="w-36 px-2.5 py-1 rounded bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
+            />
+            <button
+              type="button"
+              onClick={() => handleAddMathChannel()}
+              className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-[11px] font-semibold cursor-pointer"
+            >
+              <Plus className="w-3 h-3" />
+              <span>Add</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10.5px] text-zinc-500">Presets:</span>
+            <button
+              type="button"
+              onClick={() => handleAddMathChannel('boost', '-', 'load', 'Boost Error')}
+              className="px-2 py-1 rounded bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] text-zinc-300 cursor-pointer"
+            >
+              + Boost Error
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAddMathChannel('lambda', '/', 'load', 'Lambda Error')}
+              className="px-2 py-1 rounded bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] text-zinc-300 cursor-pointer"
+            >
+              + Lambda Error
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Mode-Specific Control & Readout Strip */}
       {mode === 'timeseries' && (
@@ -1429,9 +2101,33 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
             </div>
           </div>
 
-          {/* Vehicle Physics Controls */}
+          {/* Vehicle Physics Controls + Presets + SAE Correction */}
           <div className="flex items-center justify-between gap-3 flex-wrap text-xs">
             <div className="flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-1.5 text-zinc-400">
+                <span>Preset</span>
+                <select
+                  value={vehiclePresetId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setVehiclePresetId(id);
+                    const p = VEHICLE_PRESETS.find((v) => v.id === id);
+                    if (p && id !== 'custom') {
+                      setMassKg(p.massKg);
+                      setCda(p.cda);
+                      setDrivetrainLossPct(p.lossPct);
+                    }
+                  }}
+                  className="px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] text-zinc-100 focus:outline-none focus:border-[#0a84ff]"
+                >
+                  {VEHICLE_PRESETS.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <label className="flex items-center gap-1.5 text-zinc-400">
                 <span>Mass</span>
                 <input
@@ -1440,7 +2136,10 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   max={3500}
                   step={25}
                   value={massKg}
-                  onChange={(e) => setMassKg(Math.max(600, Number(e.target.value) || 1450))}
+                  onChange={(e) => {
+                    setVehiclePresetId('custom');
+                    setMassKg(Math.max(600, Number(e.target.value) || 1450));
+                  }}
                   className="w-20 px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] font-mono tabular-nums text-zinc-100 focus:outline-none focus:border-[#0a84ff]"
                 />
                 <span className="text-zinc-500">kg</span>
@@ -1454,7 +2153,10 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   max={1.5}
                   step={0.02}
                   value={cda}
-                  onChange={(e) => setCda(Math.max(0.2, Number(e.target.value) || 0.68))}
+                  onChange={(e) => {
+                    setVehiclePresetId('custom');
+                    setCda(Math.max(0.2, Number(e.target.value) || 0.68));
+                  }}
                   className="w-16 px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] font-mono tabular-nums text-zinc-100 focus:outline-none focus:border-[#0a84ff]"
                 />
                 <span className="text-zinc-500">m²</span>
@@ -1472,6 +2174,45 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   <option value={5}>Heavy (11-pt)</option>
                 </select>
               </label>
+
+              <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={saeEnabled}
+                  onChange={(e) => setSaeEnabled(e.target.checked)}
+                  className="accent-[#0a84ff]"
+                />
+                <span>SAE CF</span>
+                <span className="font-mono text-[#5ac8fa]">({saeFactor.toFixed(3)})</span>
+              </label>
+              {saeEnabled && (
+                <div className="flex items-center gap-1.5 font-mono text-[11px] text-zinc-400">
+                  <input
+                    type="number"
+                    value={ambientTempC}
+                    onChange={(e) => setAmbientTempC(Number(e.target.value) || 20)}
+                    className="w-12 px-1.5 py-0.5 rounded bg-[#0c0d10] border border-white/[0.08] text-zinc-100"
+                    title="Ambient Temp (°C)"
+                  />
+                  <span>°C</span>
+                  <input
+                    type="number"
+                    value={baroHpa}
+                    onChange={(e) => setBaroHpa(Number(e.target.value) || 1013)}
+                    className="w-14 px-1.5 py-0.5 rounded bg-[#0c0d10] border border-white/[0.08] text-zinc-100"
+                    title="Barometric Pressure (hPa)"
+                  />
+                  <span>hPa</span>
+                  <input
+                    type="number"
+                    value={humidityPct}
+                    onChange={(e) => setHumidityPct(Number(e.target.value) || 40)}
+                    className="w-12 px-1.5 py-0.5 rounded bg-[#0c0d10] border border-white/[0.08] text-zinc-100"
+                    title="Relative Humidity (%)"
+                  />
+                  <span>%RH</span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -1511,8 +2252,122 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
         </div>
       )}
 
-      {/* Main High-DPI Canvas Area OR Map Hit-Overlay & Auto-Tune Workbench */}
-      {mode === 'autotune' ? (
+      {/* Main High-DPI Canvas Area OR Map Hit-Overlay & Auto-Tune OR Live OBD-II Telemetry */}
+      {mode === 'obd' ? (
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-white">Live OBD-II &amp; ENET Telemetry</h3>
+                <span
+                  className={`px-2 py-0.5 rounded-full font-mono text-[10.5px] font-semibold ${
+                    obdStreaming
+                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                      : 'bg-white/[0.06] text-zinc-400'
+                  }`}
+                >
+                  {obdStreaming ? `${obdHz} Hz LIVE` : 'STOPPED'}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-0.5">{obdStatus}</p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => void handleConnectWebSerial()}
+                className="px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-medium text-zinc-100 cursor-pointer"
+              >
+                WebSerial ELM327
+              </button>
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={enetIp}
+                  onChange={(e) => setEnetIp(e.target.value)}
+                  className="w-32 px-2.5 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.08] font-mono text-xs text-zinc-100"
+                  placeholder="ENET IP"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setObdSource('enet');
+                    setObdStreaming(true);
+                    setObdStatus(`ENET telemetry bridge targeted at ${enetIp} (simulated 20 Hz stream active).`);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-medium text-zinc-200 cursor-pointer"
+                >
+                  Connect ENET
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (obdStreaming) {
+                    setObdStreaming(false);
+                    setObdStatus(`Stopped (${obdRecorded.length} samples captured).`);
+                  } else {
+                    setObdSource('sim');
+                    setObdStreaming(true);
+                    setObdStatus('Simulated 20 Hz Live OBD-II Stream active.');
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white cursor-pointer ${
+                  obdStreaming
+                    ? 'bg-rose-600 hover:bg-rose-500'
+                    : 'bg-[#0a84ff] hover:bg-[#1e8fff]'
+                }`}
+              >
+                {obdStreaming ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                <span>{obdStreaming ? 'Stop Stream' : 'Start 20 Hz Stream'}</span>
+              </button>
+              <button
+                type="button"
+                disabled={obdRecorded.length === 0}
+                onClick={handleExportObdCsv}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-35 border border-emerald-500/35 text-emerald-300 text-xs font-semibold cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export CSV ({obdRecorded.length})</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 6 Live Gauge Readouts */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {[
+              { label: 'Engine RPM', value: obdLive.rpm.toFixed(0), unit: 'rpm', color: 'text-[#5ac8fa]', pct: obdLive.rpm / 7500 },
+              { label: 'Boost Pressure', value: obdLive.boost.toFixed(2), unit: 'bar', color: 'text-amber-400', pct: (obdLive.boost + 0.8) / 2.8 },
+              { label: 'Engine Load', value: obdLive.load.toFixed(1), unit: '%', color: 'text-emerald-400', pct: obdLive.load / 220 },
+              { label: 'Lambda (AFR)', value: obdLive.lambda.toFixed(3), unit: 'λ', color: 'text-pink-400', pct: (obdLive.lambda - 0.65) / 0.6 },
+              { label: 'Ignition Timing', value: obdLive.timing.toFixed(1), unit: '°BTDC', color: 'text-purple-400', pct: obdLive.timing / 30 },
+              { label: 'Vehicle Speed', value: obdLive.speed.toFixed(1), unit: 'km/h', color: 'text-cyan-400', pct: obdLive.speed / 220 },
+            ].map((g) => (
+              <div
+                key={g.label}
+                className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 space-y-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+              >
+                <div className="flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
+                  <span>{g.label}</span>
+                  <span className="font-mono text-zinc-600">{obdSource.toUpperCase()}</span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className={`text-3xl font-mono tabular-nums font-bold ${g.color}`}>
+                    {g.value}
+                  </span>
+                  <span className="text-xs font-mono text-zinc-500">{g.unit}</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-white/[0.06] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[#0a84ff] transition-all duration-75"
+                    style={{ width: `${Math.max(2, Math.min(100, g.pct * 100))}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : mode === 'autotune' ? (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {/* Auto-Tune Controls Bar */}
           <div className="px-5 py-2.5 border-b border-white/[0.065] bg-[#15161b] flex items-center justify-between gap-3 flex-wrap text-xs">
@@ -1636,8 +2491,122 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   onChange={(e) => setWotFilterOnly(e.target.checked)}
                   className="accent-[#0a84ff]"
                 />
-                <span>WOT Only (≥65% Load)</span>
+                <span>WOT (≥65%)</span>
               </label>
+
+              <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={steadyStateOnly}
+                  onChange={(e) => setSteadyStateOnly(e.target.checked)}
+                  className="accent-[#0a84ff]"
+                />
+                <span>Steady-State</span>
+              </label>
+
+              <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={excludeDfco}
+                  onChange={(e) => setExcludeDfco(e.target.checked)}
+                  className="accent-[#0a84ff]"
+                />
+                <span>Exclude DFCO</span>
+              </label>
+
+              {excludeDfco && (
+                <label className="flex items-center gap-1.5 text-zinc-400">
+                  <span>Post-DFCO</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1500}
+                    step={50}
+                    value={postDfcoDeadMs}
+                    onChange={(e) => setPostDfcoDeadMs(Number(e.target.value))}
+                    className="w-20 accent-[#0a84ff]"
+                  />
+                  <span className="font-mono text-zinc-200 w-12">{postDfcoDeadMs}ms</span>
+                </label>
+              )}
+
+              <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={warmOnly}
+                  onChange={(e) => setWarmOnly(e.target.checked)}
+                  className="accent-[#0a84ff]"
+                />
+                <span>Warm (≥75 °C)</span>
+              </label>
+
+              <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={bilinearWeighting}
+                  onChange={(e) => setBilinearWeighting(e.target.checked)}
+                  className="accent-[#0a84ff]"
+                />
+                <span>Bilinear (4 cells)</span>
+              </label>
+            </div>
+
+            {/* Arbitrary Target & Measured Channel Pickers + Calc Mode */}
+            <div className="w-full pt-2 border-t border-white/[0.05] flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-1.5 text-zinc-400">
+                <span>Target Ch</span>
+                <select
+                  value={autoTuneTargetChKey}
+                  onChange={(e) => setAutoTuneTargetChKey(e.target.value)}
+                  className="px-2 py-1 rounded bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
+                >
+                  <option value="">Fixed Goal / Map</option>
+                  {session.channels.map((ch) => (
+                    <option key={ch.key} value={ch.key}>
+                      {ch.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex items-center gap-1.5 text-zinc-400">
+                <span>Measured Ch</span>
+                <select
+                  value={autoTuneMeasuredChKey}
+                  onChange={(e) => setAutoTuneMeasuredChKey(e.target.value)}
+                  className="px-2 py-1 rounded bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100"
+                >
+                  <option value="">Auto ({autoTuneTarget})</option>
+                  {session.channels.map((ch) => (
+                    <option key={ch.key} value={ch.key}>
+                      {ch.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[#0c0d10] border border-white/[0.08]">
+                {(
+                  [
+                    { id: 'multiplicative', label: 'Multiplicative' },
+                    { id: 'additive', label: 'Additive' },
+                    { id: 'direct', label: 'Direct' },
+                  ] as const
+                ).map((cm) => (
+                  <button
+                    key={cm.id}
+                    type="button"
+                    onClick={() => setAutoTuneCalcMode(cm.id)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer ${
+                      autoTuneCalcMode === cm.id
+                        ? 'bg-[#0a84ff]/25 text-[#5ac8fa]'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    {cm.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

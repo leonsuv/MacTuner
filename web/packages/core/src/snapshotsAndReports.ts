@@ -155,6 +155,9 @@ export function generateHtmlReport(
         const curOn = Boolean(curRaw & item.itemKind.mask) !== item.itemKind.invert;
         const origOn = Boolean(origRaw & item.itemKind.mask) !== item.itemKind.invert;
         scalarsHtml += `<tr><td>${escapeHtml(item.title)}</td><td class="muted">${escapeHtml(cat)}</td><td class="mono">${origOn ? 'ON (1)' : 'OFF (0)'}</td><td class="mono accent">${curOn ? 'ON (1)' : 'OFF (0)'}</td></tr>\n`;
+      } else if (item.itemKind.kind === 'patch') {
+        const entryCount = (item.patchEntries ?? item.itemKind.entries ?? []).length;
+        scalarsHtml += `<tr><td>${escapeHtml(item.title)}</td><td class="muted">${escapeHtml(cat)}</td><td class="mono">PATCH</td><td class="mono accent">${entryCount} entr${entryCount === 1 ? 'y' : 'ies'}</td></tr>\n`;
       } else {
         const l = item.data;
         const xLabels = BinCodec.axisLabels(item.itemKind.x, l.cols, bin);

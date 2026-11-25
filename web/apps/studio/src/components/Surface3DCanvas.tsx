@@ -1,6 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Layers, Lock, MoveVertical, RotateCcw } from 'lucide-react';
-import { Cell, cellKey } from '@mactuner/core';
+import {
+  Binary,
+  Box,
+  Check,
+  Layers,
+  Lock,
+  MoveVertical,
+  RotateCcw,
+  ScatterChart,
+  Settings2,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
+import { Cell, HeatmapPalette, cellKey } from '@mactuner/core';
+import { HEATMAP_PALETTES } from '../lib/theme';
+
+export interface DatalogPoint3D {
+  r: number;
+  c: number;
+  value: number;
+  hits?: number;
+}
 
 export interface Surface3DCanvasProps {
   values: (number | null)[][];
@@ -15,6 +35,16 @@ export interface Surface3DCanvasProps {
   onSelectCell?: (cell: Cell) => void;
   onEditCell?: (cell: Cell, newValue: number) => void;
   isLocked?: boolean;
+  /** Optional heatmap palette matching MapEditorView */
+  heatmapPalette?: HeatmapPalette;
+  /** Optional datalog 3D measurement scatter points */
+  datalogPoints?: DatalogPoint3D[];
+  /** Optional active datalog cell highlight */
+  datalogActiveCell?: Cell | null;
+  /** Optional callbacks for right-click context menu */
+  onResetToOriginal?: () => void;
+  onJumpToHex?: () => void;
+  onOpenXdfEditor?: () => void;
 }
 
 interface Vec3 {
@@ -40,27 +70,19 @@ interface QuadFace {
   isHovered: boolean;
 }
 
-/** Luminous jewel-tile thermal ramp matching MapEditorView */
-const THERMAL_STOPS: [number, number, number][] = [
-  [43, 100, 232],  // #2b64e8
-  [23, 168, 201],  // #17a8c9
-  [39, 176, 92],   // #27b05c
-  [217, 164, 22],  // #d9a416
-  [235, 110, 31],  // #eb6e1f
-  [224, 60, 72],   // #e03c48
-];
-
-function thermalRgb(tRaw: number): [number, number, number] {
+function paletteRgb(tRaw: number, palette: HeatmapPalette): [number, number, number] {
+  const info = HEATMAP_PALETTES.find((p) => p.id === palette) ?? HEATMAP_PALETTES[0];
+  const stops = info.stops;
   const t = Math.max(0, Math.min(1, Number.isFinite(tRaw) ? tRaw : 0.5));
-  const scaled = t * (THERMAL_STOPS.length - 1);
-  const idx = Math.min(THERMAL_STOPS.length - 2, Math.floor(scaled));
+  const scaled = t * (stops.length - 1);
+  const idx = Math.min(stops.length - 2, Math.floor(scaled));
   const frac = scaled - idx;
-  const a = THERMAL_STOPS[idx];
-  const b = THERMAL_STOPS[idx + 1];
+  const a = stops[idx];
+  const b = stops[idx + 1];
   return [
-    Math.round(a[0] + (b[0] - a[0]) * frac),
-    Math.round(a[1] + (b[1] - a[1]) * frac),
-    Math.round(a[2] + (b[2] - a[2]) * frac),
+    Math.round((a[0] + (b[0] - a[0]) * frac) * 255),
+    Math.round((a[1] + (b[1] - a[1]) * frac) * 255),
+    Math.round((a[2] + (b[2] - a[2]) * frac) * 255),
   ];
 }
 
@@ -99,18 +121,77 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   onSelectCell,
   onEditCell,
   isLocked = false,
+  heatmapPalette = 'classic',
+  datalogPoints,
+  datalogActiveCell = null,
+  onResetToOriginal,
+  onJumpToHex,
+  onOpenXdfEditor,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 480, h: 280 });
   const [yaw, setYaw] = useState<number>(DEFAULT_YAW);
   const [pitch, setPitch] = useState<number>(DEFAULT_PITCH);
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
   const [showCompare, setShowCompare] = useState<boolean>(true);
+  const [showMeasurementCloud, setShowMeasurementCloud] = useState<boolean>(true);
   const [editMode, setEditMode] = useState<boolean>(false);
   const [pointDrag, setPointDrag] = useState<PointDragState | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const canEdit = Boolean(onEditCell && !isLocked);
+  const hasDatalogPoints = Boolean(datalogPoints && datalogPoints.length > 0);
+
+  // Camera preset helpers
+  const setCameraReset = useCallback(() => {
+    setYaw(DEFAULT_YAW);
+    setPitch(DEFAULT_PITCH);
+    setZoom(DEFAULT_ZOOM);
+  }, []);
+
+  const setCameraFrontX = useCallback(() => {
+    setYaw(0);
+    setPitch(0.08);
+  }, []);
+
+  const setCameraSideY = useCallback(() => {
+    setYaw(-Math.PI / 2);
+    setPitch(0.08);
+  }, []);
+
+  const setCameraTop = useCallback(() => {
+    setYaw(0);
+    setPitch(1.42);
+  }, []);
+
+  const zoomIn = useCallback(() => {
+    setZoom((z) => Math.min(2.4, z * 1.18));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setZoom((z) => Math.max(0.5, z * 0.85));
+  }, []);
+
+  // Close context menu on outside click or Escape
+  useEffect(() => {
+    if (!contextMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
 
   useEffect(() => {
     if (!canEdit) {
@@ -181,12 +262,20 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
         }
       }
     }
+    if (showMeasurementCloud && datalogPoints) {
+      for (const pt of datalogPoints) {
+        if (Number.isFinite(pt.value)) {
+          if (pt.value < min) min = pt.value;
+          if (pt.value > max) max = pt.value;
+        }
+      }
+    }
     if (!Number.isFinite(min) || !Number.isFinite(max)) {
       return { minVal: 0, maxVal: 1, spanVal: 1 };
     }
     const span = max - min;
     return { minVal: min, maxVal: max, spanVal: span > 1e-12 ? span : 1 };
-  }, [values, compareValues, showCompare, rows, cols]);
+  }, [values, compareValues, showCompare, showMeasurementCloud, datalogPoints, rows, cols]);
 
   const projectPoint = useCallback(
     (p: Vec3, width: number, height: number): ProjectedPoint => {
@@ -394,7 +483,6 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
           }
           const nLen = Math.hypot(nx, ny, nz) || 1;
           const ndotl = Math.max(0, (nx * LIGHT_DIR.x + ny * LIGHT_DIR.y + nz * LIGHT_DIR.z) / nLen);
-          // Luminous ambient + directional boost (0.76 .. 1.18)
           const shade = 0.76 + ndotl * 0.42;
 
           const v00 = getVal(r, c) ?? effMinVal;
@@ -436,7 +524,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       faces.sort((a, b) => b.depth - a.depth);
 
       for (const f of faces) {
-        const [baseR, baseG, baseB] = thermalRgb(f.t);
+        const [baseR, baseG, baseB] = paletteRgb(f.t, heatmapPalette);
         const red = Math.min(255, Math.round(baseR * f.shade));
         const green = Math.min(255, Math.round(baseG * f.shade));
         const blue = Math.min(255, Math.round(baseB * f.shade));
@@ -476,7 +564,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
         const b1 = projectPoint({ x: toNormX(c1), y: yBase, z: toNormZ(r1) }, W, H);
 
         const vAvg = ((getVal(r0, c0) ?? effMinVal) + (getVal(r1, c1) ?? effMinVal)) * 0.5;
-        const [red, green, blue] = thermalRgb((vAvg - effMinVal) / effSpanVal);
+        const [red, green, blue] = paletteRgb((vAvg - effMinVal) / effSpanVal, heatmapPalette);
 
         ctx.beginPath();
         ctx.moveTo(b0.sx, b0.sy);
@@ -532,6 +620,66 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
         }
         ctx.stroke();
       }
+      ctx.restore();
+    }
+
+    // 3D Measurement Points Cloud (Datalog scatter points + stems)
+    if (showMeasurementCloud && datalogPoints && datalogPoints.length > 0) {
+      ctx.save();
+      const cloudItems = datalogPoints
+        .filter((p) => p.r >= 0 && p.r < rows && p.c >= 0 && p.c < cols && Number.isFinite(p.value))
+        .map((p) => {
+          const surfVal = getVal(p.r, p.c);
+          const surfPt = projectPoint({ x: toNormX(p.c), y: toNormY(surfVal), z: toNormZ(p.r) }, W, H);
+          const measPt = projectPoint({ x: toNormX(p.c), y: toNormY(p.value), z: toNormZ(p.r) }, W, H);
+          const diffFrac = surfVal !== null ? Math.abs(p.value - surfVal) / effSpanVal : 0;
+          return { p, surfPt, measPt, diffFrac };
+        })
+        .sort((a, b) => b.measPt.depth - a.measPt.depth);
+
+      for (const { p, surfPt, measPt, diffFrac } of cloudItems) {
+        const color =
+          diffFrac < 0.06 ? '#34d399' : diffFrac < 0.18 ? '#fbbf24' : '#fb7185';
+        ctx.strokeStyle = `${color}aa`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(surfPt.sx, surfPt.sy);
+        ctx.lineTo(measPt.sx, measPt.sy);
+        ctx.stroke();
+
+        const radius = Math.min(5.5, 2.8 + Math.log2(Math.max(1, p.hits ?? 1)) * 0.6);
+        ctx.beginPath();
+        ctx.arc(measPt.sx, measPt.sy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(12, 13, 16, 0.85)';
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Active Datalog Cell Beacon
+    if (
+      datalogActiveCell &&
+      datalogActiveCell.r >= 0 &&
+      datalogActiveCell.r < rows &&
+      datalogActiveCell.c >= 0 &&
+      datalogActiveCell.c < cols
+    ) {
+      const pt = proj[datalogActiveCell.r][datalogActiveCell.c];
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(pt.sx, pt.sy, 11, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.28)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(pt.sx, pt.sy, 4.4, 0, Math.PI * 2);
+      ctx.fillStyle = '#10b981';
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -611,6 +759,10 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     values,
     compareValues,
     showCompare,
+    showMeasurementCloud,
+    datalogPoints,
+    datalogActiveCell,
+    heatmapPalette,
     xLabels,
     yLabels,
     decimals,
@@ -647,7 +799,10 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   }, []);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const wantsPointEdit = canEdit && e.button === 0 && (editMode || e.altKey);
+    if (contextMenu) setContextMenu(null);
+    if (e.button !== 0) return;
+
+    const wantsPointEdit = canEdit && (editMode || e.altKey);
     if (wantsPointEdit) {
       const picked = pickCellAt(e.clientX, e.clientY, 24);
       if (picked) {
@@ -737,6 +892,15 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     setZoom((z) => Math.max(0.5, Math.min(2.4, z * factor)));
   };
 
+  const handleContextMenu = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const menuW = 210;
+    const menuH = 310;
+    const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
+    const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
+    setContextMenu({ x: Math.max(8, x), y: Math.max(8, y) });
+  }, []);
+
   const displayCell = pointDrag ? pointDrag.cell : hoveredCell;
   const hoveredVal = pointDrag
     ? pointDrag.liveVal
@@ -747,7 +911,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   return (
     <div className="flex flex-col h-full min-h-[240px] rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden select-none">
       {/* Clean Airy Header */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/[0.065]">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/[0.065] overflow-x-auto">
         <div className="flex items-center gap-2 min-w-0">
           <Box className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
           <span className="text-xs font-semibold tracking-[-0.01em] text-zinc-100 whitespace-nowrap shrink-0">
@@ -780,6 +944,51 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          {/* Camera Zoom - / + & Presets (X / Y / Top) */}
+          <div className="inline-flex items-center rounded-md bg-white/[0.045] p-0.5">
+            <button
+              type="button"
+              onClick={zoomOut}
+              className="p-1 rounded text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
+              title="Zoom Out"
+            >
+              <ZoomOut className="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              onClick={zoomIn}
+              className="p-1 rounded text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
+              title="Zoom In"
+            >
+              <ZoomIn className="w-3 h-3" />
+            </button>
+            <div className="w-px h-3 bg-white/[0.08] mx-0.5" />
+            <button
+              type="button"
+              onClick={setCameraFrontX}
+              className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
+              title="Frontal View (X Axis)"
+            >
+              X
+            </button>
+            <button
+              type="button"
+              onClick={setCameraSideY}
+              className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
+              title="Side View (Y Axis)"
+            >
+              Y
+            </button>
+            <button
+              type="button"
+              onClick={setCameraTop}
+              className="px-1.5 py-0.5 rounded text-[10.5px] font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
+              title="Top-Down View"
+            >
+              Top
+            </button>
+          </div>
+
           {canEdit && (
             <button
               type="button"
@@ -795,6 +1004,23 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               Points
             </button>
           )}
+
+          {hasDatalogPoints && (
+            <button
+              type="button"
+              onClick={() => setShowMeasurementCloud((v) => !v)}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                showMeasurementCloud
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : 'bg-white/[0.045] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200'
+              }`}
+              title="Toggle 3D Datalog Measurement Cloud (3D-Messpunkte)"
+            >
+              <ScatterChart className="w-3 h-3" />
+              Cloud ({datalogPoints?.length})
+            </button>
+          )}
+
           {compareValues && (
             <button
               type="button"
@@ -807,16 +1033,13 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               title="Toggle comparison wireframe overlay"
             >
               <Layers className="w-3 h-3" />
-              Compare
+              Cmp
             </button>
           )}
+
           <button
             type="button"
-            onClick={() => {
-              setYaw(DEFAULT_YAW);
-              setPitch(DEFAULT_PITCH);
-              setZoom(DEFAULT_ZOOM);
-            }}
+            onClick={setCameraReset}
             className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-white/[0.045] text-zinc-300 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
             title="Reset 3D camera"
           >
@@ -838,6 +1061,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onContextMenu={handleContextMenu}
           onPointerCancel={() => {
             dragRef.current.active = false;
             setPointDrag(null);
@@ -875,6 +1099,182 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
           {units ? ` ${units}` : ''}
         </div>
       </div>
+
+      {/* Right-Click Context Menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          className="fixed z-50 w-52 rounded-xl glass-popover py-1.5 text-xs text-zinc-200 shadow-2xl"
+        >
+          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            Camera
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setCameraReset();
+              setContextMenu(null);
+            }}
+            className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+          >
+            <span>Reset Camera</span>
+            <RotateCcw className="w-3 h-3 text-zinc-500" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCameraFrontX();
+              setContextMenu(null);
+            }}
+            className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+          >
+            <span>Frontal (X)</span>
+            <span className="text-[10px] font-mono text-zinc-500">X</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCameraSideY();
+              setContextMenu(null);
+            }}
+            className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+          >
+            <span>Side (Y)</span>
+            <span className="text-[10px] font-mono text-zinc-500">Y</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCameraTop();
+              setContextMenu(null);
+            }}
+            className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+          >
+            <span>Top-Down</span>
+            <span className="text-[10px] font-mono text-zinc-500">Top</span>
+          </button>
+          <div className="flex items-center gap-1 px-2 py-1">
+            <button
+              type="button"
+              onClick={zoomOut}
+              className="flex-1 inline-flex items-center justify-center gap-1 py-1 rounded-md bg-white/[0.05] hover:bg-white/[0.1] text-[11px] cursor-pointer"
+            >
+              <ZoomOut className="w-3 h-3" />
+              Zoom −
+            </button>
+            <button
+              type="button"
+              onClick={zoomIn}
+              className="flex-1 inline-flex items-center justify-center gap-1 py-1 rounded-md bg-white/[0.05] hover:bg-white/[0.1] text-[11px] cursor-pointer"
+            >
+              <ZoomIn className="w-3 h-3" />
+              Zoom +
+            </button>
+          </div>
+
+          <div className="my-1 border-t border-white/[0.08]" />
+
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditMode((v) => !v);
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+            >
+              <span className="inline-flex items-center gap-2">
+                <MoveVertical className="w-3.5 h-3.5 text-zinc-400" />
+                Edit Points
+              </span>
+              {editMode && <Check className="w-3.5 h-3.5 text-[#0a84ff]" />}
+            </button>
+          )}
+
+          {compareValues && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowCompare((v) => !v);
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Layers className="w-3.5 h-3.5 text-zinc-400" />
+                Compare Wireframe
+              </span>
+              {showCompare && <Check className="w-3.5 h-3.5 text-amber-400" />}
+            </button>
+          )}
+
+          <button
+            type="button"
+            disabled={!hasDatalogPoints}
+            onClick={() => {
+              setShowMeasurementCloud((v) => !v);
+              setContextMenu(null);
+            }}
+            className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed text-left cursor-pointer"
+          >
+            <span className="inline-flex items-center gap-2">
+              <ScatterChart className="w-3.5 h-3.5 text-zinc-400" />
+              3D Measurement Cloud
+            </span>
+            {hasDatalogPoints && showMeasurementCloud && (
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+            )}
+          </button>
+
+          {(onResetToOriginal || onJumpToHex || onOpenXdfEditor) && (
+            <div className="my-1 border-t border-white/[0.08]" />
+          )}
+
+          {onResetToOriginal && (
+            <button
+              type="button"
+              disabled={isLocked || !compareValues}
+              onClick={() => {
+                onResetToOriginal();
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed text-left text-amber-300 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Reset to Original
+            </button>
+          )}
+
+          {onJumpToHex && (
+            <button
+              type="button"
+              onClick={() => {
+                onJumpToHex();
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+            >
+              <Binary className="w-3.5 h-3.5 text-zinc-400" />
+              Show in Hex
+            </button>
+          )}
+
+          {onOpenXdfEditor && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenXdfEditor();
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.08] text-left cursor-pointer"
+            >
+              <Settings2 className="w-3.5 h-3.5 text-zinc-400" />
+              Edit in XDF…
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

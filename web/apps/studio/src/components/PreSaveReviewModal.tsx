@@ -29,6 +29,7 @@ export interface PreSaveReviewModalProps {
   onClose: () => void;
   bin: Uint8Array;
   baselineBin?: Uint8Array | null;
+  openedSnapshot?: Uint8Array | null;
   fileName?: string;
   xdf?: XDFDefinition | null;
   checksumBlocks?: Array<{
@@ -40,6 +41,7 @@ export interface PreSaveReviewModalProps {
   invalidChecksumCount?: number;
   onFixChecksums?: () => void;
   onConfirmExport: () => void;
+  onSaveInPlace?: () => void;
   onSelectMap?: (itemId: number) => void;
 }
 
@@ -61,14 +63,18 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
   onClose,
   bin,
   baselineBin = null,
+  openedSnapshot = null,
   fileName = 'ecu_tuned.bin',
   xdf = null,
   checksumBlocks,
   invalidChecksumCount,
   onFixChecksums,
   onConfirmExport,
+  onSaveInPlace,
   onSelectMap,
 }) => {
+  const effectiveBaseline = openedSnapshot ?? baselineBin;
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -81,12 +87,12 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
   const ecu = useMemo(() => identifyECU(bin), [bin]);
 
   const modifiedByteCount = useMemo(() => {
-    if (!baselineBin) return 0;
-    return countChangedBytes(bin, baselineBin);
-  }, [bin, baselineBin]);
+    if (!effectiveBaseline) return 0;
+    return countChangedBytes(bin, effectiveBaseline);
+  }, [bin, effectiveBaseline]);
 
   const { modifiedItems, outsideByteCount } = useMemo(() => {
-    if (!xdf || !baselineBin) {
+    if (!xdf || !effectiveBaseline) {
       return { modifiedItems: [] as ModifiedMapEntry[], outsideByteCount: modifiedByteCount };
     }
     const items: ModifiedMapEntry[] = [];
@@ -107,10 +113,10 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
         for (let r = 0; r < l.rows; r++) {
           for (let c = 0; c < l.cols; c++) {
             const cell = { r, c };
-            if (!cellDiffers(l, cell, bin, baselineBin)) continue;
+            if (!cellDiffers(l, cell, bin, effectiveBaseline)) continue;
             changed++;
             const curRaw = BinCodec.raw(l, cell, bin);
-            const origRaw = BinCodec.raw(l, cell, baselineBin);
+            const origRaw = BinCodec.raw(l, cell, effectiveBaseline);
             if (curRaw !== null && origRaw !== null) {
               const cur = scalingValue(item.scaling, curRaw);
               const orig = scalingValue(item.scaling, origRaw);
@@ -133,8 +139,8 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
         }
       } else if (item.itemKind.kind === 'constant') {
         const cell = { r: 0, c: 0 };
-        if (cellDiffers(l, cell, bin, baselineBin)) {
-          const origRaw = BinCodec.raw(l, cell, baselineBin);
+        if (cellDiffers(l, cell, bin, effectiveBaseline)) {
+          const origRaw = BinCodec.raw(l, cell, effectiveBaseline);
           const curRaw = BinCodec.raw(l, cell, bin);
           const origTxt = origRaw !== null ? scalingDisplay(item.scaling, origRaw, l) : '—';
           const curTxt = curRaw !== null ? scalingDisplay(item.scaling, curRaw, l) : '—';
@@ -150,8 +156,8 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
         }
       } else if (item.itemKind.kind === 'flag') {
         const cell = { r: 0, c: 0 };
-        if (cellDiffers(l, cell, bin, baselineBin)) {
-          const origRaw = BinCodec.raw(l, cell, baselineBin) ?? 0;
+        if (cellDiffers(l, cell, bin, effectiveBaseline)) {
+          const origRaw = BinCodec.raw(l, cell, effectiveBaseline) ?? 0;
           const curRaw = BinCodec.raw(l, cell, bin) ?? 0;
           const mask = item.itemKind.mask || 1;
           const oBit = Boolean(origRaw & mask) !== item.itemKind.invert ? '1' : '0';
@@ -169,16 +175,16 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
     }
 
     // Count changed bytes outside any XDF item byte range
-    const len = Math.min(bin.length, baselineBin.length);
+    const len = Math.min(bin.length, effectiveBaseline.length);
     let outside = 0;
     for (let i = 0; i < len; i++) {
-      if (bin[i] === baselineBin[i]) continue;
+      if (bin[i] === effectiveBaseline[i]) continue;
       const inXdf = coveredRanges.some(([s, e]) => i >= s && i < e);
       if (!inXdf) outside++;
     }
 
     return { modifiedItems: items, outsideByteCount: outside };
-  }, [xdf, bin, baselineBin, modifiedByteCount]);
+  }, [xdf, bin, effectiveBaseline, modifiedByteCount]);
 
   const checksumSummary = useMemo(() => {
     if (invalidChecksumCount !== undefined) {
@@ -438,7 +444,9 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
         {/* Footer */}
         <div className="px-5 py-3.5 border-t border-white/[0.065] bg-[#17181d] flex items-center justify-between gap-3 flex-wrap">
           <span className="text-[11px] text-zinc-500">
-            Non-destructive export — original baseline remains untouched.
+            {openedSnapshot
+              ? 'Diffed against immutable opened baseline snapshot.'
+              : 'Non-destructive export — original baseline remains untouched.'}
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -448,6 +456,19 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
             >
               Cancel
             </button>
+            {onSaveInPlace && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSaveInPlace();
+                  onClose();
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.12] text-xs font-semibold text-white transition-all cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-[#5ac8fa]" />
+                <span>Save</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -461,7 +482,7 @@ export const PreSaveReviewModal: React.FC<PreSaveReviewModalProps> = ({
               }`}
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Confirm &amp; Export .bin</span>
+              <span>{onSaveInPlace ? 'Save As…' : 'Confirm & Export .bin'}</span>
             </button>
           </div>
         </div>

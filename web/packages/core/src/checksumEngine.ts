@@ -1,7 +1,8 @@
-import { Patch } from './types';
+import { Patch, PflashPartition, PflashPartitionKind } from './types';
 import { applyPatches } from './changes';
 
 export type ChecksumTriage = 'corrected' | 'uncorrectable' | 'unchecked';
+export type ChecksumTriageStatus = 'fixable' | 'tprot' | 'unchecked';
 
 export type ChecksumPluginId =
   | 'bosch-me7'
@@ -37,6 +38,7 @@ export interface ChecksumBlock {
   computedHex: string;
   valid: boolean;
   triage: ChecksumTriage;
+  triageStatus?: ChecksumTriageStatus;
   storeAddress?: number;
 }
 
@@ -894,6 +896,261 @@ export function correctCVNInPlace(bin: Uint8Array): Patch | null {
 }
 
 /**
+ * In-place CVN correction using the GF(2) CRC32 solver.
+ * Writes a compensating 4-byte LE dword into an erased flash slot so the binary's CVN matches
+ * `targetCvnHex` (e.g. `"A1B2C3D4"` or `"0xA1B2C3D4"`).
+ */
+export function correctCvnInPlace(
+  bytes: Uint8Array,
+  targetCvnHex: string,
+  pluginId?: string,
+): { bytes: Uint8Array; achievedCvn: string; patchedAddress: number; ok: boolean } {
+  const cleaned = targetCvnHex.replace(/^0x/i, '').trim();
+  const target = parseInt(cleaned, 16) >>> 0;
+  if (!/^[0-9a-fA-F]{1,8}$/.test(cleaned) || bytes.length < 8) {
+    return {
+      bytes: new Uint8Array(bytes),
+      achievedCvn: computeCVN(bytes).cvnHex,
+      patchedAddress: -1,
+      ok: false,
+    };
+  }
+
+  let regions: Array<[number, number]> = [[0, bytes.length]];
+  let patchOffset = -1;
+
+  const pid = pluginId ? normalizePluginId(pluginId) : null;
+  if (!pid || pid === 'bosch-med17') {
+    const med17Blocks = parseBoschMed17Blocks(bytes);
+    if (med17Blocks.length > 0) {
+      const info = findBoschMed17CVN(bytes, med17Blocks);
+      if (info && info.compTestPatchOffset !== undefined) {
+        regions = info.regions;
+        patchOffset = info.compTestPatchOffset;
+      }
+    }
+  }
+
+  if (patchOffset < 0) {
+    // Search backwards for an erased 4-byte aligned slot (0xFFFFFFFF, 0x00000000, or 0xC3C3C3C3)
+    const scanLo = Math.max(0, bytes.length - 0x20000);
+    const scanStart = ((bytes.length - 4) & ~3) >>> 0;
+    for (let off = scanStart; off >= scanLo; off -= 4) {
+      const dw = readU32LE(bytes, off);
+      if (dw === 0xffffffff || dw === 0x00000000 || dw === 0xc3c3c3c3) {
+        patchOffset = off;
+        break;
+      }
+    }
+    if (patchOffset < 0) {
+      patchOffset = scanStart;
+    }
+  }
+
+  const sol = solveCRC32GF2Patch(bytes, regions, patchOffset, 0xffffffff, 0xffffffff, target);
+  if (sol === null) {
+    return {
+      bytes: new Uint8Array(bytes),
+      achievedCvn: computeCVN(bytes, regions).cvnHex,
+      patchedAddress: -1,
+      ok: false,
+    };
+  }
+
+  const out = new Uint8Array(bytes);
+  out.set(encodeU32LE(sol), patchOffset);
+  const achieved = computeCVN(out, regions);
+  return {
+    bytes: out,
+    achievedCvn: achieved.cvnHex,
+    patchedAddress: patchOffset,
+    ok: achieved.cvn === target,
+  };
+}
+
+function isErasedSlice(bytes: Uint8Array, start: number, end: number): boolean {
+  const len = end - start;
+  if (len <= 0) return true;
+  let erased = 0;
+  const step = Math.max(1, Math.floor(len / 256));
+  let sampled = 0;
+  for (let i = start; i < end; i += step) {
+    sampled++;
+    if (bytes[i] === 0xff || bytes[i] === 0x00) erased++;
+  }
+  return sampled > 0 && erased / sampled >= 0.98;
+}
+
+/**
+ * Parses Bosch MED17/EDC17, MG1/MD1, ME7, Simos 18/19, or generic ECU PFLASH headers and
+ * segment boundaries into structured `PflashPartition[]` entries with TPROT lock metadata.
+ */
+export function parsePflashPartitions(bytes: Uint8Array): PflashPartition[] {
+  if (bytes.length === 0) return [];
+
+  // 1. Real Bosch MED17 / EDC17 TriCore PFLASH block headers
+  const med17Blocks = parseBoschMed17Blocks(bytes);
+  if (med17Blocks.length > 0) {
+    const sorted = [...med17Blocks].sort((a, b) => a.fileOffset - b.fileOffset);
+    const out: PflashPartition[] = [];
+    let cursor = 0;
+
+    const mapKind = (blk: BoschMed17Block): PflashPartitionKind => {
+      if (blk.blockTypeID === 0x10 || blk.blockTypeID === 0xf0) return 'boot';
+      if (blk.isTPROTProtected || blk.blockTypeID === 0x20 || blk.blockTypeID === 0x90) {
+        return 'tprot';
+      }
+      if (
+        blk.blockTypeID === 0x60 ||
+        blk.blockTypeID === 0x70 ||
+        blk.blockTypeID === 0x80 ||
+        blk.blockTypeID === 0xc0
+      ) {
+        return 'cal';
+      }
+      return 'asw';
+    };
+
+    sorted.forEach((blk, idx) => {
+      const start = blk.fileOffset;
+      const end = Math.min(bytes.length, blk.fileOffset + blk.size);
+      if (start - cursor >= 0x1000) {
+        const empty = isErasedSlice(bytes, cursor, start);
+        out.push({
+          id: `pflash-gap-${idx}`,
+          name: empty ? 'Erased / Unused Flash' : 'Unmapped Region',
+          start: cursor,
+          end: start,
+          size: start - cursor,
+          kind: empty ? 'empty' : 'asw',
+          tprotLocked: false,
+        });
+      }
+      out.push({
+        id: `med17-part-${idx}`,
+        name: blk.typeName,
+        start,
+        end,
+        size: end - start,
+        kind: mapKind(blk),
+        tprotLocked: blk.isTPROTProtected,
+        blockTypeId: blk.blockTypeID,
+        ...(blk.swIdentifier ? { swIdentifier: blk.swIdentifier } : {}),
+        ...(blk.variantString ? { variantString: blk.variantString } : {}),
+      });
+      cursor = Math.max(cursor, end);
+    });
+
+    if (bytes.length - cursor >= 0x1000) {
+      const empty = isErasedSlice(bytes, cursor, bytes.length);
+      out.push({
+        id: 'pflash-tail',
+        name: empty ? 'Erased Tail Flash' : 'Trailing Region',
+        start: cursor,
+        end: bytes.length,
+        size: bytes.length - cursor,
+        kind: empty ? 'empty' : 'checksum',
+        tprotLocked: false,
+      });
+    }
+
+    return out;
+  }
+
+  // 2. Family-specific PFLASH layout templates (MG1/MD1, Simos 18/19, ME7)
+  const head = readAsciiHead(bytes, 262_144);
+  if (
+    bytes.length >= 4_194_304 &&
+    (head.includes('MG1CS') || head.includes('MD1CS') || head.includes('MD1CP') || head.includes('MG1MD1'))
+  ) {
+    const tailStart = bytes.length - 0x1000;
+    return [
+      { id: 'mg1-boot', name: 'Boot / HSM TPROT', start: 0, end: 0x040000, size: 0x040000, kind: 'tprot', tprotLocked: true },
+      { id: 'mg1-cal-a', name: 'CAL Sector A', start: 0x040000, end: 0x080000, size: 0x040000, kind: 'cal', tprotLocked: false },
+      { id: 'mg1-cal-b', name: 'CAL Sector B', start: 0x080000, end: 0x100000, size: 0x080000, kind: 'cal', tprotLocked: false },
+      { id: 'mg1-cal-c', name: 'CAL Sector C', start: 0x100000, end: 0x180000, size: 0x080000, kind: 'cal', tprotLocked: false },
+      { id: 'mg1-cal-d', name: 'CAL Sector D', start: 0x180000, end: 0x200000, size: 0x080000, kind: 'cal', tprotLocked: false },
+      { id: 'mg1-asw', name: 'ASW Application Flash', start: 0x200000, end: tailStart, size: tailStart - 0x200000, kind: 'asw', tprotLocked: false },
+      { id: 'mg1-sig', name: 'HSM Signature / Checksum', start: tailStart, end: bytes.length, size: 0x1000, kind: 'checksum', tprotLocked: true },
+    ];
+  }
+
+  if (bytes.length >= 2_097_152 && (head.includes('SIMOS18') || head.includes('SIMOS19'))) {
+    return [
+      { id: 'simos-cboot', name: 'CBOOT / RSA TPROT', start: 0, end: 0x040000, size: 0x040000, kind: 'tprot', tprotLocked: true },
+      { id: 'simos-cal-1', name: 'Simos CAL Block 1', start: 0x040000, end: 0x080000, size: 0x040000, kind: 'cal', tprotLocked: false },
+      { id: 'simos-cal-2', name: 'Simos CAL Block 2', start: 0x080000, end: 0x100000, size: 0x080000, kind: 'cal', tprotLocked: false },
+      { id: 'simos-asw', name: 'Simos ASW Application', start: 0x100000, end: bytes.length, size: bytes.length - 0x100000, kind: 'asw', tprotLocked: false },
+    ];
+  }
+
+  if (bytes.length === 524_288 || bytes.length === 1_048_576) {
+    const csStart = bytes.length - 0x10000;
+    return [
+      { id: 'me7-boot', name: 'Boot / Vectors', start: 0, end: 0x10000, size: 0x10000, kind: 'boot', tprotLocked: false },
+      { id: 'me7-cal', name: 'Calibration / Maps', start: 0x10000, end: 0x30000, size: 0x20000, kind: 'cal', tprotLocked: false },
+      { id: 'me7-asw', name: 'ASW Program Code', start: 0x30000, end: csStart, size: csStart - 0x30000, kind: 'asw', tprotLocked: false },
+      { id: 'me7-cs', name: 'Checksum / Page Tail', start: csStart, end: bytes.length, size: 0x10000, kind: 'checksum', tprotLocked: false },
+    ];
+  }
+
+  // 3. Generic PFLASH segmentation by 4 KB page occupancy
+  const pageSize = bytes.length >= 0x10000 ? 0x1000 : Math.max(256, bytes.length >> 3);
+  const partitions: PflashPartition[] = [];
+  let curStart = 0;
+  let curEmpty = isErasedSlice(bytes, 0, Math.min(pageSize, bytes.length));
+  let idx = 0;
+
+  for (let off = pageSize; off < bytes.length; off += pageSize) {
+    const end = Math.min(bytes.length, off + pageSize);
+    const empty = isErasedSlice(bytes, off, end);
+    if (empty !== curEmpty) {
+      const kind: PflashPartitionKind = curEmpty
+        ? 'empty'
+        : curStart === 0
+          ? 'boot'
+          : idx === 1
+            ? 'cal'
+            : 'asw';
+      partitions.push({
+        id: `gen-part-${idx++}`,
+        name: curEmpty
+          ? 'Erased Flash'
+          : kind === 'boot'
+            ? 'Boot / Header'
+            : kind === 'cal'
+              ? 'Calibration Data'
+              : `Program Segment ${idx}`,
+        start: curStart,
+        end: off,
+        size: off - curStart,
+        kind,
+        tprotLocked: false,
+      });
+      curStart = off;
+      curEmpty = empty;
+    }
+  }
+
+  const finalKind: PflashPartitionKind = curEmpty
+    ? 'empty'
+    : partitions.length === 0
+      ? 'cal'
+      : 'asw';
+  partitions.push({
+    id: `gen-part-${idx}`,
+    name: curEmpty ? 'Erased Flash' : partitions.length === 0 ? 'Flash Image' : 'Application / Calibration',
+    start: curStart,
+    end: bytes.length,
+    size: bytes.length - curStart,
+    kind: finalKind,
+    tprotLocked: false,
+  });
+
+  return partitions;
+}
+
+/**
  * Detect whether `bin` contains real Bosch MED17 / EDC17 PFLASH block headers
  * (`0xFADECAFE` / `0xCAFEAFFE` magic pair at header +0x40 / +0x44).
  */
@@ -1012,15 +1269,25 @@ function finalizeReport(
     >
   >,
 ): ChecksumReport {
-  const validCount = blocks.filter((b) => b.valid).length;
-  const invalidCount = blocks.filter((b) => !b.valid && b.triage !== 'uncorrectable').length;
-  const triage = computeByteTriage(bin, cmp, blocks, storeWidth);
+  const normalizedBlocks: ChecksumBlock[] = blocks.map((b) => ({
+    ...b,
+    triageStatus:
+      b.triageStatus ??
+      (b.triage === 'uncorrectable'
+        ? 'tprot'
+        : b.triage === 'corrected'
+          ? 'fixable'
+          : 'unchecked'),
+  }));
+  const validCount = normalizedBlocks.filter((b) => b.valid).length;
+  const invalidCount = normalizedBlocks.filter((b) => !b.valid && b.triage !== 'uncorrectable').length;
+  const triage = computeByteTriage(bin, cmp, normalizedBlocks, storeWidth);
   const canFix = extra?.canFix ?? info.canFix;
 
   return {
     pluginId: info.id,
     pluginName: info.name,
-    blocks,
+    blocks: normalizedBlocks,
     validCount,
     invalidCount,
     canFix,

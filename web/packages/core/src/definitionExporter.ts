@@ -11,7 +11,7 @@ import {
   scalingValue,
 } from './types';
 
-export type DefinitionExportFormat = 'xdf' | 'a2l' | 'csv' | 'kp' | 'romraider';
+export type DefinitionExportFormat = 'xdf' | 'a2l' | 'csv' | 'kp' | 'romraider' | 'xml';
 
 function linearFactorOffset(s: Scaling): { factor: number; offset: number } {
   const offset = scalingValue(s, 0);
@@ -119,13 +119,16 @@ export function exportCSV(def: XDFDefinition): string {
 
   for (const item of def.items) {
     const isTable = item.itemKind.kind === 'table';
+    const isPatch = item.itemKind.kind === 'patch';
     const folder =
       item.categories.length > 0 ? (def.categories[item.categories[0]] ?? '') : '';
-    const typeStr = !isTable
+    const typeStr = isPatch
       ? 'eEinzel'
-      : item.data.rows <= 1 || item.data.cols <= 1
-        ? 'eZweiD'
-        : 'eDreiD';
+      : !isTable
+        ? 'eEinzel'
+        : item.data.rows <= 1 || item.data.cols <= 1
+          ? 'eZweiD'
+          : 'eDreiD';
 
     const { factor: f, offset: off } = linearFactorOffset(item.scaling);
     const dataOrg = winOLSOrgString(item.data);
@@ -215,11 +218,14 @@ export function exportA2L(def: XDFDefinition): string {
       ].join('\n'),
     );
 
-    const a2lType = !isTable
-      ? 'VALUE'
-      : item.data.rows <= 1 || item.data.cols <= 1
-        ? 'CURVE'
-        : 'MAP';
+    const a2lType =
+      item.itemKind.kind === 'patch'
+        ? 'VAL_BLK'
+        : !isTable
+          ? 'VALUE'
+          : item.data.rows <= 1 || item.data.cols <= 1
+            ? 'CURVE'
+            : 'MAP';
 
     const axisBlocks: string[] = [];
     const { x: xAxis, y: yAxis } = getItemAxes(item);
@@ -640,8 +646,10 @@ export function exportRomRaiderXML(def: XDFDefinition): string {
   return `${lines.join('\n')}\n`;
 }
 
+export const exportRomRaiderXml = exportRomRaiderXML;
+
 /**
- * Unified definition export dispatcher supporting `.xdf`, `.a2l`, `.csv`, `.kp`, and RomRaider XML.
+ * Unified definition export dispatcher supporting `.xdf`, `.a2l`, `.csv`, `.kp`, and RomRaider XML (`romraider` / `xml`).
  */
 export function exportDefinition(
   def: XDFDefinition,
@@ -657,6 +665,7 @@ export function exportDefinition(
     case 'kp':
       return exportWinOLSKP(def);
     case 'romraider':
+    case 'xml':
       return exportRomRaiderXML(def);
   }
 }

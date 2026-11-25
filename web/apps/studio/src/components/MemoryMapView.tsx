@@ -8,12 +8,15 @@ import {
   HardDrive,
   Layers,
   Link2,
+  Lock,
+  Search,
 } from 'lucide-react';
 import {
   DiffCluster,
+  PflashPartition,
   XDFDefinition,
   findSharedAxes,
-  layoutByteRange,
+  parsePflashPartitions,
 } from '@mactuner/core';
 
 export interface FlashPartition {
@@ -24,6 +27,7 @@ export interface FlashPartition {
   end: number; // exclusive
   color: string;
   description?: string;
+  tprotLocked?: boolean;
 }
 
 export interface MemoryMapViewProps {
@@ -48,89 +52,45 @@ function formatSize(size: number): string {
   return `${size} B`;
 }
 
-function inferPartitions(bytes: Uint8Array, xdf: XDFDefinition | null): FlashPartition[] {
-  const total = Math.max(1, bytes.length);
-
-  let calStart = Math.floor(total * 0.35);
-  let calEnd = Math.floor(total * 0.72);
-  if (xdf && xdf.items.length > 0) {
-    let minA = Infinity;
-    let maxA = 0;
-    for (const item of xdf.items) {
-      const [s, e] = layoutByteRange(item.data);
-      if (s < minA) minA = s;
-      if (e > maxA) maxA = e;
-    }
-    if (Number.isFinite(minA) && maxA > minA) {
-      calStart = Math.max(0, Math.floor(minA / 4096) * 4096);
-      calEnd = Math.min(total, Math.ceil(maxA / 4096) * 4096);
-    }
+function mapPflashToUi(p: PflashPartition): FlashPartition {
+  const kindMap: Record<PflashPartition['kind'], FlashPartition['kind']> = {
+    boot: 'boot',
+    tprot: 'boot',
+    asw: 'code',
+    cal: 'calibration',
+    checksum: 'checksum',
+    empty: 'free',
+  };
+  const colorMap: Record<PflashPartition['kind'], string> = {
+    boot: '#6366f1',
+    tprot: '#ef4444',
+    asw: '#0a84ff',
+    cal: '#10b981',
+    checksum: '#a855f7',
+    empty: '#3f3f46',
+  };
+  const descParts: string[] = [];
+  if (p.tprotLocked) descParts.push('TPROT / OTP Protected');
+  if (p.swIdentifier) descParts.push(`SW: ${p.swIdentifier}`);
+  if (p.variantString) descParts.push(p.variantString);
+  if (descParts.length === 0) {
+    if (p.kind === 'boot') descParts.push('Reset vectors & flash loader');
+    else if (p.kind === 'tprot') descParts.push('Protected RSA / OTP sector');
+    else if (p.kind === 'cal') descParts.push('Calibration tables & scalars');
+    else if (p.kind === 'checksum') descParts.push('Checksum / signature footer');
+    else if (p.kind === 'empty') descParts.push('Erased 0xFF / 0x00 flash');
+    else descParts.push('ECU application program code');
   }
-
-  const bootEnd = Math.min(calStart, Math.max(4096, Math.floor(total * 0.12)));
-  const cksStart = Math.min(
-    total,
-    Math.max(calEnd, total - Math.max(4096, Math.floor(total * 0.06))),
-  );
-
-  const parts: FlashPartition[] = [];
-  if (bootEnd > 0) {
-    parts.push({
-      id: 'boot',
-      name: 'Bootloader / TPROT',
-      kind: 'boot',
-      start: 0,
-      end: bootEnd,
-      color: '#6366f1',
-      description: 'Reset vectors, RSA/TPROT signatures & flash loader',
-    });
-  }
-  if (calStart > bootEnd) {
-    parts.push({
-      id: 'code',
-      name: 'ASW Program Code',
-      kind: 'code',
-      start: bootEnd,
-      end: calStart,
-      color: '#0a84ff',
-      description: 'ECU operating system & control algorithms',
-    });
-  }
-  if (calEnd > calStart) {
-    parts.push({
-      id: 'calibration',
-      name: 'Calibration Data (Maps)',
-      kind: 'calibration',
-      start: calStart,
-      end: calEnd,
-      color: '#10b981',
-      description: 'Fuel, ignition, boost, torque & limiter tables',
-    });
-  }
-  if (cksStart > calEnd) {
-    parts.push({
-      id: 'free',
-      name: 'Free / 0xFF Erased Flash',
-      kind: 'free',
-      start: calEnd,
-      end: cksStart,
-      color: '#3f3f46',
-      description: 'Unused flash sectors available for patch routines',
-    });
-  }
-  if (total > cksStart) {
-    parts.push({
-      id: 'checksum',
-      name: 'Checksum / CVN Footer',
-      kind: 'checksum',
-      start: cksStart,
-      end: total,
-      color: '#a855f7',
-      description: 'CRC32 / ADD32 verification blocks & ECU ID',
-    });
-  }
-
-  return parts;
+  return {
+    id: p.id,
+    name: p.name,
+    kind: kindMap[p.kind],
+    start: p.start,
+    end: p.end,
+    color: colorMap[p.kind],
+    description: descParts.join(' · '),
+    tprotLocked: p.tprotLocked,
+  };
 }
 
 export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
@@ -144,13 +104,26 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
 }) => {
   const [subTab, setSubTab] = useState<MemorySubTab>('partitions');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [axisSearch, setAxisSearch] = useState<string>('');
 
   const partitions = useMemo(
-    () => customPartitions ?? inferPartitions(bytes, xdf),
-    [customPartitions, bytes, xdf],
+    () => customPartitions ?? parsePflashPartitions(bytes).map(mapPflashToUi),
+    [customPartitions, bytes],
   );
 
   const sharedAxes = useMemo(() => findSharedAxes(bytes, xdf), [bytes, xdf]);
+
+  const filteredSharedAxes = useMemo(() => {
+    const q = axisSearch.trim().toLowerCase();
+    if (!q) return sharedAxes;
+    return sharedAxes.filter(
+      (ax) =>
+        formatHex(ax.address).toLowerCase().includes(q) ||
+        ax.units.toLowerCase().includes(q) ||
+        ax.preview.toLowerCase().includes(q) ||
+        ax.referencingMaps.some((m) => m.title.toLowerCase().includes(q)),
+    );
+  }, [sharedAxes, axisSearch]);
 
   const totalSharedRefs = useMemo(
     () => sharedAxes.reduce((acc, ax) => acc + ax.referencingMaps.length, 0),
@@ -436,7 +409,15 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
                           style={{ backgroundColor: part.color }}
                         />
                         <div>
-                          <div className="font-medium text-zinc-100">{part.name}</div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-zinc-100">{part.name}</span>
+                            {part.tprotLocked && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/35 text-[10px] font-semibold">
+                                <Lock className="w-2.5 h-2.5" />
+                                TPROT / OTP
+                              </span>
+                            )}
+                          </div>
                           {part.description && (
                             <div className="text-[11px] text-zinc-500">{part.description}</div>
                           )}
@@ -498,27 +479,45 @@ export const MemoryMapView: React.FC<MemoryMapViewProps> = ({
                 </p>
               </div>
             </div>
-            {sharedAxes.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-medium">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                Coupled Breakpoints
-              </span>
-            )}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={axisSearch}
+                  onChange={(e) => setAxisSearch(e.target.value)}
+                  placeholder="Filter address, unit, map..."
+                  className="pl-8 pr-3 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#0a84ff] w-56"
+                />
+              </div>
+              {sharedAxes.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-medium">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Coupled Breakpoints
+                </span>
+              )}
+            </div>
           </div>
 
-          {sharedAxes.length === 0 ? (
+          {filteredSharedAxes.length === 0 ? (
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-12 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <GitBranch className="w-9 h-9 text-zinc-600 mx-auto mb-3" />
-              <h3 className="text-sm font-semibold text-zinc-200">No shared COM_AXIS addresses found</h3>
+              <h3 className="text-sm font-semibold text-zinc-200">
+                {sharedAxes.length > 0
+                  ? 'No shared axes match your search'
+                  : 'No shared COM_AXIS addresses found'}
+              </h3>
               <p className="text-xs text-zinc-500 max-w-md mx-auto mt-1">
-                {xdf
-                  ? 'All X/Y axes in the current XDF definition occupy distinct binary addresses.'
-                  : 'Load an XDF definition to analyze shared axis references across maps.'}
+                {sharedAxes.length > 0
+                  ? 'Try clearing the search query above.'
+                  : xdf
+                    ? 'All X/Y axes in the current XDF definition occupy distinct binary addresses.'
+                    : 'Load an XDF definition to analyze shared axis references across maps.'}
               </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {sharedAxes.map((entry) => (
+              {filteredSharedAxes.map((entry) => (
                 <div
                   key={entry.address}
                   className="rounded-xl bg-[#17181d] border border-white/[0.065] p-4 space-y-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-white/[0.12] transition-colors"
