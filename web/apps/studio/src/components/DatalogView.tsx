@@ -1,5 +1,33 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Flame, Gauge, ScatterChart, Upload } from 'lucide-react';
+import {
+  Activity,
+  CheckCircle2,
+  Flame,
+  Gauge,
+  Grid3x3,
+  ScatterChart,
+  Sparkles,
+  Upload,
+  Wand2,
+} from 'lucide-react';
+import {
+  BinCodec,
+  cellOffset,
+  createMed17DemoBundle,
+  elementBytes,
+  scalingFormat,
+  scalingRawFor,
+  scalingValue,
+  type Patch,
+  type XDFDefinition,
+  type XDFItem,
+} from '@mactuner/core';
+
+export interface DatalogViewProps {
+  xdf?: XDFDefinition | null;
+  bin?: Uint8Array;
+  onApplyPatches?: (patches: Patch[], label: string) => void;
+}
 
 export interface DatalogChannel {
   key: string;
@@ -19,7 +47,22 @@ export interface DatalogSession {
   channels: DatalogChannel[];
 }
 
-type DatalogMode = 'timeseries' | 'scatter' | 'dyno';
+type DatalogMode = 'timeseries' | 'scatter' | 'dyno' | 'autotune';
+type AutoTuneTargetMode = 'lambda' | 'boost' | 'hits';
+
+interface AutoTuneSuggestion {
+  key: string;
+  r: number;
+  c: number;
+  xLabel: string;
+  yLabel: string;
+  hits: number;
+  avgMeasured: number;
+  targetValue: number;
+  currentValue: number;
+  suggestedValue: number;
+  deltaPercent: number;
+}
 
 interface DynoPoint {
   rpm: number;
@@ -340,7 +383,25 @@ function computeVirtualDyno(
   return { points, peakHp, peakTorque, peakBoost, pullDurationSec };
 }
 
-export const DatalogView: React.FC = () => {
+function nearestAxisIndex(axisValues: number[], sampleVal: number): number {
+  if (axisValues.length === 0) return 0;
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < axisValues.length; i++) {
+    const d = Math.abs(axisValues[i] - sampleVal);
+    if (d < bestDist) {
+      bestDist = d;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+export const DatalogView: React.FC<DatalogViewProps> = ({
+  xdf: propXdf = null,
+  bin: propBin,
+  onApplyPatches,
+}) => {
   const [session, setSession] = useState<DatalogSession>(() => createRealisticWotPull());
   const [mode, setMode] = useState<DatalogMode>('timeseries');
   const [enabledKeys, setEnabledKeys] = useState<Set<string>>(
@@ -362,6 +423,250 @@ export const DatalogView: React.FC = () => {
   const [showCrank, setShowCrank] = useState<boolean>(false);
   const [smoothRadius, setSmoothRadius] = useState<number>(3);
   const [dynoHoverIdx, setDynoHoverIdx] = useState<number | null>(null);
+
+  // Map Hit-Overlay & Auto-Tune state
+  const [demoFallback, setDemoFallback] = useState<{
+    xdf: XDFDefinition;
+    bin: Uint8Array;
+  } | null>(null);
+  const effectiveXdf = propXdf ?? demoFallback?.xdf ?? null;
+  const effectiveBin = propBin ?? demoFallback?.bin ?? null;
+
+  const tableItems = useMemo<XDFItem[]>(
+    () => (effectiveXdf ? effectiveXdf.items.filter((it) => it.itemKind.kind === 'table') : []),
+    [effectiveXdf],
+  );
+  const [selectedMapId, setSelectedMapId] = useState<number | null>(null);
+  const [autoTuneTarget, setAutoTuneTarget] = useState<AutoTuneTargetMode>('lambda');
+  const [autoTuneDamping, setAutoTuneDamping] = useState<number>(0.6);
+  const [autoTuneMinHits, setAutoTuneMinHits] = useState<number>(2);
+  const [wotFilterOnly, setWotFilterOnly] = useState<boolean>(true);
+  const [targetLambdaGoal, setTargetLambdaGoal] = useState<number>(0.82);
+  const [targetBoostGoalBar, setTargetBoostGoalBar] = useState<number>(1.55);
+  const [excludedCells, setExcludedCells] = useState<Set<string>>(() => new Set());
+  const [hoveredCellKey, setHoveredCellKey] = useState<string | null>(null);
+  const [autoTuneNotice, setAutoTuneNotice] = useState<string | null>(null);
+
+  const activeMap = useMemo<XDFItem | null>(() => {
+    if (tableItems.length === 0) return null;
+    if (selectedMapId !== null) {
+      const found = tableItems.find((t) => t.id === selectedMapId);
+      if (found) return found;
+    }
+    if (autoTuneTarget === 'lambda') {
+      const lam = tableItems.find((t) => /lambda|lamfa|afr/i.test(t.title));
+      if (lam) return lam;
+    } else if (autoTuneTarget === 'boost') {
+      const bst = tableItems.find((t) => /boost|ldrxn|pressure/i.test(t.title));
+      if (bst) return bst;
+    }
+    return tableItems[0];
+  }, [tableItems, selectedMapId, autoTuneTarget]);
+
+  // Compute live RPM x Load hit counts + target-lambda / boost Auto-Tune cell suggestions
+  const autoTuneAnalysis = useMemo(() => {
+    if (!activeMap || activeMap.itemKind.kind !== 'table' || !effectiveBin) {
+      return null;
+    }
+    const l = activeMap.data;
+    const xVals = BinCodec.axisValues(activeMap.itemKind.x, l.cols, effectiveBin);
+    const yVals = BinCodec.axisValues(activeMap.itemKind.y, l.rows, effectiveBin);
+    const xLabels = BinCodec.axisLabels(activeMap.itemKind.x, l.cols, effectiveBin);
+    const yLabels = BinCodec.axisLabels(activeMap.itemKind.y, l.rows, effectiveBin);
+
+    const rpmCh =
+      session.channels.find((c) => /rpm|engine speed|nmot/i.test(c.label) || c.key === 'rpm') ??
+      session.channels[0];
+    const loadCh =
+      session.channels.find((c) => /load|pedal|throttle|tps/i.test(c.label) || c.key === 'load') ??
+      session.channels[2] ??
+      session.channels[1];
+    const lambdaCh = session.channels.find(
+      (c) => /lambda|afr/i.test(c.label) || c.key === 'lambda',
+    );
+    const boostCh = session.channels.find(
+      (c) => /boost|pressure|map/i.test(c.label) || c.key === 'boost',
+    );
+
+    const hits: number[][] = Array.from({ length: l.rows }, () => new Array<number>(l.cols).fill(0));
+    const sumMeas: number[][] = Array.from({ length: l.rows }, () =>
+      new Array<number>(l.cols).fill(0),
+    );
+
+    const maxYAxis = Math.max(...yVals, 1);
+    const loadMax = loadCh ? Math.max(...loadCh.values, 1) : 100;
+    const scaleLoadToY = maxYAxis <= 105 && loadMax > 115 ? maxYAxis / loadMax : 1;
+
+    const n = session.timestamps.length;
+    let totalHits = 0;
+
+    for (let i = 0; i < n; i++) {
+      const rpm = rpmCh?.values[i] ?? 0;
+      const rawLoad = loadCh?.values[i] ?? 0;
+      if (wotFilterOnly && rawLoad < 65) continue;
+
+      const ySample = rawLoad * scaleLoadToY;
+      const c = nearestAxisIndex(xVals, rpm);
+      const r = nearestAxisIndex(yVals, ySample);
+      hits[r][c]++;
+      totalHits++;
+
+      if (autoTuneTarget === 'lambda' && lambdaCh) {
+        sumMeas[r][c] += lambdaCh.values[i];
+      } else if (autoTuneTarget === 'boost' && boostCh) {
+        // Convert gauge bar (e.g. 1.45 bar) to absolute mbar (2450 mbar) when map is in mbar
+        const rawB = boostCh.values[i];
+        const inMbar = /mbar|hpa/i.test(activeMap.scaling.units)
+          ? rawB < 5
+            ? 1000 + rawB * 1000
+            : rawB
+          : rawB;
+        sumMeas[r][c] += inMbar;
+      } else if (boostCh) {
+        sumMeas[r][c] += boostCh.values[i];
+      }
+    }
+
+    let maxCellHits = 0;
+    let coveredCells = 0;
+    const mapValues: number[][] = [];
+    const suggestions: AutoTuneSuggestion[] = [];
+    const suggestionMap = new Map<string, AutoTuneSuggestion>();
+
+    for (let r = 0; r < l.rows; r++) {
+      const rowVals: number[] = [];
+      for (let c = 0; c < l.cols; c++) {
+        const raw = BinCodec.raw(l, { r, c }, effectiveBin);
+        const curVal = raw !== null ? scalingValue(activeMap.scaling, raw) : 0;
+        rowVals.push(curVal);
+
+        const h = hits[r][c];
+        if (h > 0) coveredCells++;
+        if (h > maxCellHits) maxCellHits = h;
+
+        if (h >= autoTuneMinHits && autoTuneTarget !== 'hits') {
+          const avgMeas = sumMeas[r][c] / h;
+          let targetVal = curVal;
+          let suggested = curVal;
+
+          if (autoTuneTarget === 'lambda' && lambdaCh && avgMeas > 0.4 && avgMeas < 1.5) {
+            // Compare measured lambda against desired goal (or map target if map is lambda)
+            const isLambdaMap = /λ|lambda/i.test(activeMap.scaling.units) || (curVal > 0.5 && curVal < 1.3);
+            targetVal = isLambdaMap ? targetLambdaGoal : curVal;
+            const errRatio = targetVal / avgMeas;
+            const dampedFactor = 1 + (errRatio - 1) * autoTuneDamping;
+            suggested = isLambdaMap
+              ? Math.max(0.72, Math.min(1.05, curVal * dampedFactor))
+              : curVal * dampedFactor;
+          } else if (autoTuneTarget === 'boost' && boostCh) {
+            const isMbar = /mbar|hpa/i.test(activeMap.scaling.units);
+            targetVal = isMbar ? 1000 + targetBoostGoalBar * 1000 : targetBoostGoalBar;
+            if (avgMeas > 1e-3) {
+              const delta = (targetVal - avgMeas) * autoTuneDamping;
+              suggested = Math.max(isMbar ? 900 : 0, curVal + delta);
+            }
+          }
+
+          const deltaPct = Math.abs(curVal) > 1e-6 ? ((suggested - curVal) / Math.abs(curVal)) * 100 : 0;
+          if (Math.abs(deltaPct) >= 0.35) {
+            const key = `${r}:${c}`;
+            const sug: AutoTuneSuggestion = {
+              key,
+              r,
+              c,
+              xLabel: xLabels[c] ?? String(c),
+              yLabel: yLabels[r] ?? String(r),
+              hits: h,
+              avgMeasured: avgMeas,
+              targetValue: targetVal,
+              currentValue: curVal,
+              suggestedValue: suggested,
+              deltaPercent: deltaPct,
+            };
+            suggestions.push(sug);
+            suggestionMap.set(key, sug);
+          }
+        }
+      }
+      mapValues.push(rowVals);
+    }
+
+    suggestions.sort((a, b) => b.hits - a.hits || Math.abs(b.deltaPercent) - Math.abs(a.deltaPercent));
+
+    return {
+      xLabels,
+      yLabels,
+      hits,
+      sumMeas,
+      mapValues,
+      maxCellHits,
+      totalHits,
+      coveredCells,
+      suggestions,
+      suggestionMap,
+    };
+  }, [
+    activeMap,
+    effectiveBin,
+    session,
+    wotFilterOnly,
+    autoTuneTarget,
+    autoTuneMinHits,
+    autoTuneDamping,
+    targetLambdaGoal,
+    targetBoostGoalBar,
+  ]);
+
+  const handleApplyAutoTune = useCallback(() => {
+    if (!activeMap || !effectiveBin || !autoTuneAnalysis) return;
+    const selectedSugs = autoTuneAnalysis.suggestions.filter((s) => !excludedCells.has(s.key));
+    if (selectedSugs.length === 0) return;
+
+    const l = activeMap.data;
+    const nb = elementBytes(l);
+    const patches: Patch[] = [];
+
+    for (const s of selectedSugs) {
+      const nextRaw = scalingRawFor(activeMap.scaling, s.suggestedValue, l);
+      if (nextRaw === null) continue;
+      const off = cellOffset(l, { r: s.r, c: s.c });
+      if (off < 0 || off + nb > effectiveBin.length) continue;
+      const oldBytes = effectiveBin.slice(off, off + nb);
+      const nextBytes = BinCodec.encode(l, nextRaw);
+      let differs = false;
+      for (let k = 0; k < nb; k++) {
+        if (oldBytes[k] !== nextBytes[k]) {
+          differs = true;
+          break;
+        }
+      }
+      if (differs) {
+        patches.push({ offset: off, old: oldBytes, next: nextBytes });
+      }
+    }
+
+    if (patches.length === 0) {
+      setAutoTuneNotice('All selected cells are already within raw quantization step.');
+      return;
+    }
+
+    if (onApplyPatches) {
+      onApplyPatches(
+        patches,
+        `Auto-Tune ${activeMap.title} (${patches.length} cell${patches.length === 1 ? '' : 's'})`,
+      );
+      setAutoTuneNotice(
+        `Applied ${patches.length} Auto-Tune cell correction(s) to ${activeMap.title} (undoable with ⌘Z).`,
+      );
+    } else if (demoFallback) {
+      const nextBin = new Uint8Array(demoFallback.bin);
+      for (const p of patches) nextBin.set(p.next, p.offset);
+      setDemoFallback({ ...demoFallback, bin: nextBin });
+      setAutoTuneNotice(
+        `Applied ${patches.length} correction(s) to demo preview buffer (${activeMap.title}).`,
+      );
+    }
+  }, [activeMap, effectiveBin, autoTuneAnalysis, excludedCells, onApplyPatches, demoFallback]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -902,13 +1207,14 @@ export const DatalogView: React.FC = () => {
           </div>
         </div>
 
-        {/* 3-Mode Segmented Control */}
+        {/* 4-Mode Segmented Control */}
         <div className="flex items-center gap-0.5 p-0.5 rounded-full bg-white/[0.04] border border-white/[0.065]">
           {(
             [
               { id: 'timeseries', label: 'Time-Series', icon: <Activity className="w-3.5 h-3.5" /> },
               { id: 'scatter', label: 'XY Scatter', icon: <ScatterChart className="w-3.5 h-3.5" /> },
               { id: 'dyno', label: 'Virtual Dyno', icon: <Gauge className="w-3.5 h-3.5" /> },
+              { id: 'autotune', label: 'Hit-Overlay & Auto-Tune', icon: <Grid3x3 className="w-3.5 h-3.5" /> },
             ] as const
           ).map((m) => (
             <button
@@ -1205,44 +1511,428 @@ export const DatalogView: React.FC = () => {
         </div>
       )}
 
-      {/* Main High-DPI Canvas Area */}
-      <div className="flex-1 p-5 min-h-0 flex flex-col">
-        <div
-          ref={containerRef}
-          className={`relative flex-1 rounded-xl bg-[#17181d] border overflow-hidden transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${
-            isDragging ? 'border-[#0a84ff] ring-2 ring-[#0a84ff]/30' : 'border-white/[0.065]'
-          }`}
-        >
-          <canvas
-            ref={canvasRef}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={() => {
-              setHoverIdx(null);
-              setScatterHoverIdx(null);
-              setDynoHoverIdx(null);
-            }}
-            className="w-full h-full block cursor-crosshair"
-          />
+      {/* Main High-DPI Canvas Area OR Map Hit-Overlay & Auto-Tune Workbench */}
+      {mode === 'autotune' ? (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {/* Auto-Tune Controls Bar */}
+          <div className="px-5 py-2.5 border-b border-white/[0.065] bg-[#15161b] flex items-center justify-between gap-3 flex-wrap text-xs">
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-1.5 text-zinc-400">
+                <span className="text-[10.5px] uppercase tracking-wider text-zinc-500">Map</span>
+                <select
+                  value={activeMap?.id ?? ''}
+                  onChange={(e) => {
+                    setSelectedMapId(Number(e.target.value));
+                    setExcludedCells(new Set());
+                    setAutoTuneNotice(null);
+                  }}
+                  disabled={tableItems.length === 0}
+                  className="px-2.5 py-1 rounded-lg bg-[#0c0d10] border border-white/[0.08] text-xs text-zinc-100 focus:outline-none focus:border-[#0a84ff] max-w-[230px]"
+                >
+                  {tableItems.length === 0 ? (
+                    <option value="">No XDF table maps</option>
+                  ) : (
+                    tableItems.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title} ({t.data.rows}×{t.data.cols})
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
 
-          {isDragging && (
-            <div className="absolute inset-0 bg-[#0c0d10]/85 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none">
-              <Upload className="w-8 h-8 text-[#0a84ff] mb-2" />
-              <p className="text-sm font-semibold text-white">Drop CSV datalog to plot channels</p>
+              <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[#0c0d10] border border-white/[0.08]">
+                {(
+                  [
+                    { id: 'lambda', label: 'Lambda Auto-Tune' },
+                    { id: 'boost', label: 'Boost Auto-Tune' },
+                    { id: 'hits', label: 'Hit Density Only' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setAutoTuneTarget(opt.id);
+                      setExcludedCells(new Set());
+                      setAutoTuneNotice(null);
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                      autoTuneTarget === opt.id
+                        ? 'bg-[#0a84ff] text-white'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {autoTuneTarget === 'lambda' && (
+                <label className="flex items-center gap-1.5 text-zinc-400">
+                  <span>Target λ</span>
+                  <input
+                    type="number"
+                    step={0.01}
+                    min={0.7}
+                    max={1.05}
+                    value={targetLambdaGoal}
+                    onChange={(e) => setTargetLambdaGoal(Number(e.target.value) || 0.82)}
+                    className="w-16 px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] font-mono tabular-nums text-zinc-100"
+                  />
+                </label>
+              )}
+
+              {autoTuneTarget === 'boost' && (
+                <label className="flex items-center gap-1.5 text-zinc-400">
+                  <span>Target Boost</span>
+                  <input
+                    type="number"
+                    step={0.05}
+                    min={0.5}
+                    max={3.0}
+                    value={targetBoostGoalBar}
+                    onChange={(e) => setTargetBoostGoalBar(Number(e.target.value) || 1.55)}
+                    className="w-16 px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] font-mono tabular-nums text-zinc-100"
+                  />
+                  <span className="text-zinc-500">bar</span>
+                </label>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-1.5 text-zinc-400">
+                <span>Damping</span>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={1}
+                  step={0.1}
+                  value={autoTuneDamping}
+                  onChange={(e) => setAutoTuneDamping(Number(e.target.value))}
+                  className="w-20 accent-[#0a84ff]"
+                />
+                <span className="font-mono text-zinc-200 w-8">
+                  {Math.round(autoTuneDamping * 100)}%
+                </span>
+              </label>
+
+              <label className="flex items-center gap-1.5 text-zinc-400">
+                <span>Min Hits</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={25}
+                  value={autoTuneMinHits}
+                  onChange={(e) => setAutoTuneMinHits(Math.max(1, Number(e.target.value) || 1))}
+                  className="w-12 px-2 py-1 rounded-md bg-[#0c0d10] border border-white/[0.08] font-mono tabular-nums text-zinc-100"
+                />
+              </label>
+
+              <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={wotFilterOnly}
+                  onChange={(e) => setWotFilterOnly(e.target.checked)}
+                  className="accent-[#0a84ff]"
+                />
+                <span>WOT Only (≥65% Load)</span>
+              </label>
+            </div>
+          </div>
+
+          {!activeMap || !autoTuneAnalysis ? (
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="max-w-md w-full rounded-2xl bg-[#17181d] border border-white/[0.065] p-8 text-center space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-[#0a84ff]/15 border border-[#0a84ff]/30 flex items-center justify-center mx-auto">
+                  <Grid3x3 className="w-6 h-6 text-[#5ac8fa]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white">
+                    Map Hit-Overlay &amp; Auto-Tune Ready
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Connect an XDF + BIN calibration to overlay live RPM×Load hit counts from the 20 Hz WOT pull and calculate 1-click lambda &amp; boost cell corrections.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const demo = createMed17DemoBundle();
+                    setDemoFallback({ xdf: demo.xdf, bin: demo.stage1Bin });
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold shadow-[0_3px_14px_rgba(10,132,255,0.35)] cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Load MED17 Demo Map Preview</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4 p-5 overflow-hidden">
+              {/* Left: Interactive RPM x Load Map Heatmap with Hit-Count Overlay */}
+              <div className="lg:col-span-7 rounded-xl bg-[#17181d] border border-white/[0.065] flex flex-col overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <div className="px-4 py-2.5 border-b border-white/[0.065] bg-[#14151a] flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-white">{activeMap.title}</span>
+                    <span className="px-2 py-0.5 rounded-md bg-white/[0.06] font-mono text-[10px] text-zinc-400">
+                      {activeMap.data.rows}×{activeMap.data.cols} · {activeMap.scaling.units || 'raw'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 font-mono text-[10.5px] text-zinc-400">
+                    <span>
+                      Hits: <strong className="text-[#5ac8fa]">{autoTuneAnalysis.totalHits}</strong>
+                    </span>
+                    <span>
+                      Cells Hit:{' '}
+                      <strong className="text-emerald-400">
+                        {autoTuneAnalysis.coveredCells}/{activeMap.data.rows * activeMap.data.cols}
+                      </strong>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-auto p-3">
+                  <table className="border-collapse text-[10.5px] font-mono tabular-nums w-full">
+                    <thead>
+                      <tr>
+                        <th className="p-1.5 text-left text-[9.5px] text-zinc-500 border border-white/[0.05] bg-[#121317] sticky top-0 left-0 z-20">
+                          Load \ RPM
+                        </th>
+                        {autoTuneAnalysis.xLabels.map((xl, c) => (
+                          <th
+                            key={c}
+                            className="p-1.5 text-center text-zinc-400 border border-white/[0.05] bg-[#121317] sticky top-0 z-10 whitespace-nowrap"
+                          >
+                            {xl}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {autoTuneAnalysis.yLabels.map((yl, r) => (
+                        <tr key={r}>
+                          <th className="p-1.5 text-right text-zinc-400 border border-white/[0.05] bg-[#121317] sticky left-0 z-10 whitespace-nowrap">
+                            {yl}
+                          </th>
+                          {autoTuneAnalysis.xLabels.map((_, c) => {
+                            const h = autoTuneAnalysis.hits[r][c];
+                            const val = autoTuneAnalysis.mapValues[r][c];
+                            const key = `${r}:${c}`;
+                            const sug = autoTuneAnalysis.suggestionMap.get(key);
+                            const isHov = hoveredCellKey === key;
+                            const hitFrac =
+                              autoTuneAnalysis.maxCellHits > 0
+                                ? h / autoTuneAnalysis.maxCellHits
+                                : 0;
+                            const bgStyle =
+                              h > 0
+                                ? {
+                                    backgroundColor: `rgba(10, 132, 255, ${0.12 + hitFrac * 0.42})`,
+                                  }
+                                : undefined;
+
+                            return (
+                              <td
+                                key={c}
+                                onMouseEnter={() => setHoveredCellKey(key)}
+                                onMouseLeave={() => setHoveredCellKey(null)}
+                                style={bgStyle}
+                                className={`p-1 text-center border transition-all relative ${
+                                  isHov
+                                    ? 'border-white ring-1 ring-white/60 z-10'
+                                    : sug
+                                      ? 'border-amber-400/50'
+                                      : 'border-white/[0.05]'
+                                } ${h === 0 ? 'bg-[#0c0d10] text-zinc-500' : 'text-white'}`}
+                              >
+                                <div className="leading-tight">
+                                  {scalingFormat(activeMap.scaling, val)}
+                                </div>
+                                {h > 0 && (
+                                  <div className="mt-0.5 flex items-center justify-center gap-0.5">
+                                    <span className="px-1 rounded bg-black/55 text-[9px] font-bold text-[#5ac8fa]">
+                                      {h}×
+                                    </span>
+                                    {sug && (
+                                      <span
+                                        className={`px-1 rounded bg-black/55 text-[9px] font-bold ${
+                                          sug.deltaPercent > 0 ? 'text-emerald-300' : 'text-amber-300'
+                                        }`}
+                                      >
+                                        {sug.deltaPercent > 0 ? '+' : ''}
+                                        {sug.deltaPercent.toFixed(1)}%
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Right: Auto-Tune Suggestions & 1-Click Apply */}
+              <div className="lg:col-span-5 rounded-xl bg-[#17181d] border border-white/[0.065] flex flex-col overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <div className="px-4 py-2.5 border-b border-white/[0.065] bg-[#14151a] flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Wand2 className="w-3.5 h-3.5 text-[#5ac8fa]" />
+                    <span className="text-xs font-semibold text-white">
+                      Auto-Tune Cell Corrections
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 font-mono text-[10px] text-amber-300">
+                    {autoTuneAnalysis.suggestions.filter((s) => !excludedCells.has(s.key)).length}{' '}
+                    selected
+                  </span>
+                </div>
+
+                {autoTuneNotice && (
+                  <div className="mx-3 mt-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-[11px] text-emerald-300 flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>{autoTuneNotice}</span>
+                  </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                  {autoTuneAnalysis.suggestions.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-zinc-400">
+                      {autoTuneTarget === 'hits'
+                        ? 'Switch to Lambda Auto-Tune or Boost Auto-Tune above to compute cell corrections.'
+                        : 'No cells exceed the minimum hit count & delta threshold. Try lowering Min Hits or adjusting Target.'}
+                    </div>
+                  ) : (
+                    autoTuneAnalysis.suggestions.map((sug) => {
+                      const included = !excludedCells.has(sug.key);
+                      const isHov = hoveredCellKey === sug.key;
+                      return (
+                        <div
+                          key={sug.key}
+                          onMouseEnter={() => setHoveredCellKey(sug.key)}
+                          onMouseLeave={() => setHoveredCellKey(null)}
+                          className={`rounded-lg p-2.5 border flex items-center justify-between gap-2 transition-colors ${
+                            isHov
+                              ? 'bg-[#0a84ff]/15 border-[#0a84ff]/45'
+                              : included
+                                ? 'bg-[#0c0d10] border-white/[0.07]'
+                                : 'bg-[#0c0d10]/40 border-white/[0.04] opacity-50'
+                          }`}
+                        >
+                          <label className="flex items-center gap-2.5 min-w-0 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={included}
+                              onChange={() =>
+                                setExcludedCells((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(sug.key)) next.delete(sug.key);
+                                  else next.add(sug.key);
+                                  return next;
+                                })
+                              }
+                              className="accent-[#0a84ff]"
+                            />
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-mono font-semibold text-zinc-100">
+                                [{sug.yLabel} / {sug.xLabel}]
+                                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-[#0a84ff]/15 text-[#5ac8fa] text-[9.5px]">
+                                  {sug.hits} hits
+                                </span>
+                              </div>
+                              <div className="text-[10px] font-mono text-zinc-500 mt-0.5">
+                                Logged avg: {sug.avgMeasured.toFixed(autoTuneTarget === 'lambda' ? 3 : 0)}
+                              </div>
+                            </div>
+                          </label>
+
+                          <div className="text-right font-mono tabular-nums shrink-0">
+                            <div className="text-[11px] text-zinc-200">
+                              {scalingFormat(activeMap.scaling, sug.currentValue)}{' '}
+                              <span className="text-zinc-500">→</span>{' '}
+                              <span className="text-amber-300 font-semibold">
+                                {scalingFormat(activeMap.scaling, sug.suggestedValue)}
+                              </span>
+                            </div>
+                            <div
+                              className={`text-[10px] font-semibold ${
+                                sug.deltaPercent > 0 ? 'text-emerald-400' : 'text-sky-400'
+                              }`}
+                            >
+                              {sug.deltaPercent > 0 ? '+' : ''}
+                              {sug.deltaPercent.toFixed(1)}%
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="p-3 border-t border-white/[0.065] bg-[#14151a]">
+                  <button
+                    type="button"
+                    disabled={
+                      autoTuneAnalysis.suggestions.filter((s) => !excludedCells.has(s.key))
+                        .length === 0
+                    }
+                    onClick={handleApplyAutoTune}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-[0_3px_14px_rgba(10,132,255,0.35)] transition-all cursor-pointer"
+                  >
+                    <Wand2 className="w-3.5 h-3.5" />
+                    <span>
+                      Apply{' '}
+                      {autoTuneAnalysis.suggestions.filter((s) => !excludedCells.has(s.key)).length}{' '}
+                      Cell Correction(s)
+                    </span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
-        <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500">
-          <span>
-            {mode === 'timeseries' &&
-              'Hover chart to scrub synchronized channels · Click channel pills above to toggle traces'}
-            {mode === 'scatter' &&
-              'MegaLogViewer-style XY scatter · Hover any data point to inspect X, Y & Z color value'}
-            {mode === 'dyno' &&
-              'Road-load physics Virtual Dyno (F_accel + F_roll + F_aero) · Hover curve to inspect RPM / HP / Nm'}
-          </span>
-          <span>Drag &amp; drop any .csv log anywhere in this view</span>
+      ) : (
+        <div className="flex-1 p-5 min-h-0 flex flex-col">
+          <div
+            ref={containerRef}
+            className={`relative flex-1 rounded-xl bg-[#17181d] border overflow-hidden transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${
+              isDragging ? 'border-[#0a84ff] ring-2 ring-[#0a84ff]/30' : 'border-white/[0.065]'
+            }`}
+          >
+            <canvas
+              ref={canvasRef}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={() => {
+                setHoverIdx(null);
+                setScatterHoverIdx(null);
+                setDynoHoverIdx(null);
+              }}
+              className="w-full h-full block cursor-crosshair"
+            />
+
+            {isDragging && (
+              <div className="absolute inset-0 bg-[#0c0d10]/85 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none">
+                <Upload className="w-8 h-8 text-[#0a84ff] mb-2" />
+                <p className="text-sm font-semibold text-white">Drop CSV datalog to plot channels</p>
+              </div>
+            )}
+          </div>
+          <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500">
+            <span>
+              {mode === 'timeseries' &&
+                'Hover chart to scrub synchronized channels · Click channel pills above to toggle traces'}
+              {mode === 'scatter' &&
+                'MegaLogViewer-style XY scatter · Hover any data point to inspect X, Y & Z color value'}
+              {mode === 'dyno' &&
+                'Road-load physics Virtual Dyno (F_accel + F_roll + F_aero) · Hover curve to inspect RPM / HP / Nm'}
+            </span>
+            <span>Drag &amp; drop any .csv log anywhere in this view</span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

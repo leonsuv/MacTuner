@@ -47,7 +47,13 @@ function getExtension(filename: string): string {
 
 function parseFlexibleInt(raw: string | undefined): number | null {
   if (!raw) return null;
-  const s = raw.trim().replace(/^[$#]/, '');
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('$')) {
+    const n = parseInt(trimmed.slice(1), 16);
+    return Number.isFinite(n) ? n : null;
+  }
+  const s = trimmed.replace(/^#/, '');
   if (!s) return null;
   if (s.startsWith('0x') || s.startsWith('0X')) {
     const n = parseInt(s.slice(2), 16);
@@ -699,10 +705,46 @@ export function parseCSVDefinition(filename: string, content: string): XDFDefini
     const cols = Math.max(1, colsIdx >= 0 && colsIdx < fields.length ? parseInt(fields[colsIdx], 10) || 1 : 1);
 
     const bitsRaw = (bitsIdx >= 0 && bitsIdx < fields.length ? fields[bitsIdx] : '16').toLowerCase();
-    const bits = bitsRaw.includes('64') ? 64 : bitsRaw.includes('32') ? 32 : bitsRaw.includes('8') ? 8 : 16;
-    const isFloat = bitsRaw.includes('float') || bitsRaw.includes('ieee');
-    const lsbFirst =
-      bitsRaw.includes('be') || bitsRaw.includes('hi') || bitsRaw.includes('motorola') ? false : true;
+    let bits = 16;
+    let isFloat = bitsRaw.includes('float') || bitsRaw.includes('ieee');
+    let lsbFirst = true;
+    if (bitsRaw === 'ebyte') {
+      bits = 8;
+    } else if (bitsRaw === 'elohi') {
+      bits = 16;
+      lsbFirst = true;
+    } else if (bitsRaw === 'ehilo') {
+      bits = 16;
+      lsbFirst = false;
+    } else if (bitsRaw === 'elohilohi') {
+      bits = 32;
+      lsbFirst = true;
+    } else if (bitsRaw === 'ehilohilo') {
+      bits = 32;
+      lsbFirst = false;
+    } else if (bitsRaw === 'efloatlohi') {
+      bits = 32;
+      isFloat = true;
+      lsbFirst = true;
+    } else if (bitsRaw === 'efloathilo') {
+      bits = 32;
+      isFloat = true;
+      lsbFirst = false;
+    } else {
+      bits = bitsRaw.includes('64')
+        ? 64
+        : bitsRaw.includes('32') || isFloat
+          ? 32
+          : bitsRaw.includes('8') || bitsRaw.includes('byte')
+            ? 8
+            : 16;
+      lsbFirst =
+        bitsRaw.includes('be') ||
+        bitsRaw.includes('hilo') ||
+        bitsRaw.includes('motorola')
+          ? false
+          : true;
+    }
 
     let signed = bitsRaw.includes('sign') && !bitsRaw.includes('unsign');
     if (signedIdx >= 0 && signedIdx < fields.length) {
@@ -803,6 +845,768 @@ export function importDefinition(filename: string, content: string): XDFDefiniti
     return parseA2L(filename, content);
   }
   return parseCSVDefinition(filename, content);
+}
+
+// MARK: - Native WinOLS Binary (.ols & .kp) Importer + Pure-TS Synchronous DEFLATE
+
+const WINOLS_MAGIC = [0x57, 0x69, 0x6e, 0x4f, 0x4c, 0x53, 0x20, 0x46, 0x69, 0x6c, 0x65]; // "WinOLS File"
+
+/**
+ * Check whether `bytes` starts with the WinOLS binary file magic (`"WinOLS File"` at byte 4).
+ */
+export function isWinOLSBinary(bytes: Uint8Array): boolean {
+  if (bytes.length < 16) return false;
+  for (let i = 0; i < WINOLS_MAGIC.length; i++) {
+    if (bytes[4 + i] !== WINOLS_MAGIC[i]) return false;
+  }
+  return true;
+}
+
+function u32LE(b: Uint8Array, i: number): number {
+  return (b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) | (b[i + 3] << 24)) >>> 0;
+}
+
+function f64LE(b: Uint8Array, i: number): number {
+  const view = new DataView(b.buffer, b.byteOffset + i, 8);
+  return view.getFloat64(0, true);
+}
+
+function decodeLatin1(bytes: Uint8Array, start: number, end: number): string {
+  let out = '';
+  for (let i = start; i < end; i++) {
+    out += String.fromCharCode(bytes[i]);
+  }
+  return out;
+}
+
+function findZipHeader(bytes: Uint8Array, limit: number): number {
+  const lim = Math.min(bytes.length, limit);
+  for (let i = 0; i <= lim - 4; i++) {
+    if (
+      bytes[i] === 0x50 &&
+      bytes[i + 1] === 0x4b &&
+      bytes[i + 2] === 0x03 &&
+      bytes[i + 3] === 0x04
+    ) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+// Minimal pure-TypeScript RFC 1951 raw DEFLATE inflater (zero dependencies, browser + Node sync)
+interface HuffTable {
+  counts: Int32Array;
+  symbols: Int32Array;
+  maxBits: number;
+}
+
+function buildHuffTable(lengths: Uint8Array, offset: number, count: number): HuffTable | null {
+  const counts = new Int32Array(16);
+  let maxBits = 0;
+  for (let i = 0; i < count; i++) {
+    const len = lengths[offset + i];
+    if (len > 15) return null;
+    if (len > maxBits) maxBits = len;
+    counts[len]++;
+  }
+  const offsets = new Int32Array(16);
+  let total = 0;
+  for (let b = 1; b <= 15; b++) {
+    offsets[b] = total;
+    total += counts[b];
+  }
+  const symbols = new Int32Array(total);
+  for (let i = 0; i < count; i++) {
+    const len = lengths[offset + i];
+    if (len !== 0) {
+      symbols[offsets[len]++] = i;
+    }
+  }
+  return { counts, symbols, maxBits };
+}
+
+const LEN_BASE = new Int32Array([
+  3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
+  35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258,
+]);
+const LEN_EXTRA = new Int32Array([
+  0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+  3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+]);
+const DIST_BASE = new Int32Array([
+  1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+  257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+]);
+const DIST_EXTRA = new Int32Array([
+  0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+  7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
+]);
+const CL_ORDER = new Int32Array([
+  16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+]);
+
+const FIXED_LIT_TABLE: HuffTable = (() => {
+  const lens = new Uint8Array(288);
+  lens.fill(8, 0, 144);
+  lens.fill(9, 144, 256);
+  lens.fill(7, 256, 280);
+  lens.fill(8, 280, 288);
+  return buildHuffTable(lens, 0, 288)!;
+})();
+
+const FIXED_DIST_TABLE: HuffTable = (() => {
+  const lens = new Uint8Array(32);
+  lens.fill(5);
+  return buildHuffTable(lens, 0, 32)!;
+})();
+
+function inflateRaw(src: Uint8Array, expectedSize: number): Uint8Array | null {
+  let bytePos = 0;
+  let bitBuf = 0;
+  let bitCnt = 0;
+
+  const readBits = (n: number): number => {
+    while (bitCnt < n) {
+      if (bytePos >= src.length) return -1;
+      bitBuf |= src[bytePos++] << bitCnt;
+      bitCnt += 8;
+    }
+    const val = bitBuf & ((1 << n) - 1);
+    bitBuf >>>= n;
+    bitCnt -= n;
+    return val;
+  };
+
+  const decodeSym = (tbl: HuffTable): number => {
+    let code = 0;
+    let first = 0;
+    let index = 0;
+    for (let len = 1; len <= tbl.maxBits; len++) {
+      const bit = readBits(1);
+      if (bit < 0) return -1;
+      code |= bit;
+      const count = tbl.counts[len];
+      if (code - count < first) {
+        return tbl.symbols[index + (code - first)];
+      }
+      index += count;
+      first = (first + count) << 1;
+      code <<= 1;
+    }
+    return -1;
+  };
+
+  let out = new Uint8Array(Math.max(256, expectedSize));
+  let outPos = 0;
+  const ensure = (extra: number): boolean => {
+    if (outPos + extra <= out.length) return true;
+    const nextCap = Math.min(MAX_BINARY_SPAN, Math.max(out.length * 2, outPos + extra));
+    if (nextCap < outPos + extra) return false;
+    const next = new Uint8Array(nextCap);
+    next.set(out.subarray(0, outPos));
+    out = next;
+    return true;
+  };
+
+  let isFinal = 0;
+  while (isFinal === 0) {
+    isFinal = readBits(1);
+    const btype = readBits(2);
+    if (isFinal < 0 || btype < 0) return null;
+
+    if (btype === 0) {
+      bitBuf = 0;
+      bitCnt = 0;
+      if (bytePos + 4 > src.length) return null;
+      const len = src[bytePos] | (src[bytePos + 1] << 8);
+      const nlen = src[bytePos + 2] | (src[bytePos + 3] << 8);
+      bytePos += 4;
+      if (((len ^ nlen) & 0xffff) !== 0xffff || bytePos + len > src.length) return null;
+      if (!ensure(len)) return null;
+      out.set(src.subarray(bytePos, bytePos + len), outPos);
+      bytePos += len;
+      outPos += len;
+    } else if (btype === 1 || btype === 2) {
+      let litTbl: HuffTable = FIXED_LIT_TABLE;
+      let distTbl: HuffTable = FIXED_DIST_TABLE;
+
+      if (btype === 2) {
+        const hlit = readBits(5) + 257;
+        const hdist = readBits(5) + 1;
+        const hclen = readBits(4) + 4;
+        if (hlit < 257 || hdist < 1 || hclen < 4) return null;
+
+        const clLens = new Uint8Array(19);
+        for (let i = 0; i < hclen; i++) {
+          const v = readBits(3);
+          if (v < 0) return null;
+          clLens[CL_ORDER[i]] = v;
+        }
+        const clTbl = buildHuffTable(clLens, 0, 19);
+        if (!clTbl) return null;
+
+        const totalLens = hlit + hdist;
+        const allLens = new Uint8Array(totalLens);
+        let idx = 0;
+        while (idx < totalLens) {
+          const sym = decodeSym(clTbl);
+          if (sym < 0) return null;
+          if (sym < 16) {
+            allLens[idx++] = sym;
+          } else if (sym === 16) {
+            if (idx === 0) return null;
+            const rep = readBits(2) + 3;
+            const prev = allLens[idx - 1];
+            for (let r = 0; r < rep && idx < totalLens; r++) allLens[idx++] = prev;
+          } else if (sym === 17) {
+            const rep = readBits(3) + 3;
+            for (let r = 0; r < rep && idx < totalLens; r++) allLens[idx++] = 0;
+          } else if (sym === 18) {
+            const rep = readBits(7) + 11;
+            for (let r = 0; r < rep && idx < totalLens; r++) allLens[idx++] = 0;
+          } else {
+            return null;
+          }
+        }
+        const builtLit = buildHuffTable(allLens, 0, hlit);
+        const builtDist = buildHuffTable(allLens, hlit, hdist);
+        if (!builtLit || !builtDist) return null;
+        litTbl = builtLit;
+        distTbl = builtDist;
+      }
+
+      for (;;) {
+        const sym = decodeSym(litTbl);
+        if (sym < 0) return null;
+        if (sym < 256) {
+          if (!ensure(1)) return null;
+          out[outPos++] = sym;
+        } else if (sym === 256) {
+          break;
+        } else {
+          const lIdx = sym - 257;
+          if (lIdx < 0 || lIdx >= LEN_BASE.length) return null;
+          const extraL = LEN_EXTRA[lIdx] > 0 ? readBits(LEN_EXTRA[lIdx]) : 0;
+          if (extraL < 0) return null;
+          const length = LEN_BASE[lIdx] + extraL;
+
+          const dSym = decodeSym(distTbl);
+          if (dSym < 0 || dSym >= DIST_BASE.length) return null;
+          const extraD = DIST_EXTRA[dSym] > 0 ? readBits(DIST_EXTRA[dSym]) : 0;
+          if (extraD < 0) return null;
+          const dist = DIST_BASE[dSym] + extraD;
+          if (dist <= 0 || dist > outPos) return null;
+
+          if (!ensure(length)) return null;
+          for (let k = 0; k < length; k++) {
+            out[outPos] = out[outPos - dist];
+            outPos++;
+          }
+        }
+      }
+    } else {
+      return null;
+    }
+  }
+
+  return out.subarray(0, outPos);
+}
+
+function extractZipEntry(
+  bytes: Uint8Array,
+  zipStart: number,
+  targetName: string,
+): Uint8Array | null {
+  let pos = zipStart;
+  while (pos + 30 <= bytes.length) {
+    if (
+      bytes[pos] !== 0x50 ||
+      bytes[pos + 1] !== 0x4b ||
+      bytes[pos + 2] !== 0x03 ||
+      bytes[pos + 3] !== 0x04
+    ) {
+      break;
+    }
+    const method = bytes[pos + 8] | (bytes[pos + 9] << 8);
+    const compSize = u32LE(bytes, pos + 18);
+    const uncompSize = u32LE(bytes, pos + 22);
+    const nameLen = bytes[pos + 26] | (bytes[pos + 27] << 8);
+    const extraLen = bytes[pos + 28] | (bytes[pos + 29] << 8);
+    const nameStart = pos + 30;
+    const dataStart = nameStart + nameLen + extraLen;
+    if (dataStart + compSize > bytes.length) break;
+
+    const entryName = new TextDecoder('utf-8').decode(bytes.subarray(nameStart, nameStart + nameLen));
+    if (entryName === targetName) {
+      const payload = bytes.subarray(dataStart, dataStart + compSize);
+      if (method === 0) {
+        return new Uint8Array(payload);
+      }
+      if (method === 8 && uncompSize > 0 && uncompSize < MAX_BINARY_SPAN) {
+        return inflateRaw(payload, uncompSize);
+      }
+      return null;
+    }
+    pos = dataStart + compSize;
+  }
+  return null;
+}
+
+function winOLSOrg(code: number): { bits: number; lsbFirst: boolean; isFloat: boolean } {
+  switch (code) {
+    case 1:
+      return { bits: 8, lsbFirst: true, isFloat: false };
+    case 2:
+      return { bits: 16, lsbFirst: false, isFloat: false };
+    case 3:
+      return { bits: 16, lsbFirst: true, isFloat: false };
+    case 4:
+      return { bits: 32, lsbFirst: false, isFloat: false };
+    case 5:
+      return { bits: 32, lsbFirst: true, isFloat: false };
+    case 6:
+      return { bits: 32, lsbFirst: false, isFloat: true };
+    case 7:
+      return { bits: 32, lsbFirst: true, isFloat: true };
+    default:
+      return { bits: 16, lsbFirst: true, isFloat: false };
+  }
+}
+
+interface ParsedWinOLSAxis {
+  unit: string;
+  factor: number;
+  offset: number;
+  src: number;
+  addr: number;
+  dorg: number;
+}
+
+function parseWinOLSBinaryStream(
+  bytes: Uint8Array,
+  isKPIntern: boolean,
+  outerVersion: number,
+  filename: string,
+): XDFDefinition {
+  const n = bytes.length;
+  const olsVersion = outerVersion > 0 ? outerVersion : !isKPIntern && n >= 20 ? u32LE(bytes, 16) : 0;
+  const isModernKP = isKPIntern && (olsVersion === 0 || olsVersion >= 500);
+  const isLegacyKP = isKPIntern && olsVersion > 0 && olsVersion < 500;
+  const isModernOLS = !isKPIntern && olsVersion >= 500;
+  const usesMLFormat = isModernKP || isModernOLS;
+
+  const cursor = { pos: 0 };
+
+  const readCStr = (): string | null => {
+    if (cursor.pos + 4 > n) return null;
+    const ln = u32LE(bytes, cursor.pos);
+    if (ln >= 0xffffff00) {
+      cursor.pos += 4;
+      return '';
+    }
+    if (ln === 0) {
+      cursor.pos += usesMLFormat && cursor.pos + 4 < n && bytes[cursor.pos + 4] === 0 ? 5 : 4;
+      return '';
+    }
+    if (ln > 4096 || cursor.pos + 4 + ln > n) return null;
+    const s = decodeLatin1(bytes, cursor.pos + 4, cursor.pos + 4 + ln);
+    cursor.pos += 4 + ln;
+    if (cursor.pos < n && bytes[cursor.pos] === 0) cursor.pos += 1;
+    return s;
+  };
+
+  const readRawStr = (): string | null => {
+    if (cursor.pos + 4 > n) return null;
+    const ln = u32LE(bytes, cursor.pos);
+    if (ln >= 0xffffff00 || ln === 0) {
+      cursor.pos += 4;
+      return '';
+    }
+    if (ln > 4096 || cursor.pos + 4 + ln > n) return null;
+    const s = decodeLatin1(bytes, cursor.pos + 4, cursor.pos + 4 + ln);
+    cursor.pos += 4 + ln;
+    return s;
+  };
+
+  const readMLTail = (pad: number): boolean => {
+    if (cursor.pos + pad + 4 > n) return false;
+    cursor.pos += pad;
+    const cnt = u32LE(bytes, cursor.pos);
+    cursor.pos += 4;
+    if (cnt >= 32) return false;
+    for (let k = 0; k < cnt; k++) {
+      if (readRawStr() === null || cursor.pos + 4 > n) return false;
+      cursor.pos += 4; // langID
+    }
+    return true;
+  };
+
+  const findBytes = (pat: number[], start: number, end: number): number => {
+    const lo = Math.max(0, start);
+    const hi = Math.min(n, end);
+    if (hi - lo < pat.length) return -1;
+    const lim = hi - pat.length;
+    for (let i = lo; i <= lim; i++) {
+      let ok = true;
+      for (let j = 0; j < pat.length; j++) {
+        if (bytes[i + j] !== pat[j]) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) return i;
+    }
+    return -1;
+  };
+
+  const skipModernOLSTrailer = (from: number): number => {
+    const term = findBytes([0x01, 0x01, 0x01], from, Math.min(n, from + 2048));
+    if (term === -1) return -1;
+    const saved = cursor.pos;
+    cursor.pos = term + 3 + 69;
+    if (readCStr() === null || readCStr() === null || cursor.pos + 12 > n) {
+      cursor.pos = saved;
+      return -1;
+    }
+    const nextPos = cursor.pos + 12;
+    cursor.pos = saved;
+    return nextPos;
+  };
+
+  const emptyDef = (): XDFDefinition => ({
+    title: `${stripExtension(filename)} (WinOLS)`,
+    description: `Imported from ${filename}`,
+    baseOffset: 0,
+    categories: {},
+    items: [],
+  });
+
+  let maxRecords = 0;
+  if (isKPIntern) {
+    const startOff = isLegacyKP ? 0x0f : 0x1b;
+    if (n <= startOff) return emptyDef();
+    maxRecords = u32LE(bytes, 1);
+    cursor.pos = startOff;
+  } else {
+    const scanLimit = Math.min(n - 32, 65536);
+    const sp = findBytes([0x33, 0x88, 0x11, 0x00], 16, scanLimit);
+    if (sp === -1) return emptyDef();
+    maxRecords = u32LE(bytes, sp + 4);
+    if (isModernOLS) {
+      const hd = findBytes(
+        [0x07, 0x00, 0x00, 0x00, 0x48, 0x65, 0x78, 0x64, 0x75, 0x6d, 0x70, 0x00],
+        sp + 8,
+        Math.min(n, sp + 64),
+      );
+      const nextPos = hd !== -1 ? skipModernOLSTrailer(hd + 64) : -1;
+      if (nextPos !== -1) {
+        cursor.pos = nextPos;
+        maxRecords = Math.max(0, maxRecords - 1);
+      } else {
+        cursor.pos = sp + 18;
+      }
+    } else {
+      cursor.pos = sp + 18;
+      const saved = cursor.pos;
+      const firstTitle = readCStr();
+      if (firstTitle === 'Hexdump') {
+        if (cursor.pos + 24 <= n) {
+          cursor.pos += 24;
+          readCStr();
+          cursor.pos += 117 + 20;
+          readCStr();
+          readCStr();
+          cursor.pos += 16 + 8 + 32;
+          for (let a = 0; a < 2; a++) {
+            readCStr();
+            readCStr();
+            cursor.pos += 16 + 20 + 31;
+          }
+          cursor.pos += 90;
+          if (cursor.pos < n) {
+            maxRecords = Math.max(0, maxRecords - 1);
+          } else {
+            cursor.pos = saved;
+          }
+        } else {
+          cursor.pos = saved;
+        }
+      } else {
+        cursor.pos = saved;
+      }
+    }
+  }
+
+  const categories: Record<number, string> = {};
+  const catMap = new Map<string, number>();
+  const items: XDFItem[] = [];
+
+  const categoryIdFor = (name: string): number => {
+    const existing = catMap.get(name);
+    if (existing !== undefined) return existing;
+    const id = Object.keys(categories).length;
+    categories[id] = name;
+    catMap.set(name, id);
+    return id;
+  };
+
+  const limitRecords = Math.min(maxRecords, 65536);
+  for (let rec = 0; rec < limitRecords; rec++) {
+    if (cursor.pos + 64 >= n) break;
+    const rawName = readCStr();
+    if (rawName === null) break;
+    if (usesMLFormat && !readMLTail(7)) break;
+
+    if (cursor.pos + 24 > n) break;
+    const mtype = u32LE(bytes, cursor.pos);
+    if (mtype < 1 || mtype > 5) break;
+    const dataOrgCode = u32LE(bytes, cursor.pos + 8);
+    cursor.pos += 24;
+
+    const idName = readCStr();
+    if (idName === null) break;
+
+    const preColsSkip = usesMLFormat
+      ? 116
+      : olsVersion > 0 && olsVersion < 298
+        ? 61
+        : olsVersion > 0 && olsVersion < 300
+          ? 69
+          : 117;
+    if (cursor.pos + preColsSkip + 20 > n) break;
+    cursor.pos += preColsSkip;
+
+    const rawCols = Math.max(1, u32LE(bytes, cursor.pos));
+    const rawRows = Math.max(1, u32LE(bytes, cursor.pos + 4));
+    const cols = mtype === 2 ? 1 : rawCols;
+    const rows = mtype === 2 ? 1 : rawRows;
+    cursor.pos += 20;
+
+    const vdesc = usesMLFormat ? readRawStr() : readCStr();
+    const vunit = usesMLFormat ? readRawStr() : readCStr();
+    if (vdesc === null || vunit === null) break;
+
+    if (cursor.pos + 16 + 8 + 32 > n) break;
+    const vFactor = f64LE(bytes, cursor.pos);
+    const vOffset = f64LE(bytes, cursor.pos + 8);
+    cursor.pos += 16;
+    const startAddr = u32LE(bytes, cursor.pos);
+    cursor.pos += 8 + 32;
+
+    const parsedAxes: ParsedWinOLSAxis[] = [];
+    if (isModernOLS) {
+      parsedAxes.push(
+        { unit: '', factor: 1, offset: 0, src: 0, addr: 0, dorg: 0 },
+        { unit: '', factor: 1, offset: 0, src: 0, addr: 0, dorg: 0 },
+      );
+      const nextPos = skipModernOLSTrailer(cursor.pos + 40);
+      if (nextPos === -1) break;
+      cursor.pos = nextPos;
+    } else if (isLegacyKP) {
+      parsedAxes.push(
+        { unit: '', factor: 1, offset: 0, src: 0, addr: 0, dorg: 0 },
+        { unit: '', factor: 1, offset: 0, src: 0, addr: 0, dorg: 0 },
+      );
+      let scan = cursor.pos + 20;
+      const lim = Math.min(n - 16, cursor.pos + 2048);
+      let foundTerm = -1;
+      while (scan < lim) {
+        const t = findBytes([0x01, 0x01, 0x01, 0x00], scan, lim);
+        if (t === -1) break;
+        const tagLen = u32LE(bytes, t + 4);
+        if (tagLen >= 0xffffff00 || tagLen < 256) {
+          foundTerm = t;
+          break;
+        }
+        scan = t + 1;
+      }
+      if (foundTerm === -1) break;
+      cursor.pos = foundTerm + 4;
+      if (readCStr() === null || cursor.pos + 5 > n) break;
+      cursor.pos += 5;
+    } else {
+      let axisOK = true;
+      for (let a = 0; a < 2; a++) {
+        let aUnit: string | null = null;
+        if (isModernKP) {
+          if (readRawStr() === null || !readMLTail(8)) {
+            axisOK = false;
+            break;
+          }
+          aUnit = readRawStr();
+        } else {
+          if (readCStr() === null) {
+            axisOK = false;
+            break;
+          }
+          aUnit = readCStr();
+        }
+        if (aUnit === null) {
+          axisOK = false;
+          break;
+        }
+        const axisTail = isModernKP ? 43 : 31;
+        if (cursor.pos + 16 + 20 + axisTail > n) {
+          axisOK = false;
+          break;
+        }
+        const aFac = f64LE(bytes, cursor.pos);
+        const aOff = f64LE(bytes, cursor.pos + 8);
+        cursor.pos += 16;
+        const aSrc = u32LE(bytes, cursor.pos);
+        const aAddr = u32LE(bytes, cursor.pos + 4);
+        const aDorg = u32LE(bytes, cursor.pos + 8);
+        cursor.pos += 20 + axisTail;
+        parsedAxes.push({
+          unit: aUnit === '-' ? '' : aUnit,
+          factor: aFac,
+          offset: aOff,
+          src: aSrc,
+          addr: aAddr,
+          dorg: aDorg,
+        });
+      }
+      if (!axisOK) break;
+
+      const trailer = isModernKP ? 170 : 90;
+      if (cursor.pos + trailer > n) break;
+      cursor.pos += trailer;
+    }
+
+    if (mtype === 1 || cols > 512 || rows > 512) continue;
+
+    const cleanName = rawName.trim();
+    const cleanID = idName.trim();
+    const title =
+      cleanName ||
+      cleanID ||
+      `Map 0x${startAddr.toString(16).toUpperCase().padStart(5, '0')}`;
+    const cleanUnit = vunit === '-' ? '' : vunit;
+
+    const cats: number[] = [];
+    const dotIdx = cleanID.indexOf('.');
+    if (dotIdx > 0) {
+      let group = cleanID.slice(0, dotIdx);
+      if (group.startsWith('DATA_')) group = group.slice(5);
+      if (group) cats.push(categoryIdFor(group));
+    }
+
+    const org = winOLSOrg(dataOrgCode);
+    const safeFactor = Number.isFinite(vFactor) && vFactor !== 0 ? vFactor : 1;
+    const safeOffset = Number.isFinite(vOffset) ? vOffset : 0;
+    const eq = formatLinearEquation(safeFactor, safeOffset);
+    const scaling = createScaling(eq, cleanUnit, 2, 1);
+    const dl: DataLayout = {
+      address: startAddr,
+      bits: org.bits,
+      signed: false,
+      lsbFirst: org.lsbFirst,
+      columnMajor: false,
+      isFloat: org.isFloat,
+      rows,
+      cols,
+    };
+
+    const buildAxis = (pa: ParsedWinOLSAxis, count: number): Axis => {
+      const af = Number.isFinite(pa.factor) && pa.factor !== 0 ? pa.factor : 1;
+      const ao = Number.isFinite(pa.offset) ? pa.offset : 0;
+      const aEq = formatLinearEquation(af, ao);
+      const aSc = createScaling(aEq, pa.unit, 2, 1);
+      if (pa.src === 1 && pa.addr > 0 && count > 1) {
+        const aOrg = winOLSOrg(pa.dorg);
+        const al: DataLayout = {
+          address: pa.addr,
+          bits: aOrg.bits,
+          signed: false,
+          lsbFirst: aOrg.lsbFirst,
+          columnMajor: false,
+          isFloat: aOrg.isFloat,
+          rows: 1,
+          cols: count,
+        };
+        return { source: { kind: 'data', layout: al }, count, scaling: aSc };
+      }
+      return { source: { kind: 'none' }, count, scaling: aSc };
+    };
+
+    const isScalar = rows <= 1 && cols <= 1;
+    const descParts = [cleanID, vdesc].filter((s) => s.length > 0 && s !== '-');
+    items.push({
+      id: items.length,
+      title,
+      description: descParts.length > 0 ? descParts.join('\n') : 'WinOLS Import',
+      categories: cats,
+      itemKind: isScalar
+        ? { kind: 'constant' }
+        : {
+            kind: 'table',
+            x: buildAxis(parsedAxes[0], cols),
+            y: buildAxis(parsedAxes[1], rows),
+          },
+      data: dl,
+      scaling,
+    });
+  }
+
+  return {
+    title: `${stripExtension(filename)} (WinOLS)`,
+    description: `Imported from ${filename} (${items.length} maps)`,
+    baseOffset: 0,
+    categories,
+    items,
+  };
+}
+
+/**
+ * Parse a binary WinOLS `.ols` project or `.kp` map pack into an `XDFDefinition`.
+ */
+export function parseWinOLSBinary(filename: string, bytes: Uint8Array): XDFDefinition {
+  if (!isWinOLSBinary(bytes)) {
+    throw new Error(`Not a valid WinOLS binary file: ${filename}`);
+  }
+  const outerVersion = bytes.length >= 20 ? u32LE(bytes, 16) : 0;
+
+  // WinOLS .kp map packs embed a ZIP archive containing an "intern" map table
+  const zipStart = findZipHeader(bytes, Math.min(bytes.length, 8192));
+  if (zipStart !== -1) {
+    const intern = extractZipEntry(bytes, zipStart, 'intern');
+    if (intern) {
+      const kpDef = parseWinOLSBinaryStream(intern, true, outerVersion, filename);
+      if (kpDef.items.length > 0) return kpDef;
+    }
+  }
+
+  // Native uncompressed WinOLS .ols project file
+  const olsDef = parseWinOLSBinaryStream(bytes, false, outerVersion, filename);
+  return olsDef;
+}
+
+/**
+ * Import a calibration definition from raw bytes: supports binary WinOLS `.ols` / `.kp`
+ * as well as text-based `.xdf`, `.xml`, `.a2l`, and `.csv`.
+ */
+export function importBinaryDefinition(filename: string, bytes: Uint8Array): XDFDefinition {
+  if (isWinOLSBinary(bytes)) {
+    return parseWinOLSBinary(filename, bytes);
+  }
+
+  // Reject binary garbage that isn't WinOLS when extension is .ols / .kp and header has NUL bytes
+  const ext = getExtension(filename);
+  const probeLen = Math.min(bytes.length, 512);
+  let hasNul = false;
+  for (let i = 0; i < probeLen; i++) {
+    if (bytes[i] === 0) {
+      hasNul = true;
+      break;
+    }
+  }
+  if (hasNul && (ext === 'ols' || ext === 'kp')) {
+    throw new Error(`Unsupported binary WinOLS container in ${filename}`);
+  }
+
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  return importDefinition(filename, text);
 }
 
 // MARK: - Binary Format Codec (Raw BIN, Intel HEX, Motorola S-Record)

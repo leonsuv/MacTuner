@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Layers, RotateCcw, Box } from 'lucide-react';
+import { Box, Layers, Lock, MoveVertical, RotateCcw } from 'lucide-react';
 import { Cell, cellKey } from '@mactuner/core';
 
 export interface Surface3DCanvasProps {
@@ -13,6 +13,8 @@ export interface Surface3DCanvasProps {
   selectedKeys?: Set<string>;
   onHoverCell?: (cell: Cell | null) => void;
   onSelectCell?: (cell: Cell) => void;
+  onEditCell?: (cell: Cell, newValue: number) => void;
+  isLocked?: boolean;
 }
 
 interface Vec3 {
@@ -74,6 +76,16 @@ const DEFAULT_ZOOM = 1.0;
 // Key light direction (normalized) for luminous 3D shading
 const LIGHT_DIR: Vec3 = { x: -0.35, y: 0.85, z: -0.39 };
 
+interface PointDragState {
+  cell: Cell;
+  startY: number;
+  startVal: number;
+  liveVal: number;
+  lockedMin: number;
+  lockedMax: number;
+  lockedSpan: number;
+}
+
 export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   values,
   compareValues = null,
@@ -85,6 +97,8 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   selectedKeys,
   onHoverCell,
   onSelectCell,
+  onEditCell,
+  isLocked = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -93,6 +107,26 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   const [pitch, setPitch] = useState<number>(DEFAULT_PITCH);
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
   const [showCompare, setShowCompare] = useState<boolean>(true);
+  const [editMode, setEditMode] = useState<boolean>(false);
+  const [pointDrag, setPointDrag] = useState<PointDragState | null>(null);
+
+  const canEdit = Boolean(onEditCell && !isLocked);
+
+  useEffect(() => {
+    if (!canEdit) {
+      setEditMode(false);
+      setPointDrag(null);
+    }
+  }, [canEdit]);
+
+  useEffect(() => {
+    if (!pointDrag) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPointDrag(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pointDrag]);
 
   const dragRef = useRef<{
     active: boolean;
@@ -181,6 +215,10 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     [yaw, pitch, zoom],
   );
 
+  const effMinVal = pointDrag ? pointDrag.lockedMin : minVal;
+  const effMaxVal = pointDrag ? pointDrag.lockedMax : maxVal;
+  const effSpanVal = pointDrag ? pointDrag.lockedSpan : spanVal;
+
   // Main render loop
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -224,11 +262,18 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     const yBase = -0.52;
     const yHeight = 0.96;
 
+    const getVal = (r: number, c: number): number | null => {
+      if (pointDrag && pointDrag.cell.r === r && pointDrag.cell.c === c) {
+        return pointDrag.liveVal;
+      }
+      return values[r]?.[c] ?? null;
+    };
+
     const toNormX = (c: number) => (cols > 1 ? (c / (cols - 1)) * 2 - 1 : 0) * xExtent;
     const toNormZ = (r: number) => (rows > 1 ? (r / (rows - 1)) * 2 - 1 : 0) * zExtent;
     const toNormY = (v: number | null) => {
       if (v === null || !Number.isFinite(v)) return yBase;
-      const t = (v - minVal) / spanVal;
+      const t = (v - effMinVal) / effSpanVal;
       return yBase + t * yHeight;
     };
 
@@ -271,7 +316,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     for (let i = 0; i <= 3; i++) {
       const frac = i / 3;
       const pt = projectPoint({ x: -xExtent, y: yBase + frac * yHeight, z: -zExtent }, W, H);
-      const val = minVal + frac * spanVal;
+      const val = effMinVal + frac * effSpanVal;
       ctx.fillText(formatNum(val, decimals), pt.sx - 6, pt.sy);
     }
 
@@ -304,7 +349,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       const wRow: Vec3[] = [];
       const rowArr: ProjectedPoint[] = [];
       for (let c = 0; c < cols; c++) {
-        const wPt: Vec3 = { x: toNormX(c), y: toNormY(values[r][c]), z: toNormZ(r) };
+        const wPt: Vec3 = { x: toNormX(c), y: toNormY(getVal(r, c)), z: toNormZ(r) };
         wRow.push(wPt);
         const pt = projectPoint(wPt, W, H);
         rowArr.push(pt);
@@ -314,6 +359,8 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       proj.push(rowArr);
     }
     projectedGridRef.current = pickList;
+
+    const activeHover = pointDrag ? pointDrag.cell : hoveredCell;
 
     // Build and depth-sort surface quads with directional shading
     if (rows >= 2 && cols >= 2) {
@@ -350,12 +397,12 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
           // Luminous ambient + directional boost (0.76 .. 1.18)
           const shade = 0.76 + ndotl * 0.42;
 
-          const v00 = values[r][c] ?? minVal;
-          const v01 = values[r][c + 1] ?? minVal;
-          const v11 = values[r + 1][c + 1] ?? minVal;
-          const v10 = values[r + 1][c] ?? minVal;
+          const v00 = getVal(r, c) ?? effMinVal;
+          const v01 = getVal(r, c + 1) ?? effMinVal;
+          const v11 = getVal(r + 1, c + 1) ?? effMinVal;
+          const v10 = getVal(r + 1, c) ?? effMinVal;
           const avg = (v00 + v01 + v11 + v10) * 0.25;
-          const t = (avg - minVal) / spanVal;
+          const t = (avg - effMinVal) / effSpanVal;
 
           const isSelected = Boolean(
             selectedKeys &&
@@ -366,11 +413,11 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
           );
 
           const isHovered = Boolean(
-            hoveredCell &&
-              hoveredCell.r >= r &&
-              hoveredCell.r <= r + 1 &&
-              hoveredCell.c >= c &&
-              hoveredCell.c <= c + 1,
+            activeHover &&
+              activeHover.r >= r &&
+              activeHover.r <= r + 1 &&
+              activeHover.c >= c &&
+              activeHover.c <= c + 1,
           );
 
           faces.push({
@@ -428,8 +475,8 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
         const b0 = projectPoint({ x: toNormX(c0), y: yBase, z: toNormZ(r0) }, W, H);
         const b1 = projectPoint({ x: toNormX(c1), y: yBase, z: toNormZ(r1) }, W, H);
 
-        const vAvg = ((values[r0][c0] ?? minVal) + (values[r1][c1] ?? minVal)) * 0.5;
-        const [red, green, blue] = thermalRgb((vAvg - minVal) / spanVal);
+        const vAvg = ((getVal(r0, c0) ?? effMinVal) + (getVal(r1, c1) ?? effMinVal)) * 0.5;
+        const [red, green, blue] = thermalRgb((vAvg - effMinVal) / effSpanVal);
 
         ctx.beginPath();
         ctx.moveTo(b0.sx, b0.sy);
@@ -488,22 +535,44 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       ctx.restore();
     }
 
-    // Glowing beacon at hoveredCell (3-Way Crosshair Sync)
+    // Draggable vertex handles when in Edit Points mode
+    if (canEdit && editMode) {
+      ctx.save();
+      const dense = rows * cols > 320;
+      const handleR = dense ? 2.1 : 2.8;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const pt = proj[r][c];
+          const isDragged = pointDrag?.cell.r === r && pointDrag?.cell.c === c;
+          ctx.beginPath();
+          ctx.arc(pt.sx, pt.sy, isDragged ? 5 : handleR, 0, Math.PI * 2);
+          ctx.fillStyle = isDragged ? '#f59e0b' : 'rgba(255, 255, 255, 0.9)';
+          ctx.fill();
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(12, 13, 16, 0.75)';
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // Glowing beacon at activeHover (3-Way Crosshair Sync or Active Vertex Drag)
     if (
-      hoveredCell &&
-      hoveredCell.r >= 0 &&
-      hoveredCell.r < rows &&
-      hoveredCell.c >= 0 &&
-      hoveredCell.c < cols
+      activeHover &&
+      activeHover.r >= 0 &&
+      activeHover.r < rows &&
+      activeHover.c >= 0 &&
+      activeHover.c < cols
     ) {
-      const hr = hoveredCell.r;
-      const hc = hoveredCell.c;
+      const hr = activeHover.r;
+      const hc = activeHover.c;
       const pt = proj[hr][hc];
       const basePt = projectPoint({ x: toNormX(hc), y: yBase, z: toNormZ(hr) }, W, H);
+      const isDraggingVertex = Boolean(pointDrag);
 
       ctx.save();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.lineWidth = 1.15;
+      ctx.strokeStyle = isDraggingVertex ? 'rgba(245, 158, 11, 0.7)' : 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = isDraggingVertex ? 1.5 : 1.15;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
       ctx.moveTo(basePt.sx, basePt.sy);
@@ -513,21 +582,24 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
 
       ctx.beginPath();
       ctx.arc(basePt.sx, basePt.sy, 2.8, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.fillStyle = isDraggingVertex ? 'rgba(245, 158, 11, 0.65)' : 'rgba(255, 255, 255, 0.4)';
       ctx.fill();
 
-      const halo = ctx.createRadialGradient(pt.sx, pt.sy, 1, pt.sx, pt.sy, 14);
-      halo.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-      halo.addColorStop(0.45, 'rgba(10, 132, 255, 0.45)');
-      halo.addColorStop(1, 'rgba(10, 132, 255, 0)');
+      const halo = ctx.createRadialGradient(pt.sx, pt.sy, 1, pt.sx, pt.sy, isDraggingVertex ? 16 : 14);
+      halo.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+      halo.addColorStop(
+        0.45,
+        isDraggingVertex ? 'rgba(245, 158, 11, 0.55)' : 'rgba(10, 132, 255, 0.45)',
+      );
+      halo.addColorStop(1, isDraggingVertex ? 'rgba(245, 158, 11, 0)' : 'rgba(10, 132, 255, 0)');
       ctx.fillStyle = halo;
       ctx.beginPath();
-      ctx.arc(pt.sx, pt.sy, 14, 0, Math.PI * 2);
+      ctx.arc(pt.sx, pt.sy, isDraggingVertex ? 16 : 14, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(pt.sx, pt.sy, 4.2, 0, Math.PI * 2);
-      ctx.fillStyle = '#0a84ff';
+      ctx.arc(pt.sx, pt.sy, isDraggingVertex ? 5.0 : 4.2, 0, Math.PI * 2);
+      ctx.fillStyle = isDraggingVertex ? '#f59e0b' : '#0a84ff';
       ctx.fill();
       ctx.lineWidth = 1.75;
       ctx.strokeStyle = '#ffffff';
@@ -546,19 +618,22 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     selectedKeys,
     rows,
     cols,
-    minVal,
-    spanVal,
+    effMinVal,
+    effSpanVal,
     projectPoint,
+    canEdit,
+    editMode,
+    pointDrag,
   ]);
 
-  const pickCellAt = useCallback((clientX: number, clientY: number): Cell | null => {
+  const pickCellAt = useCallback((clientX: number, clientY: number, maxRadius = 18): Cell | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     let best: Cell | null = null;
-    let bestDistSq = 18 * 18;
+    let bestDistSq = maxRadius * maxRadius;
     for (const pt of projectedGridRef.current) {
       const dx = pt.sx - x;
       const dy = pt.sy - y;
@@ -572,6 +647,30 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   }, []);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const wantsPointEdit = canEdit && e.button === 0 && (editMode || e.altKey);
+    if (wantsPointEdit) {
+      const picked = pickCellAt(e.clientX, e.clientY, 24);
+      if (picked) {
+        const startVal = values[picked.r]?.[picked.c];
+        if (startVal !== null && startVal !== undefined && Number.isFinite(startVal)) {
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setPointDrag({
+            cell: picked,
+            startY: e.clientY,
+            startVal,
+            liveVal: startVal,
+            lockedMin: minVal,
+            lockedMax: maxVal,
+            lockedSpan: spanVal,
+          });
+          onHoverCell?.(picked);
+          onSelectCell?.(picked);
+          return;
+        }
+      }
+    }
+
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = {
       active: true,
@@ -584,6 +683,17 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pointDrag) {
+      const dy = pointDrag.startY - e.clientY;
+      const fine = e.shiftKey ? 0.2 : 1.0;
+      const sensitivity = (Math.max(pointDrag.lockedSpan, 1) / Math.max(110, size.h * 0.48)) * fine;
+      const nextVal = pointDrag.startVal + dy * sensitivity;
+      if (Number.isFinite(nextVal)) {
+        setPointDrag((prev) => (prev ? { ...prev, liveVal: nextVal } : null));
+      }
+      return;
+    }
+
     const drag = dragRef.current;
     if (drag.active) {
       const dx = e.clientX - drag.startX;
@@ -594,7 +704,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       return;
     }
     if (onHoverCell) {
-      const picked = pickCellAt(e.clientX, e.clientY);
+      const picked = pickCellAt(e.clientX, e.clientY, editMode ? 22 : 18);
       if (picked?.r !== hoveredCell?.r || picked?.c !== hoveredCell?.c) {
         onHoverCell(picked);
       }
@@ -602,6 +712,17 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pointDrag) {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      if (onEditCell && Math.abs(pointDrag.liveVal - pointDrag.startVal) > 1e-9) {
+        onEditCell(pointDrag.cell, pointDrag.liveVal);
+      }
+      setPointDrag(null);
+      return;
+    }
+
     const drag = dragRef.current;
     if (drag.active && !drag.moved && onSelectCell) {
       const picked = pickCellAt(e.clientX, e.clientY);
@@ -616,26 +737,64 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
     setZoom((z) => Math.max(0.5, Math.min(2.4, z * factor)));
   };
 
-  const hoveredVal =
-    hoveredCell && hoveredCell.r < rows && hoveredCell.c < cols
-      ? values[hoveredCell.r]?.[hoveredCell.c] ?? null
+  const displayCell = pointDrag ? pointDrag.cell : hoveredCell;
+  const hoveredVal = pointDrag
+    ? pointDrag.liveVal
+    : displayCell && displayCell.r < rows && displayCell.c < cols
+      ? values[displayCell.r]?.[displayCell.c] ?? null
       : null;
 
   return (
     <div className="flex flex-col h-full min-h-[240px] rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden select-none">
       {/* Clean Airy Header */}
-      <div className="flex items-center justify-between gap-3 px-3.5 py-2 border-b border-white/[0.065]">
-        <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/[0.065]">
+        <div className="flex items-center gap-2 min-w-0">
           <Box className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-          <span className="text-xs font-semibold tracking-[-0.01em] text-zinc-100 shrink-0">
+          <span className="text-xs font-semibold tracking-[-0.01em] text-zinc-100 whitespace-nowrap shrink-0">
             3D Surface
           </span>
-          <span className="text-[10.5px] text-zinc-500 hidden xl:inline truncate">
-            Drag to orbit · Scroll to zoom
-          </span>
+          {pointDrag ? (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[10.5px] font-mono font-semibold tabular-nums text-amber-300 truncate">
+              {yLabels[pointDrag.cell.r] ?? pointDrag.cell.r} × {xLabels[pointDrag.cell.c] ?? pointDrag.cell.c} →{' '}
+              {formatNum(pointDrag.liveVal, decimals)}
+              {units ? ` ${units}` : ''}
+              <span className="text-amber-200/80">
+                ({pointDrag.liveVal >= pointDrag.startVal ? '+' : ''}
+                {formatNum(pointDrag.liveVal - pointDrag.startVal, decimals)})
+              </span>
+            </span>
+          ) : isLocked ? (
+            <span className="inline-flex items-center gap-1 text-[10.5px] text-amber-400/80 shrink-0">
+              <Lock className="w-3 h-3" />
+              Locked
+            </span>
+          ) : (
+            <span className="text-[10.5px] text-zinc-500 hidden 2xl:inline truncate">
+              {editMode && canEdit
+                ? 'Drag vertex · Shift = fine'
+                : canEdit
+                  ? 'Orbit · ⌥+Drag edit'
+                  : 'Drag to orbit'}
+            </span>
+          )}
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setEditMode((v) => !v)}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium whitespace-nowrap transition-all cursor-pointer ${
+                editMode
+                  ? 'bg-[#0a84ff] text-white shadow-[0_1px_6px_rgba(10,132,255,0.4)]'
+                  : 'bg-white/[0.045] text-zinc-300 hover:bg-white/[0.09] hover:text-white'
+              }`}
+              title="Toggle 3D vertex drag editing (or hold Option/Alt + drag)"
+            >
+              <MoveVertical className="w-3 h-3" />
+              Points
+            </button>
+          )}
           {compareValues && (
             <button
               type="button"
@@ -671,23 +830,37 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
       <div ref={containerRef} className="relative flex-1 min-h-0 w-full bg-[#0f1014]">
         <canvas
           ref={canvasRef}
-          className="block w-full h-full cursor-grab active:cursor-grabbing"
+          className={`block w-full h-full ${
+            pointDrag || (editMode && canEdit)
+              ? 'cursor-ns-resize'
+              : 'cursor-grab active:cursor-grabbing'
+          }`}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={() => {
+            dragRef.current.active = false;
+            setPointDrag(null);
+          }}
           onPointerLeave={() => {
             dragRef.current.active = false;
-            onHoverCell?.(null);
+            if (!pointDrag) onHoverCell?.(null);
           }}
           onWheel={handleWheel}
         />
 
         {/* Live Crosshair Readout Pill */}
-        {hoveredCell && hoveredVal !== null && (
+        {displayCell && hoveredVal !== null && (
           <div className="pointer-events-none absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-[#121317]/90 border border-white/[0.08] backdrop-blur-md shadow-lg flex items-center gap-2 text-[11px] font-mono tabular-nums">
-            <span className="w-2 h-2 rounded-full bg-[#0a84ff] shadow-[0_0_8px_rgba(10,132,255,0.8)]" />
+            <span
+              className={`w-2 h-2 rounded-full ${
+                pointDrag
+                  ? 'bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.85)]'
+                  : 'bg-[#0a84ff] shadow-[0_0_8px_rgba(10,132,255,0.8)]'
+              }`}
+            />
             <span className="text-zinc-400">
-              {yLabels[hoveredCell.r] ?? hoveredCell.r} × {xLabels[hoveredCell.c] ?? hoveredCell.c}
+              {yLabels[displayCell.r] ?? displayCell.r} × {xLabels[displayCell.c] ?? displayCell.c}
             </span>
             <span className="text-zinc-100 font-semibold">
               {formatNum(hoveredVal, decimals)}
@@ -698,7 +871,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
 
         {/* Range badge */}
         <div className="pointer-events-none absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md bg-[#121317]/80 border border-white/[0.065] text-[10px] font-mono tabular-nums text-zinc-400">
-          {formatNum(minVal, decimals)} – {formatNum(maxVal, decimals)}
+          {formatNum(effMinVal, decimals)} – {formatNum(effMaxVal, decimals)}
           {units ? ` ${units}` : ''}
         </div>
       </div>

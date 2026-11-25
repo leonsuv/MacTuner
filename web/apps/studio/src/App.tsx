@@ -3,15 +3,20 @@ import {
   Activity,
   ArrowLeftRight,
   CheckCircle2,
+  ChevronDown,
+  Columns3,
   Cpu,
   Download,
+  FileDown,
   FolderOpen,
   HardDrive,
   Layers,
+  PanelRight,
   Redo2,
   Search,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   Undo2,
   Upload,
 } from 'lucide-react';
@@ -21,16 +26,20 @@ import {
   countChangedBytes,
   countChangedCells,
   createMed17DemoBundle,
+  detectChecksumPlugin,
   diffClusters,
+  exportDefinition,
   findTwinMaps,
   fixChecksums,
   identifyECU,
+  importBinaryDefinition,
   importDefinition,
+  isWinOLSBinary,
   layoutByteRange,
   parseBinaryFile,
   scanMaps,
-  serializeXDF,
   verifyChecksums,
+  type DefinitionExportFormat,
   type MapCandidate as CoreMapCandidate,
   type Patch,
   type XDFDefinition,
@@ -41,17 +50,35 @@ import { HexDiffCanvas } from './components/HexDiffCanvas';
 import { MapEditorView } from './components/MapEditorView';
 import { DiscoveryView } from './components/DiscoveryView';
 import { MemoryMapView } from './components/MemoryMapView';
-import { FlashPreflightView, type ChecksumBlock as UiChecksumBlock } from './components/FlashPreflightView';
+import { FlashPreflightView, type ChecksumBlock as UiChecksumBlock, type EditHistoryItem } from './components/FlashPreflightView';
 import { DatalogView } from './components/DatalogView';
+import { MultiCompareView } from './components/MultiCompareView';
+import { RecipesPluginsView } from './components/RecipesPluginsView';
+import { InspectorPanel } from './components/InspectorPanel';
+import { XdfEditorModal } from './components/XdfEditorModal';
+import { PreSaveReviewModal } from './components/PreSaveReviewModal';
 import { CommandPalette } from './components/CommandPalette';
 import { UpdateModal } from './components/UpdateModal';
 import { APP_VERSION, checkForUpdates, type UpdateInfo } from './lib/updater';
 
-type TopSection = 'workspace' | 'discovery' | 'memory' | 'datalog' | 'flash';
+type TopSection = 'workspace' | 'compare' | 'discovery' | 'memory' | 'recipes' | 'datalog' | 'flash';
 
 interface HistoryEntry {
   patches: Patch[];
   label: string;
+  timestamp: number;
+}
+
+const DEF_EXPORT_OPTIONS: Array<{ format: DefinitionExportFormat; ext: string; label: string; desc: string }> = [
+  { format: 'xdf', ext: 'xdf', label: 'TunerPro (.xdf)', desc: 'Full XDF v1.70 XML' },
+  { format: 'a2l', ext: 'a2l', label: 'ASAP2 (.a2l)', desc: 'Standard ECU calibration' },
+  { format: 'csv', ext: 'csv', label: 'WinOLS CSV (.csv)', desc: 'Map list table export' },
+  { format: 'kp', ext: 'kp', label: 'WinOLS Map Pack (.kp)', desc: 'Binary WinOLS map pack' },
+];
+
+function stripExt(name: string): string {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(0, dot) : name;
 }
 
 function toUiCandidate(c: CoreMapCandidate, bin: Uint8Array, cmp: Uint8Array | null): UiMapCandidate {
@@ -137,6 +164,17 @@ export default function App() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
+  // v4.1 Pro Studio states
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [lockedItemIds, setLockedItemIds] = useState<Set<number>>(() => new Set());
+  const [xdfEditorOpen, setXdfEditorOpen] = useState(false);
+  const [xdfEditorItem, setXdfEditorItem] = useState<XDFItem | null>(null);
+  const [exportDefMenuOpen, setExportDefMenuOpen] = useState(false);
+  const [exportReviewOpen, setExportReviewOpen] = useState(false);
+  const [checksumProfileId, setChecksumProfileId] = useState<string>('bosch-me7');
+
+  const exportDefRef = useRef<HTMLDivElement>(null);
+
   const runUpdateCheck = useCallback(async () => {
     setCheckingUpdate(true);
     const info = await checkForUpdates();
@@ -150,6 +188,25 @@ export default function App() {
     }, 1800);
     return () => window.clearTimeout(t);
   }, [runUpdateCheck]);
+
+  // Close Export Def dropdown on outside click or Escape
+  useEffect(() => {
+    if (!exportDefMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (exportDefRef.current && !exportDefRef.current.contains(e.target as Node)) {
+        setExportDefMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExportDefMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [exportDefMenuOpen]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const compareInputRef = useRef<HTMLInputElement>(null);
@@ -191,8 +248,8 @@ export default function App() {
   }, [xdf, bin, compareBin]);
 
   const checksumReport = useMemo(
-    () => verifyChecksums(bin, compareBin ?? undefined, 'bosch-me7'),
-    [bin, compareBin],
+    () => verifyChecksums(bin, compareBin ?? undefined, checksumProfileId),
+    [bin, compareBin, checksumProfileId],
   );
 
   const uiChecksumBlocks = useMemo<UiChecksumBlock[]>(() => {
@@ -202,7 +259,7 @@ export default function App() {
       algorithm: b.algorithm,
       start: b.start,
       end: b.end,
-      storeAddress: Math.max(b.start, b.end - 8),
+      storeAddress: b.storeAddress ?? Math.max(b.start, b.end - 8),
       expectedHex: b.computedHex,
       actualHex: b.storedHex,
       valid: b.valid,
@@ -215,11 +272,87 @@ export default function App() {
     [xdf, selectedItemId],
   );
 
+  const isSelectedLocked = selectedItem ? lockedItemIds.has(selectedItem.id) : false;
+
+  const historyEntries = useMemo<EditHistoryItem[]>(
+    () =>
+      undoStack.map((entry) => ({
+        label: entry.label,
+        bytes: entry.patches.reduce((sum, p) => sum + p.next.length, 0),
+        timestamp: entry.timestamp,
+      })),
+    [undoStack],
+  );
+
+  const handleToggleLockSelected = useCallback(() => {
+    if (!selectedItem) return;
+    setLockedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(selectedItem.id)) {
+        next.delete(selectedItem.id);
+        showToast(`Unlocked: ${selectedItem.title}`);
+      } else {
+        next.add(selectedItem.id);
+        showToast(`Locked: ${selectedItem.title}`);
+      }
+      return next;
+    });
+  }, [selectedItem, showToast]);
+
+  const handleOpenXdfEditor = useCallback((targetItem: XDFItem | null) => {
+    setXdfEditorItem(targetItem);
+    setXdfEditorOpen(true);
+  }, []);
+
+  const handleSaveXdfItem = useCallback(
+    (updatedItem: XDFItem) => {
+      setXdf((prev) => {
+        const base: XDFDefinition = prev ?? {
+          title: 'MacTuner Definition',
+          description: '',
+          baseOffset: 0,
+          categories: {},
+          items: [],
+        };
+        const exists = base.items.some((it) => it.id === updatedItem.id);
+        const nextItems = exists
+          ? base.items.map((it) => (it.id === updatedItem.id ? updatedItem : it))
+          : [updatedItem, ...base.items];
+        return { ...base, items: nextItems };
+      });
+      setSelectedItemId(updatedItem.id);
+      setXdfEditorOpen(false);
+      showToast(`Saved XDF item: ${updatedItem.title}`);
+    },
+    [showToast],
+  );
+
+  const handleDeleteXdfItem = useCallback(
+    (id: number) => {
+      setXdf((prev) => {
+        if (!prev) return prev;
+        const nextItems = prev.items.filter((it) => it.id !== id);
+        if (selectedItemId === id) {
+          setSelectedItemId(nextItems[0]?.id ?? null);
+        }
+        return { ...prev, items: nextItems };
+      });
+      setLockedItemIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      showToast('Deleted item from XDF definition');
+    },
+    [selectedItemId, showToast],
+  );
+
   const handleApplyPatches = useCallback(
     (patches: Patch[], label: string) => {
       if (patches.length === 0) return;
       setBin((prev) => applyPatches(prev, patches));
-      setUndoStack((prev) => [...prev.slice(-49), { patches, label }]);
+      setUndoStack((prev) => [...prev.slice(-49), { patches, label, timestamp: Date.now() }]);
       setRedoStack([]);
       showToast(label);
     },
@@ -259,14 +392,20 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      const isInput = tag === 'INPUT' || tag === 'TEXTAREA';
+
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPaletteOpen((v) => !v);
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
-        const tag = (e.target as HTMLElement | null)?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if ((e.metaKey || e.ctrlKey) && e.altKey && e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        setInspectorCollapsed((v) => !v);
+        return;
+      }
+      if (!isInput && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) handleRedo();
         else handleUndo();
@@ -301,13 +440,13 @@ export default function App() {
   );
 
   const handleFixChecksums = useCallback(() => {
-    const res = fixChecksums(bin, 'bosch-me7');
+    const res = fixChecksums(bin, checksumProfileId);
     if (res.patches.length === 0) {
       showToast('All checksums are already valid');
       return;
     }
     handleApplyPatches(res.patches, `Fixed ${res.fixedCount} checksum block(s)`);
-  }, [bin, handleApplyPatches, showToast]);
+  }, [bin, checksumProfileId, handleApplyPatches, showToast]);
 
   const handleResetMap = useCallback(
     (item: XDFItem) => {
@@ -335,45 +474,101 @@ export default function App() {
     async (files: FileList | File[], asCompare = false) => {
       for (const file of Array.from(files)) {
         const lower = file.name.toLowerCase();
-        if (lower.endsWith('.xdf') || lower.endsWith('.xml') || lower.endsWith('.a2l') || lower.endsWith('.csv')) {
-          const text = await file.text();
-          const parsed = importDefinition(file.name, text);
-          setXdf(parsed);
-          setXdfName(file.name);
-          setSelectedItemId(parsed.items[0]?.id ?? null);
-          showToast(`Loaded definition: ${file.name} (${parsed.items.length} items)`);
-        } else {
-          const rawBuf = new Uint8Array(await file.arrayBuffer());
-          const buf = parseBinaryFile(file.name, rawBuf);
-          if (asCompare) {
-            setCompareBin(buf);
-            setCompareName(file.name);
-            showToast(`Loaded comparison BIN: ${file.name}`);
+        try {
+          if (lower.endsWith('.ols') || lower.endsWith('.kp')) {
+            const rawBuf = new Uint8Array(await file.arrayBuffer());
+            const parsed = importBinaryDefinition(file.name, rawBuf);
+            setXdf(parsed);
+            setXdfName(file.name);
+            setSelectedItemId(parsed.items[0]?.id ?? null);
+            showToast(`Loaded WinOLS definition: ${file.name} (${parsed.items.length} items)`);
+          } else if (
+            lower.endsWith('.xdf') ||
+            lower.endsWith('.xml') ||
+            lower.endsWith('.a2l') ||
+            lower.endsWith('.csv')
+          ) {
+            const text = await file.text();
+            const parsed = importDefinition(file.name, text);
+            setXdf(parsed);
+            setXdfName(file.name);
+            setSelectedItemId(parsed.items[0]?.id ?? null);
+            showToast(`Loaded definition: ${file.name} (${parsed.items.length} items)`);
           } else {
-            setBin(buf);
-            setBinName(file.name);
-            setUndoStack([]);
-            setRedoStack([]);
-            showToast(`Loaded BIN: ${file.name} (${Math.round(buf.length / 1024)} KB)`);
+            const rawBuf = new Uint8Array(await file.arrayBuffer());
+            if (isWinOLSBinary(rawBuf)) {
+              const parsed = importBinaryDefinition(file.name, rawBuf);
+              setXdf(parsed);
+              setXdfName(file.name);
+              setSelectedItemId(parsed.items[0]?.id ?? null);
+              showToast(`Loaded WinOLS definition: ${file.name} (${parsed.items.length} items)`);
+              continue;
+            }
+            const buf = parseBinaryFile(file.name, rawBuf);
+            if (asCompare) {
+              setCompareBin(buf);
+              setCompareName(file.name);
+              showToast(`Loaded comparison BIN: ${file.name}`);
+            } else {
+              setBin(buf);
+              setBinName(file.name);
+              setUndoStack([]);
+              setRedoStack([]);
+              const detected = detectChecksumPlugin(buf);
+              setChecksumProfileId(detected.id);
+              showToast(`Loaded BIN: ${file.name} (${Math.round(buf.length / 1024)} KB)`);
+            }
           }
+        } catch (err) {
+          showToast(err instanceof Error ? `Failed to load ${file.name}: ${err.message}` : `Failed to load ${file.name}`);
         }
       }
     },
     [showToast],
   );
 
-  const handleExportXdf = useCallback(() => {
-    if (!xdf) return;
-    const xml = serializeXDF(xdf);
-    const blob = new Blob([xml], { type: 'application/xml' });
+  const handleExportDefinition = useCallback(
+    (format: DefinitionExportFormat, ext: string) => {
+      setExportDefMenuOpen(false);
+      if (!xdf) {
+        showToast('No XDF definition loaded to export');
+        return;
+      }
+      const data = exportDefinition(xdf, format);
+      const part: BlobPart = typeof data === 'string' ? data : data.slice().buffer;
+      const mime =
+        format === 'kp'
+          ? 'application/octet-stream'
+          : format === 'csv'
+            ? 'text/csv;charset=utf-8'
+            : format === 'a2l'
+              ? 'text/plain;charset=utf-8'
+              : 'application/xml;charset=utf-8';
+      const blob = new Blob([part], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const base = stripExt(xdfName || 'MacTuner');
+      a.href = url;
+      a.download = `${base}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${a.download}`);
+    },
+    [xdf, xdfName, showToast],
+  );
+
+  const handleDownloadBin = useCallback(() => {
+    const outName = binName.toLowerCase().endsWith('.bin') ? binName : `${stripExt(binName)}_tuned.bin`;
+    const blob = new Blob([bin.slice().buffer], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = xdfName || 'MacTuner.xdf';
+    a.download = outName;
     a.click();
     URL.revokeObjectURL(url);
-    showToast(`Exported ${a.download}`);
-  }, [xdf, xdfName, showToast]);
+    setExportReviewOpen(false);
+    showToast(`Exported ${outName} (${Math.round(bin.length / 1024)} KB)`);
+  }, [bin, binName, showToast]);
 
   const handleJumpToHex = useCallback((address: number) => {
     setSection('workspace');
@@ -390,22 +585,26 @@ export default function App() {
       }
       const first = twins[0];
       setJumpAddress(first.address);
-      showToast(`Found ${twins.length} twin map(s) — jumped to 0x${first.address.toString(16).toUpperCase()} (${Math.round(first.similarity * 100)}%)`);
+      showToast(
+        `Found ${twins.length} twin map(s) — jumped to 0x${first.address.toString(16).toUpperCase()} (${Math.round(first.similarity * 100)}%)`,
+      );
     },
     [bin, showToast],
   );
 
   const navItems: Array<{ id: TopSection; label: string; icon: React.ReactNode }> = [
     { id: 'workspace', label: 'Workspace', icon: <Layers className="h-3.5 w-3.5" /> },
-    { id: 'discovery', label: 'Discovery & DTCs', icon: <Search className="h-3.5 w-3.5" /> },
-    { id: 'memory', label: 'Memory Map', icon: <HardDrive className="h-3.5 w-3.5" /> },
+    { id: 'compare', label: 'Compare', icon: <Columns3 className="h-3.5 w-3.5" /> },
+    { id: 'discovery', label: 'Discovery', icon: <Search className="h-3.5 w-3.5" /> },
+    { id: 'memory', label: 'Memory', icon: <HardDrive className="h-3.5 w-3.5" /> },
+    { id: 'recipes', label: 'Recipes', icon: <Sparkles className="h-3.5 w-3.5" /> },
     { id: 'datalog', label: 'Datalog', icon: <Activity className="h-3.5 w-3.5" /> },
     { id: 'flash', label: 'Flash', icon: <ShieldCheck className="h-3.5 w-3.5" /> },
   ];
 
   return (
     <div
-      className="flex h-screen w-screen flex-col overflow-hidden bg-[#0b0e14] text-[#e6eaf2]"
+      className="flex h-screen w-screen flex-col overflow-hidden bg-[#0c0d10] text-[#e6eaf2]"
       onDragOver={(e) => {
         e.preventDefault();
         setIsDraggingFile(true);
@@ -424,7 +623,7 @@ export default function App() {
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".bin,.ori,.mod,.hex,.ihx,.s19,.s28,.s37,.srec,.xdf,.xml,.a2l,.csv"
+        accept=".bin,.ori,.mod,.hex,.ihx,.s19,.s28,.s37,.srec,.mot,.xdf,.xml,.a2l,.csv,.ols,.kp"
         className="hidden"
         onChange={(e) => {
           if (e.target.files) void handleFiles(e.target.files, false);
@@ -434,7 +633,7 @@ export default function App() {
       <input
         ref={compareInputRef}
         type="file"
-        accept=".bin,.ori,.mod,.hex"
+        accept=".bin,.ori,.mod,.hex,.ihx,.s19,.s28,.s37,.srec,.mot"
         className="hidden"
         onChange={(e) => {
           if (e.target.files) void handleFiles(e.target.files, true);
@@ -443,16 +642,18 @@ export default function App() {
       />
 
       {/* Top Native-Style Title & Workbench Bar */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.065] bg-[#131418]/95 px-4 backdrop-blur-xl">
+      <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-white/[0.065] bg-[#131418]/95 px-3.5 backdrop-blur-xl">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-b from-[#2b95ff] to-[#0066dc] shadow-[0_2px_10px_rgba(10,132,255,0.35),inset_0_1px_0_rgba(255,255,255,0.28)]">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-b from-[#2b95ff] to-[#0066dc] shadow-[0_2px_10px_rgba(10,132,255,0.35),inset_0_1px_0_rgba(255,255,255,0.28)]">
             <Cpu className="h-3.5 w-3.5 text-white" />
           </div>
           <div className="min-w-0 leading-tight">
             <div className="flex items-center gap-2">
-              <span className="truncate text-[13px] font-semibold tracking-[-0.01em] text-white">{binName}</span>
+              <span className="truncate text-[13px] font-semibold tracking-[-0.01em] text-white max-w-[160px]">
+                {binName}
+              </span>
               {undoStack.length > 0 && (
-                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9.5px] font-medium text-amber-300">
+                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9.5px] font-medium text-amber-300 shrink-0">
                   edited
                 </span>
               )}
@@ -463,15 +664,16 @@ export default function App() {
           </div>
         </div>
 
-        {/* Center 5-Mode Apple Pro Segmented Navigation */}
-        <nav className="flex items-center gap-0.5 rounded-full border border-white/[0.07] bg-white/[0.035] p-0.5">
+        {/* Center Apple Pro Segmented Navigation */}
+        <nav className="flex items-center gap-0.5 rounded-full border border-white/[0.07] bg-white/[0.035] p-0.5 overflow-x-auto">
           {navItems.map((n) => {
             const active = section === n.id;
             return (
               <button
                 key={n.id}
+                type="button"
                 onClick={() => setSection(n.id)}
-                className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-medium transition-all ${
+                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-all shrink-0 cursor-pointer ${
                   active
                     ? 'bg-[#0a84ff] text-white shadow-[0_1px_8px_rgba(10,132,255,0.4)]'
                     : 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100'
@@ -485,51 +687,115 @@ export default function App() {
         </nav>
 
         {/* Right Quick Actions */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           <button
+            type="button"
             onClick={() => setPaletteOpen(true)}
             title="Command Palette (⌘K)"
-            className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-[11.5px] text-zinc-300 hover:bg-white/[0.09] hover:text-white transition"
+            className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2 py-1.5 text-[11.5px] text-zinc-300 hover:bg-white/[0.09] hover:text-white transition cursor-pointer"
           >
             <Search className="h-3.5 w-3.5 text-zinc-400" />
-            <kbd className="font-mono text-[10px] text-zinc-400">⌘K</kbd>
+            <kbd className="font-mono text-[10px] text-zinc-400 hidden 2xl:inline">⌘K</kbd>
           </button>
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
-            title="Open BIN or XDF"
-            className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-[11.5px] text-zinc-200 hover:bg-white/[0.09] transition"
+            title="Open BIN, XDF, A2L, CSV, WinOLS (.ols / .kp)"
+            className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-[11.5px] text-zinc-200 hover:bg-white/[0.09] transition cursor-pointer"
           >
             <FolderOpen className="h-3.5 w-3.5 text-zinc-400" />
             <span className="hidden xl:inline">Open</span>
           </button>
           <button
+            type="button"
             onClick={handleUndo}
             disabled={undoStack.length === 0}
             title="Undo (⌘Z)"
-            className="rounded-lg bg-white/[0.04] p-1.5 text-zinc-300 hover:bg-white/[0.09] disabled:opacity-25 transition"
+            className="rounded-lg bg-white/[0.04] p-1.5 text-zinc-300 hover:bg-white/[0.09] disabled:opacity-25 transition cursor-pointer disabled:cursor-not-allowed"
           >
             <Undo2 className="h-3.5 w-3.5" />
           </button>
           <button
+            type="button"
             onClick={handleRedo}
             disabled={redoStack.length === 0}
             title="Redo (⇧⌘Z)"
-            className="rounded-lg bg-white/[0.04] p-1.5 text-zinc-300 hover:bg-white/[0.09] disabled:opacity-25 transition"
+            className="rounded-lg bg-white/[0.04] p-1.5 text-zinc-300 hover:bg-white/[0.09] disabled:opacity-25 transition cursor-pointer disabled:cursor-not-allowed"
           >
             <Redo2 className="h-3.5 w-3.5" />
           </button>
+
+          {/* Export Def Dropdown (.xdf, .a2l, .csv, .kp) */}
+          <div ref={exportDefRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setExportDefMenuOpen((v) => !v)}
+              title="Export Definition (.xdf, .a2l, .csv, .kp)"
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium transition cursor-pointer ${
+                exportDefMenuOpen
+                  ? 'bg-white/[0.12] text-white'
+                  : 'bg-white/[0.05] text-zinc-200 hover:bg-white/[0.09]'
+              }`}
+            >
+              <Download className="h-3.5 w-3.5 text-zinc-400" />
+              <span className="hidden xl:inline">Export Def</span>
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </button>
+            {exportDefMenuOpen && (
+              <div className="glass-popover absolute right-0 top-full mt-1.5 z-40 w-52 rounded-xl py-1">
+                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500 border-b border-white/[0.06]">
+                  Export Definition
+                </div>
+                {DEF_EXPORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.format}
+                    type="button"
+                    onClick={() => handleExportDefinition(opt.format, opt.ext)}
+                    className="w-full px-3 py-2 text-left hover:bg-white/[0.08] transition-colors cursor-pointer"
+                  >
+                    <div className="text-xs font-medium text-zinc-100">{opt.label}</div>
+                    <div className="text-[10px] text-zinc-400">{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Export BIN -> PreSaveReviewModal */}
           <button
-            onClick={handleExportXdf}
-            title="Export XDF Definition"
-            className="flex items-center gap-1 rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-[11.5px] text-zinc-200 hover:bg-white/[0.09] transition"
+            type="button"
+            onClick={() => setExportReviewOpen(true)}
+            title="Review changes & export .bin"
+            className="flex items-center gap-1.5 rounded-lg bg-[#0a84ff] px-2.5 py-1.5 text-[11.5px] font-semibold text-white hover:bg-[#1e8fff] shadow-[0_1px_8px_rgba(10,132,255,0.35)] transition cursor-pointer"
           >
-            <Download className="h-3.5 w-3.5 text-zinc-400" />
-            <span className="hidden xl:inline">XDF</span>
+            <FileDown className="h-3.5 w-3.5" />
+            <span className="hidden xl:inline">Export BIN</span>
+          </button>
+
+          {/* Right Inspector Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              if (section !== 'workspace') {
+                setSection('workspace');
+                setInspectorCollapsed(false);
+              } else {
+                setInspectorCollapsed((v) => !v);
+              }
+            }}
+            title="Toggle Right Inspector (⌥⌘I)"
+            className={`rounded-lg p-1.5 transition cursor-pointer ${
+              section === 'workspace' && !inspectorCollapsed
+                ? 'bg-[#0a84ff]/20 text-sky-300 border border-[#0a84ff]/35'
+                : 'bg-white/[0.05] text-zinc-300 hover:bg-white/[0.09] hover:text-white'
+            }`}
+          >
+            <PanelRight className="h-3.5 w-3.5" />
           </button>
         </div>
       </header>
 
-      {/* Main Content Area: Sidebar + Active Document Bar + Viewport */}
+      {/* Main Content Area: Sidebar + Active Document Bar + Viewport (+ Optional Inspector) */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar
           mode={workbenchMode}
@@ -591,107 +857,175 @@ export default function App() {
             <div className="flex items-center gap-1">
               {compareBin && (
                 <button
+                  type="button"
                   onClick={handleSwapBins}
                   title="Swap Active (L) and Comparison (R) BINs"
-                  className="rounded-md p-1 text-zinc-400 hover:bg-white/[0.06] hover:text-white transition"
+                  className="rounded-md p-1 text-zinc-400 hover:bg-white/[0.06] hover:text-white transition cursor-pointer"
                 >
                   <ArrowLeftRight className="h-3.5 w-3.5" />
                 </button>
               )}
               <button
+                type="button"
                 onClick={() => compareInputRef.current?.click()}
-                className="flex items-center gap-1 rounded-md bg-white/[0.05] px-2 py-0.5 text-[11px] font-medium text-zinc-300 hover:bg-white/[0.09] hover:text-white transition"
+                className="flex items-center gap-1 rounded-md bg-white/[0.05] px-2 py-0.5 text-[11px] font-medium text-zinc-300 hover:bg-white/[0.09] hover:text-white transition cursor-pointer"
               >
                 + BIN
               </button>
             </div>
           </div>
 
-          {/* Active Workbench Pane */}
-          <main className="relative min-h-0 flex-1 overflow-hidden">
-            {section === 'workspace' && workbenchMode === 'hex' && (
-              <HexDiffCanvas
-                bin={bin}
-                compareBin={compareBin}
-                binName={binName}
-                compareName={compareName}
-                definition={xdf}
-                candidates={coreCandidates}
-                jumpAddress={jumpAddress}
-                selectedRange={selectedRange}
-                onSelectRange={setSelectedRange}
-                onAddCandidateToXdf={handleAddCoreCandidate}
-                onSelectXdfItem={(id) => {
-                  setSelectedItemId(id);
-                  setWorkbenchMode('map');
-                }}
-                onApplyPatch={handleApplySinglePatch}
-                onFindTwins={handleFindTwins}
-              />
-            )}
+          {/* Active Workbench Pane (+ Collapsible Right Inspector in Workspace) */}
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+              {section === 'workspace' && workbenchMode === 'hex' && (
+                <HexDiffCanvas
+                  bin={bin}
+                  compareBin={compareBin}
+                  binName={binName}
+                  compareName={compareName}
+                  definition={xdf}
+                  candidates={coreCandidates}
+                  jumpAddress={jumpAddress}
+                  selectedRange={selectedRange}
+                  onSelectRange={setSelectedRange}
+                  onAddCandidateToXdf={handleAddCoreCandidate}
+                  onSelectXdfItem={(id) => {
+                    setSelectedItemId(id);
+                    setWorkbenchMode('map');
+                  }}
+                  onApplyPatch={handleApplySinglePatch}
+                  onFindTwins={handleFindTwins}
+                />
+              )}
 
-            {section === 'workspace' && workbenchMode === 'map' && selectedItem && (
-              <MapEditorView
+              {section === 'workspace' && workbenchMode === 'map' && selectedItem && (
+                <MapEditorView
+                  item={selectedItem}
+                  bin={bin}
+                  compareBin={compareBin}
+                  onApplyPatches={handleApplyPatches}
+                  onJumpToHex={handleJumpToHex}
+                  onResetMap={handleResetMap}
+                  categoryName={
+                    selectedItem.categories[0] !== undefined
+                      ? xdf?.categories[selectedItem.categories[0]]
+                      : undefined
+                  }
+                  isLocked={isSelectedLocked}
+                  onToggleLock={handleToggleLockSelected}
+                  onOpenXdfEditor={() => handleOpenXdfEditor(selectedItem)}
+                />
+              )}
+
+              {section === 'compare' && (
+                <MultiCompareView
+                  bin={bin}
+                  binName={binName}
+                  compareBin={compareBin}
+                  compareName={compareName}
+                  xdf={xdf}
+                  onSelectMap={(id) => {
+                    setSelectedItemId(id);
+                    setSection('workspace');
+                    setWorkbenchMode('map');
+                  }}
+                  onJumpToHex={handleJumpToHex}
+                />
+              )}
+
+              {section === 'discovery' && (
+                <DiscoveryView
+                  bytes={bin}
+                  baselineBytes={compareBin}
+                  xdf={xdf}
+                  candidates={uiCandidates}
+                  onShowInHex={handleJumpToHex}
+                  onAddCandidateToXdf={(cand) => handleAddCoreCandidate(fromUiCandidate(cand), true)}
+                />
+              )}
+
+              {section === 'memory' && (
+                <MemoryMapView
+                  bytes={bin}
+                  baselineBytes={compareBin}
+                  xdf={xdf}
+                  diffClusters={clusters}
+                  onJumpToHex={handleJumpToHex}
+                  onSelectMap={(id) => {
+                    setSelectedItemId(id);
+                    setSection('workspace');
+                    setWorkbenchMode('map');
+                  }}
+                />
+              )}
+
+              {section === 'recipes' && (
+                <RecipesPluginsView
+                  bin={bin}
+                  xdf={xdf}
+                  binName={binName}
+                  onApplyPatches={handleApplyPatches}
+                  onSelectMap={(id) => {
+                    setSelectedItemId(id);
+                    setSection('workspace');
+                    setWorkbenchMode('map');
+                  }}
+                  onJumpToHex={handleJumpToHex}
+                />
+              )}
+
+              {section === 'datalog' && (
+                <DatalogView
+                  xdf={xdf}
+                  bin={bin}
+                  onApplyPatches={handleApplyPatches}
+                />
+              )}
+
+              {section === 'flash' && (
+                <FlashPreflightView
+                  bytes={bin}
+                  baselineBytes={compareBin}
+                  fileName={binName}
+                  compareName={compareName}
+                  xdf={xdf}
+                  blocks={uiChecksumBlocks}
+                  cvnHex={checksumReport.cvnHex}
+                  tprotProtectedCount={checksumReport.tprotBlockCount}
+                  onFixChecksums={handleFixChecksums}
+                  onJumpToHex={handleJumpToHex}
+                  onSelectMap={(id) => {
+                    setSelectedItemId(id);
+                    setSection('workspace');
+                    setWorkbenchMode('map');
+                  }}
+                  onReplaceBytes={(nextBytes, label) => {
+                    setBin(nextBytes);
+                    showToast(label);
+                  }}
+                  historyEntries={historyEntries}
+                  onUndo={handleUndo}
+                  selectedProfileId={checksumProfileId}
+                  onSelectProfile={setChecksumProfileId}
+                />
+              )}
+            </main>
+
+            {section === 'workspace' && (
+              <InspectorPanel
                 item={selectedItem}
                 bin={bin}
                 compareBin={compareBin}
-                onApplyPatches={handleApplyPatches}
+                collapsed={inspectorCollapsed}
+                onToggleCollapse={() => setInspectorCollapsed((v) => !v)}
+                isLocked={isSelectedLocked}
+                onToggleLock={handleToggleLockSelected}
                 onJumpToHex={handleJumpToHex}
-                onResetMap={handleResetMap}
+                onOpenXdfEditor={() => handleOpenXdfEditor(selectedItem)}
               />
             )}
-
-            {section === 'discovery' && (
-              <DiscoveryView
-                bytes={bin}
-                baselineBytes={compareBin}
-                xdf={xdf}
-                candidates={uiCandidates}
-                onShowInHex={handleJumpToHex}
-                onAddCandidateToXdf={(cand) => handleAddCoreCandidate(fromUiCandidate(cand), true)}
-              />
-            )}
-
-            {section === 'memory' && (
-              <MemoryMapView
-                bytes={bin}
-                baselineBytes={compareBin}
-                xdf={xdf}
-                diffClusters={clusters}
-                onJumpToHex={handleJumpToHex}
-                onSelectMap={(id) => {
-                  setSelectedItemId(id);
-                  setSection('workspace');
-                  setWorkbenchMode('map');
-                }}
-              />
-            )}
-
-            {section === 'datalog' && <DatalogView />}
-
-            {section === 'flash' && (
-              <FlashPreflightView
-                bytes={bin}
-                baselineBytes={compareBin}
-                fileName={binName}
-                compareName={compareName}
-                xdf={xdf}
-                blocks={uiChecksumBlocks}
-                tprotProtectedCount={checksumReport.tprotBlockCount}
-                onFixChecksums={handleFixChecksums}
-                onJumpToHex={handleJumpToHex}
-                onSelectMap={(id) => {
-                  setSelectedItemId(id);
-                  setSection('workspace');
-                  setWorkbenchMode('map');
-                }}
-                onReplaceBytes={(nextBytes, label) => {
-                  setBin(nextBytes);
-                  showToast(label);
-                }}
-              />
-            )}
-          </main>
+          </div>
         </div>
       </div>
 
@@ -713,8 +1047,9 @@ export default function App() {
 
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={() => setUpdateModalOpen(true)}
-            className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-medium transition ${
+            className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-medium transition cursor-pointer ${
               updateInfo?.available
                 ? 'bg-[#0a84ff]/20 text-sky-300 hover:bg-[#0a84ff]/30'
                 : 'text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200'
@@ -729,8 +1064,9 @@ export default function App() {
             </span>
           )}
           <button
+            type="button"
             onClick={() => setSection('flash')}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition ${
+            className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition cursor-pointer ${
               checksumReport.invalidCount === 0
                 ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
                 : 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25'
@@ -756,8 +1092,8 @@ export default function App() {
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="glass-card flex flex-col items-center gap-3 rounded-2xl px-10 py-8 text-center">
             <Upload className="h-10 w-10 text-sky-400" />
-            <div className="text-base font-semibold text-white">Drop ECU .bin or .xdf file</div>
-            <div className="text-xs text-slate-400">Hold Shift while dropping to load as Comparison BIN</div>
+            <div className="text-base font-semibold text-white">Drop ECU .bin, .xdf, .a2l, .ols or .kp file</div>
+            <div className="text-xs text-slate-400">Hold Shift while dropping a BIN to load as Comparison BIN</div>
           </div>
         </div>
       )}
@@ -783,6 +1119,36 @@ export default function App() {
         onSwitchSection={setSection}
         onFixChecksums={handleFixChecksums}
         onSwapBins={handleSwapBins}
+      />
+
+      <XdfEditorModal
+        open={xdfEditorOpen}
+        item={xdfEditorItem}
+        bin={bin}
+        categories={xdf?.categories ?? {}}
+        onSave={handleSaveXdfItem}
+        onCreateNew={() => setXdfEditorItem(null)}
+        onDelete={handleDeleteXdfItem}
+        onClose={() => setXdfEditorOpen(false)}
+      />
+
+      <PreSaveReviewModal
+        open={exportReviewOpen}
+        onClose={() => setExportReviewOpen(false)}
+        bin={bin}
+        baselineBin={compareBin}
+        fileName={binName}
+        xdf={xdf}
+        checksumBlocks={uiChecksumBlocks}
+        invalidChecksumCount={checksumReport.invalidCount}
+        onFixChecksums={handleFixChecksums}
+        onConfirmExport={handleDownloadBin}
+        onSelectMap={(id) => {
+          setExportReviewOpen(false);
+          setSelectedItemId(id);
+          setSection('workspace');
+          setWorkbenchMode('map');
+        }}
       />
 
       <UpdateModal

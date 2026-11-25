@@ -4,13 +4,16 @@ import {
   Binary,
   ChevronDown,
   FunctionSquare,
+  Lock,
   Minus,
   Plus,
   RotateCcw,
+  Settings2,
   SlidersHorizontal,
   Sparkles,
   Spline,
   Undo2,
+  Unlock,
 } from 'lucide-react';
 import {
   Axis,
@@ -43,6 +46,9 @@ export interface MapEditorViewProps {
   onJumpToHex: (address: number) => void;
   onResetMap: (item: XDFItem) => void;
   categoryName?: string;
+  isLocked?: boolean;
+  onToggleLock?: () => void;
+  onOpenXdfEditor?: () => void;
 }
 
 type ViewMode = 'bin' | 'compare' | 'delta' | 'deltaPct';
@@ -137,6 +143,9 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
   onJumpToHex,
   onResetMap,
   categoryName,
+  isLocked = false,
+  onToggleLock,
+  onOpenXdfEditor,
 }) => {
   const rows = item.data.rows;
   const cols = item.data.cols;
@@ -343,9 +352,15 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
     };
   }, [item, bin, compareBin, rows, cols]);
 
+  // Close open edit popovers if map becomes locked
+  useEffect(() => {
+    if (isLocked) setOpenMenu(null);
+  }, [isLocked]);
+
   // Build patches from a map of cellKey -> engineering value
   const commitEngineeringValues = useCallback(
     (updates: Map<string, number>, label: string) => {
+      if (isLocked) return;
       const patches: Patch[] = [];
       const n = elementBytes(item.data);
 
@@ -371,7 +386,23 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
         onApplyPatches(patches, label);
       }
     },
-    [item, bin, rows, cols, onApplyPatches],
+    [isLocked, item, bin, rows, cols, onApplyPatches],
+  );
+
+  // Interactive 2D/3D single-cell edit handler
+  const handleEditCell = useCallback(
+    (cell: Cell, newValue: number) => {
+      if (isLocked || viewMode === 'compare' || !Number.isFinite(newValue)) return;
+      const key = cellKey(cell);
+      const yLbl = yLabels[cell.r] ?? String(cell.r);
+      const xLbl = xLabels[cell.c] ?? String(cell.c);
+      const formatted = scalingFormat(item.scaling, newValue);
+      commitEngineeringValues(new Map([[key, newValue]]), `Edit [${yLbl} × ${xLbl}] → ${formatted}`);
+      setAnchorCell(cell);
+      setSelectedKeys(new Set([key]));
+      setDirectInput(formatted);
+    },
+    [isLocked, viewMode, yLabels, xLabels, item.scaling, commitEngineeringValues],
   );
 
   // Selection helpers
@@ -558,6 +589,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
 
   // Rescale Axis handler
   const handleApplyRescale = useCallback(() => {
+    if (isLocked) return;
     if (item.itemKind.kind !== 'table') return;
     const axis = rescaleAxisTarget === 'x' ? item.itemKind.x : item.itemKind.y;
     if (axis.source.kind !== 'data') return;
@@ -652,10 +684,11 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
     xValues,
     yValues,
     onApplyPatches,
+    isLocked,
   ]);
 
   const handleRestoreOriginal = useCallback(() => {
-    if (!compareBin || selectedKeys.size === 0) return;
+    if (isLocked || !compareBin || selectedKeys.size === 0) return;
     const patches: Patch[] = [];
     const n = elementBytes(item.data);
 
@@ -672,7 +705,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
     if (patches.length > 0) {
       onApplyPatches(patches, `Restore ${patches.length} original cell(s)`);
     }
-  }, [compareBin, selectedKeys, item.data, bin, onApplyPatches]);
+  }, [isLocked, compareBin, selectedKeys, item.data, bin, onApplyPatches]);
 
   const handleSmooth = useCallback(() => {
     if (selectedKeys.size < 2) return;
@@ -751,7 +784,13 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
         return;
       }
 
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && selectedKeys.size > 0) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l' && onToggleLock) {
+        e.preventDefault();
+        onToggleLock();
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && selectedKeys.size > 0 && !isLocked) {
         e.preventDefault();
         navigator.clipboard
           ?.readText()
@@ -784,7 +823,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedKeys, tableData.rawGrid, item, rows, cols, commitEngineeringValues]);
+  }, [selectedKeys, tableData.rawGrid, item, rows, cols, commitEngineeringValues, isLocked, onToggleLock]);
 
   // Min / Max / Avg stats of current selection (or whole table if no selection)
   const stats = useMemo(() => {
@@ -823,6 +862,8 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
 
   const hasSelection = selectedKeys.size > 0;
   const hasMultiSelection = selectedKeys.size >= 2;
+  const canEditSelection = hasSelection && !isLocked;
+  const canEditMulti = hasMultiSelection && !isLocked;
   const changedCount = tableData.changedSet.size;
   const hexAddr = `0x${item.data.address.toString(16).toUpperCase().padStart(6, '0')}`;
   const badgeLabel =
@@ -851,6 +892,12 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               <h1 className="text-[15px] font-semibold tracking-[-0.015em] text-zinc-100 truncate">
                 {item.title}
               </h1>
+              {isLocked && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                  <Lock className="w-3 h-3" />
+                  Locked
+                </span>
+              )}
               {compareBin && (
                 <span
                   className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-mono tabular-nums ${
@@ -897,6 +944,36 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
 
           {/* Right Action Buttons */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {onToggleLock && (
+              <button
+                type="button"
+                onClick={onToggleLock}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  isLocked
+                    ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/25'
+                    : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200'
+                }`}
+                title={isLocked ? 'Unlock map for editing (⌘L)' : 'Lock map against accidental edits (⌘L)'}
+              >
+                {isLocked ? (
+                  <Lock className="w-3.5 h-3.5 text-amber-300" />
+                ) : (
+                  <Unlock className="w-3.5 h-3.5 text-zinc-400" />
+                )}
+                {isLocked ? 'Locked' : 'Lock'}
+              </button>
+            )}
+            {onOpenXdfEditor && (
+              <button
+                type="button"
+                onClick={onOpenXdfEditor}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 transition-colors cursor-pointer"
+                title="Edit XDF map definition & scaling"
+              >
+                <Settings2 className="w-3.5 h-3.5 text-zinc-400" />
+                Edit XDF
+              </button>
+            )}
             <button
               type="button"
               onClick={() =>
@@ -910,14 +987,16 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => onResetMap(item)}
-              disabled={!compareBin || changedCount === 0}
+              onClick={() => {
+                if (!isLocked) onResetMap(item);
+              }}
+              disabled={isLocked || !compareBin || changedCount === 0}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                compareBin && changedCount > 0
+                !isLocked && compareBin && changedCount > 0
                   ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 cursor-pointer'
                   : 'bg-white/[0.03] text-zinc-600 cursor-not-allowed opacity-50'
               }`}
-              title="Reset entire map to comparison BIN"
+              title={isLocked ? 'Unlock map to reset' : 'Reset entire map to comparison BIN'}
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Reset
@@ -936,20 +1015,21 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
           <input
             ref={directInputRef}
             type="text"
+            disabled={isLocked}
             value={directInput}
             onChange={(e) => setDirectInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSetDirect();
+              if (e.key === 'Enter' && !isLocked) handleSetDirect();
             }}
-            placeholder="Value"
-            className="w-20 px-2 py-1 rounded-md bg-[#17181d] border border-white/[0.065] focus:border-[#0a84ff] focus:outline-none text-xs font-mono tabular-nums text-zinc-100 placeholder:text-zinc-600 transition-colors"
+            placeholder={isLocked ? 'Locked' : 'Value'}
+            className="w-20 px-2 py-1 rounded-md bg-[#17181d] border border-white/[0.065] focus:border-[#0a84ff] focus:outline-none disabled:opacity-45 disabled:cursor-not-allowed text-xs font-mono tabular-nums text-zinc-100 placeholder:text-zinc-600 transition-colors"
           />
           <button
             type="button"
-            disabled={!hasSelection}
+            disabled={!canEditSelection}
             onClick={handleSetDirect}
             className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-              hasSelection
+              canEditSelection
                 ? 'bg-[#0a84ff] hover:bg-[#1e8fff] text-white shadow-[0_1px_6px_rgba(10,132,255,0.35)] cursor-pointer'
                 : toolBtnDisabled
             }`}
@@ -964,10 +1044,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
         <div className="flex items-center rounded-md bg-white/[0.04] p-0.5 gap-0.5">
           <button
             type="button"
-            disabled={!hasSelection}
+            disabled={!canEditSelection}
             onClick={() => handleStep(-1)}
             className={`p-1 rounded transition-colors ${
-              hasSelection ? 'text-zinc-200 hover:bg-white/[0.09] hover:text-white cursor-pointer' : 'text-zinc-600 cursor-not-allowed'
+              canEditSelection ? 'text-zinc-200 hover:bg-white/[0.09] hover:text-white cursor-pointer' : 'text-zinc-600 cursor-not-allowed'
             }`}
             title={`Decrement by ${scalingRawStep(item.scaling)}`}
           >
@@ -975,10 +1055,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
           </button>
           <button
             type="button"
-            disabled={!hasSelection}
+            disabled={!canEditSelection}
             onClick={() => handleStep(1)}
             className={`p-1 rounded transition-colors ${
-              hasSelection ? 'text-zinc-200 hover:bg-white/[0.09] hover:text-white cursor-pointer' : 'text-zinc-600 cursor-not-allowed'
+              canEditSelection ? 'text-zinc-200 hover:bg-white/[0.09] hover:text-white cursor-pointer' : 'text-zinc-600 cursor-not-allowed'
             }`}
             title={`Increment by ${scalingRawStep(item.scaling)}`}
           >
@@ -990,10 +1070,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            disabled={!hasSelection}
+            disabled={!canEditSelection}
             onClick={() => handlePercent(-1)}
             className={`px-2 py-1 rounded-md text-xs font-mono font-medium transition-colors ${
-              hasSelection ? toolBtnActive : toolBtnDisabled
+              canEditSelection ? toolBtnActive : toolBtnDisabled
             }`}
             title="Decrease selected cells by percentage"
           >
@@ -1001,17 +1081,18 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
           </button>
           <input
             type="text"
+            disabled={isLocked}
             value={percentInput}
             onChange={(e) => setPercentInput(e.target.value)}
-            className="w-11 px-1.5 py-1 rounded-md bg-[#17181d] border border-white/[0.065] focus:border-[#0a84ff] focus:outline-none text-xs font-mono tabular-nums text-center text-zinc-100"
+            className="w-11 px-1.5 py-1 rounded-md bg-[#17181d] border border-white/[0.065] focus:border-[#0a84ff] focus:outline-none disabled:opacity-45 disabled:cursor-not-allowed text-xs font-mono tabular-nums text-center text-zinc-100"
             title="Percentage delta"
           />
           <button
             type="button"
-            disabled={!hasSelection}
+            disabled={!canEditSelection}
             onClick={() => handlePercent(1)}
             className={`px-2 py-1 rounded-md text-xs font-mono font-medium transition-colors ${
-              hasSelection ? toolBtnActive : toolBtnDisabled
+              canEditSelection ? toolBtnActive : toolBtnDisabled
             }`}
             title="Increase selected cells by percentage"
           >
@@ -1023,12 +1104,12 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
         <div className="relative">
           <button
             type="button"
-            disabled={!hasSelection}
+            disabled={!canEditSelection}
             onClick={() => setOpenMenu((m) => (m === 'formula' ? null : 'formula'))}
             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
               openMenu === 'formula'
                 ? 'bg-[#0a84ff] text-white cursor-pointer'
-                : hasSelection
+                : canEditSelection
                   ? toolBtnActive
                   : toolBtnDisabled
             }`}
@@ -1107,10 +1188,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
         {/* Original */}
         <button
           type="button"
-          disabled={!hasSelection || !compareBin}
+          disabled={!canEditSelection || !compareBin}
           onClick={handleRestoreOriginal}
           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-            hasSelection && compareBin
+            canEditSelection && compareBin
               ? 'bg-amber-500/12 text-amber-300 hover:bg-amber-500/22 cursor-pointer'
               : toolBtnDisabled
           }`}
@@ -1125,10 +1206,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
         {/* Smooth */}
         <button
           type="button"
-          disabled={!hasMultiSelection}
+          disabled={!canEditMulti}
           onClick={handleSmooth}
           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-            hasMultiSelection ? toolBtnActive : toolBtnDisabled
+            canEditMulti ? toolBtnActive : toolBtnDisabled
           }`}
           title="Smooth selected cells (axis-aware 1D/2D)"
         >
@@ -1140,12 +1221,12 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
         <div className="relative">
           <button
             type="button"
-            disabled={!hasMultiSelection}
+            disabled={!canEditMulti}
             onClick={() => setOpenMenu((m) => (m === 'interpolate' ? null : 'interpolate'))}
             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
               openMenu === 'interpolate'
                 ? 'bg-white/[0.12] text-white cursor-pointer'
-                : hasMultiSelection
+                : canEditMulti
                   ? toolBtnActive
                   : toolBtnDisabled
             }`}
@@ -1180,12 +1261,12 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
         <div className="relative">
           <button
             type="button"
-            disabled={!hasMultiSelection}
+            disabled={!canEditMulti}
             onClick={() => setOpenMenu((m) => (m === 'fill' ? null : 'fill'))}
             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
               openMenu === 'fill'
                 ? 'bg-white/[0.12] text-white cursor-pointer'
-                : hasMultiSelection
+                : canEditMulti
                   ? toolBtnActive
                   : toolBtnDisabled
             }`}
@@ -1221,12 +1302,12 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
         <div className="relative">
           <button
             type="button"
-            disabled={!canRescaleAxis}
+            disabled={!canRescaleAxis || isLocked}
             onClick={handleToggleRescale}
             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
               openMenu === 'rescale'
                 ? 'bg-[#0a84ff] text-white cursor-pointer'
-                : canRescaleAxis
+                : canRescaleAxis && !isLocked
                   ? toolBtnActive
                   : toolBtnDisabled
             }`}
@@ -1586,6 +1667,8 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               setAnchorCell(cell);
               setSelectedKeys(new Set([cellKey(cell)]));
             }}
+            onEditCell={isLocked || viewMode === 'compare' ? undefined : handleEditCell}
+            isLocked={isLocked || viewMode === 'compare'}
           />
           <Curves2DCanvas
             values={viewMode === 'compare' && tableData.cmpValGrid ? tableData.cmpValGrid : tableData.valGrid}
@@ -1598,6 +1681,8 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
             selectedKeys={selectedKeys}
             hoveredCell={hoveredCell}
             onHoverCell={setHoveredCell}
+            onEditCell={isLocked || viewMode === 'compare' ? undefined : handleEditCell}
+            isLocked={isLocked || viewMode === 'compare'}
           />
         </div>
       </div>

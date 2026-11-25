@@ -192,7 +192,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-72 shrink-0 h-full flex flex-col bg-[#121317] border-r border-white/[0.065] select-none">
+    <aside className="w-64 shrink-0 h-full flex flex-col bg-[#121317] border-r border-white/[0.065] select-none">
       {/* Top macOS Segmented Mode Toggle */}
       <div className="p-2.5 border-b border-white/[0.065]">
         <div className="grid grid-cols-2 p-0.5 rounded-lg bg-white/[0.05]">

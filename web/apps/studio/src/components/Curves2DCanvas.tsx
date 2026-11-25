@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Eye, Layers } from 'lucide-react';
+import { Activity, Eye, Layers, Lock } from 'lucide-react';
 import { Cell, parseCellKey } from '@mactuner/core';
 
 export interface Curves2DCanvasProps {
@@ -13,6 +13,8 @@ export interface Curves2DCanvasProps {
   selectedKeys: Set<string>;
   hoveredCell: Cell | null;
   onHoverCell?: (cell: Cell | null) => void;
+  onEditCell?: (cell: Cell, newValue: number) => void;
+  isLocked?: boolean;
 }
 
 type PlotMode = 'curves' | 'slices';
@@ -65,6 +67,15 @@ function traceSmoothPath(ctx: CanvasRenderingContext2D, pts: { x: number; y: num
   }
 }
 
+interface CurveDragState {
+  cell: Cell;
+  startVal: number;
+  liveVal: number;
+  lockedMinY: number;
+  lockedMaxY: number;
+  lockedSpanY: number;
+}
+
 export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
   values,
   compareValues = null,
@@ -75,6 +86,8 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
   selectedKeys,
   hoveredCell,
   onHoverCell,
+  onEditCell,
+  isLocked = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -82,8 +95,33 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
   const [showAll, setShowAll] = useState<boolean>(false);
   const [mode, setMode] = useState<PlotMode>('curves');
   const [showCompare, setShowCompare] = useState<boolean>(true);
+  const [dragState, setDragState] = useState<CurveDragState | null>(null);
+  const [nearDraggable, setNearDraggable] = useState<boolean>(false);
+
+  const canEdit = Boolean(onEditCell && !isLocked);
 
   const plottedPtsRef = useRef<{ r: number; c: number; sx: number; sy: number }[]>([]);
+  const plotBoundsRef = useRef<{ padT: number; plotH: number; minY: number; maxY: number; spanY: number }>({
+    padT: 16,
+    plotH: 198,
+    minY: 0,
+    maxY: 1,
+    spanY: 1,
+  });
+
+  // Cancel active drag on Escape or if editing becomes disabled
+  useEffect(() => {
+    if (!canEdit && dragState) setDragState(null);
+  }, [canEdit, dragState]);
+
+  useEffect(() => {
+    if (!dragState) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDragState(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dragState]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -160,6 +198,10 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
     return { minY: lo, maxY: hi, spanY: hi - lo };
   }, [activeIndices, mode, rows, cols, values, compareValues, showCompare]);
 
+  const effectiveMinY = dragState ? dragState.lockedMinY : minY;
+  const effectiveMaxY = dragState ? dragState.lockedMaxY : maxY;
+  const effectiveSpanY = dragState ? dragState.lockedSpanY : spanY;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -194,9 +236,24 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
     const plotW = Math.max(20, W - padL - padR);
     const plotH = Math.max(20, H - padT - padB);
 
+    plotBoundsRef.current = {
+      padT,
+      plotH,
+      minY: effectiveMinY,
+      maxY: effectiveMaxY,
+      spanY: effectiveSpanY,
+    };
+
+    const getCellVal = (r: number, c: number): number | null | undefined => {
+      if (dragState && dragState.cell.r === r && dragState.cell.c === c) {
+        return dragState.liveVal;
+      }
+      return values[r]?.[c];
+    };
+
     const xFor = (i: number) =>
       axisLen > 1 ? padL + (i / (axisLen - 1)) * plotW : padL + plotW * 0.5;
-    const yFor = (v: number) => padT + (1 - (v - minY) / spanY) * plotH;
+    const yFor = (v: number) => padT + (1 - (v - effectiveMinY) / effectiveSpanY) * plotH;
 
     // Grid lines & Y-axis ticks
     ctx.save();
@@ -207,7 +264,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
     for (let i = 0; i <= yTicks; i++) {
       const frac = i / yTicks;
       const py = padT + frac * plotH;
-      const val = maxY - frac * spanY;
+      const val = effectiveMaxY - frac * effectiveSpanY;
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.045)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -283,18 +340,20 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
       ctx.restore();
     }
 
+    const activeCell = dragState ? dragState.cell : hoveredCell;
+
     // Draw primary smooth series
     activeIndices.forEach((sIdx, seriesPos) => {
       const color = SERIES_COLORS[seriesPos % SERIES_COLORS.length];
       const isHoveredSeries =
-        hoveredCell !== null && (isCurves ? hoveredCell.r === sIdx : hoveredCell.c === sIdx);
+        activeCell !== null && (isCurves ? activeCell.r === sIdx : activeCell.c === sIdx);
 
       const segments: { x: number; y: number }[][] = [];
       let curSeg: { x: number; y: number }[] = [];
       for (let i = 0; i < axisLen; i++) {
         const r = isCurves ? sIdx : i;
         const c = isCurves ? i : sIdx;
-        const v = values[r]?.[c];
+        const v = getCellVal(r, c);
         if (v === null || v === undefined || !Number.isFinite(v)) {
           if (curSeg.length > 0) {
             segments.push(curSeg);
@@ -332,7 +391,7 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
 
       ctx.strokeStyle = color;
       ctx.lineWidth = isHoveredSeries ? 2.5 : activeIndices.length > 10 ? 1.25 : 1.9;
-      ctx.globalAlpha = hoveredCell && !isHoveredSeries && activeIndices.length > 3 ? 0.42 : 0.96;
+      ctx.globalAlpha = activeCell && !isHoveredSeries && activeIndices.length > 3 ? 0.42 : 0.96;
 
       for (const seg of segments) {
         if (seg.length < 2) continue;
@@ -341,14 +400,19 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
         ctx.stroke();
       }
 
-      // Refined data nodes when series count is moderate
-      if (axisLen <= 24 && activeIndices.length <= 8) {
+      // Refined draggable data nodes
+      if ((axisLen <= 24 && activeIndices.length <= 8) || (canEdit && isHoveredSeries)) {
         ctx.fillStyle = color;
         for (const seg of segments) {
           for (const pt of seg) {
             ctx.beginPath();
-            ctx.arc(pt.x, pt.y, isHoveredSeries ? 2.8 : 1.9, 0, Math.PI * 2);
+            ctx.arc(pt.x, pt.y, isHoveredSeries ? 3.1 : 2.0, 0, Math.PI * 2);
             ctx.fill();
+            if (canEdit && isHoveredSeries) {
+              ctx.lineWidth = 1;
+              ctx.strokeStyle = 'rgba(15, 16, 20, 0.75)';
+              ctx.stroke();
+            }
           }
         }
       }
@@ -357,20 +421,21 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
 
     plottedPtsRef.current = pickList;
 
-    // Crosshair synced to hoveredCell
+    // Crosshair synced to activeCell (dragged or hovered)
     if (
-      hoveredCell &&
-      hoveredCell.r >= 0 &&
-      hoveredCell.r < rows &&
-      hoveredCell.c >= 0 &&
-      hoveredCell.c < cols
+      activeCell &&
+      activeCell.r >= 0 &&
+      activeCell.r < rows &&
+      activeCell.c >= 0 &&
+      activeCell.c < cols
     ) {
-      const axisIdx = isCurves ? hoveredCell.c : hoveredCell.r;
-      const val = values[hoveredCell.r]?.[hoveredCell.c];
+      const axisIdx = isCurves ? activeCell.c : activeCell.r;
+      const val = getCellVal(activeCell.r, activeCell.c);
       const px = xFor(axisIdx);
+      const isDraggingCell = Boolean(dragState);
 
       ctx.save();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.strokeStyle = isDraggingCell ? 'rgba(245, 158, 11, 0.45)' : 'rgba(255, 255, 255, 0.25)';
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
@@ -382,20 +447,29 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
       if (val !== null && val !== undefined && Number.isFinite(val)) {
         const py = yFor(val);
 
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+        ctx.strokeStyle = isDraggingCell ? 'rgba(245, 158, 11, 0.35)' : 'rgba(255, 255, 255, 0.14)';
         ctx.beginPath();
         ctx.moveTo(padL, py);
         ctx.lineTo(padL + plotW, py);
         ctx.stroke();
 
+        // If dragging, also show ghost anchor of start value
+        if (dragState) {
+          const startPy = yFor(dragState.startVal);
+          ctx.beginPath();
+          ctx.arc(px, startPy, 3.2, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+          ctx.fill();
+        }
+
         ctx.beginPath();
-        ctx.arc(px, py, 9, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(10, 132, 255, 0.28)';
+        ctx.arc(px, py, isDraggingCell ? 11 : 9, 0, Math.PI * 2);
+        ctx.fillStyle = isDraggingCell ? 'rgba(245, 158, 11, 0.32)' : 'rgba(10, 132, 255, 0.28)';
         ctx.fill();
 
         ctx.beginPath();
-        ctx.arc(px, py, 4.0, 0, Math.PI * 2);
-        ctx.fillStyle = '#0a84ff';
+        ctx.arc(px, py, isDraggingCell ? 4.8 : 4.0, 0, Math.PI * 2);
+        ctx.fillStyle = isDraggingCell ? '#f59e0b' : '#0a84ff';
         ctx.fill();
         ctx.lineWidth = 1.6;
         ctx.strokeStyle = '#ffffff';
@@ -414,47 +488,115 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
     mode,
     activeIndices,
     hoveredCell,
+    dragState,
+    canEdit,
     rows,
     cols,
-    minY,
-    maxY,
-    spanY,
+    effectiveMinY,
+    effectiveMaxY,
+    effectiveSpanY,
   ]);
+
+  const findNearestPoint = useCallback((clientX: number, clientY: number, maxDist: number): Cell | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    let best: Cell | null = null;
+    let bestDistSq = maxDist * maxDist;
+    for (const pt of plottedPtsRef.current) {
+      const dx = pt.sx - x;
+      const dy = pt.sy - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestDistSq) {
+        bestDistSq = d2;
+        best = { r: pt.r, c: pt.c };
+      }
+    }
+    return best;
+  }, []);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!canEdit || e.button !== 0) return;
+      const hit = findNearestPoint(e.clientX, e.clientY, 20);
+      if (!hit) return;
+      const startVal = values[hit.r]?.[hit.c];
+      if (startVal === null || startVal === undefined || !Number.isFinite(startVal)) return;
+
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const b = plotBoundsRef.current;
+      setDragState({
+        cell: hit,
+        startVal,
+        liveVal: startVal,
+        lockedMinY: b.minY,
+        lockedMaxY: b.maxY,
+        lockedSpanY: b.spanY,
+      });
+      onHoverCell?.(hit);
+    },
+    [canEdit, findNearestPoint, values, onHoverCell],
+  );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (!onHoverCell) return;
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
 
-      let best: Cell | null = null;
-      let bestDistSq = 28 * 28;
-      for (const pt of plottedPtsRef.current) {
-        const dx = pt.sx - x;
-        const dy = pt.sy - y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < bestDistSq) {
-          bestDistSq = d2;
-          best = { r: pt.r, c: pt.c };
+      if (dragState) {
+        const rect = canvas.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        const { padT, plotH } = plotBoundsRef.current;
+        const frac = Math.max(-0.2, Math.min(1.2, (y - padT) / Math.max(1, plotH)));
+        const nextVal = dragState.lockedMaxY - frac * dragState.lockedSpanY;
+        if (Number.isFinite(nextVal)) {
+          setDragState((prev) => (prev ? { ...prev, liveVal: nextVal } : null));
         }
+        return;
       }
-      if (best?.r !== hoveredCell?.r || best?.c !== hoveredCell?.c) {
+
+      const best = findNearestPoint(e.clientX, e.clientY, 28);
+      if (canEdit) {
+        const closeHit = findNearestPoint(e.clientX, e.clientY, 18);
+        setNearDraggable(closeHit !== null);
+      } else if (nearDraggable) {
+        setNearDraggable(false);
+      }
+
+      if (onHoverCell && (best?.r !== hoveredCell?.r || best?.c !== hoveredCell?.c)) {
         onHoverCell(best);
       }
     },
-    [onHoverCell, hoveredCell],
+    [dragState, findNearestPoint, canEdit, nearDraggable, onHoverCell, hoveredCell],
   );
 
-  const hoveredVal =
-    hoveredCell && hoveredCell.r < rows && hoveredCell.c < cols
-      ? values[hoveredCell.r]?.[hoveredCell.c] ?? null
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!dragState) return;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      if (onEditCell && Math.abs(dragState.liveVal - dragState.startVal) > 1e-9) {
+        onEditCell(dragState.cell, dragState.liveVal);
+      }
+      setDragState(null);
+    },
+    [dragState, onEditCell],
+  );
+
+  const displayCell = dragState ? dragState.cell : hoveredCell;
+  const hoveredVal = dragState
+    ? dragState.liveVal
+    : displayCell && displayCell.r < rows && displayCell.c < cols
+      ? values[displayCell.r]?.[displayCell.c] ?? null
       : null;
   const hoveredCmp =
-    hoveredCell && compareValues && hoveredCell.r < rows && hoveredCell.c < cols
-      ? compareValues[hoveredCell.r]?.[hoveredCell.c] ?? null
+    displayCell && compareValues && displayCell.r < rows && displayCell.c < cols
+      ? compareValues[displayCell.r]?.[displayCell.c] ?? null
       : null;
 
   const isCurves = mode === 'curves';
@@ -469,6 +611,26 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
           <span className="text-xs font-semibold tracking-[-0.01em] text-zinc-100 shrink-0">
             2D Curves
           </span>
+          {dragState ? (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[10.5px] font-mono font-semibold tabular-nums text-amber-300 truncate">
+              {yLabels[dragState.cell.r] ?? dragState.cell.r} × {xLabels[dragState.cell.c] ?? dragState.cell.c} →{' '}
+              {formatNum(dragState.liveVal, decimals)}
+              {units ? ` ${units}` : ''}
+              <span className="text-amber-200/80">
+                ({dragState.liveVal >= dragState.startVal ? '+' : ''}
+                {formatNum(dragState.liveVal - dragState.startVal, decimals)})
+              </span>
+            </span>
+          ) : isLocked ? (
+            <span className="inline-flex items-center gap-1 text-[10.5px] text-amber-400/80 shrink-0">
+              <Lock className="w-3 h-3" />
+              Locked
+            </span>
+          ) : canEdit ? (
+            <span className="text-[10.5px] text-zinc-500 hidden xl:inline truncate">
+              Drag points vertically to edit
+            </span>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
@@ -533,17 +695,33 @@ export const Curves2DCanvas: React.FC<Curves2DCanvasProps> = ({
       <div ref={containerRef} className="relative flex-1 min-h-0 w-full bg-[#0f1014]">
         <canvas
           ref={canvasRef}
-          className="block w-full h-full cursor-crosshair"
+          className={`block w-full h-full ${
+            dragState || nearDraggable ? 'cursor-ns-resize' : 'cursor-crosshair'
+          }`}
+          onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
-          onPointerLeave={() => onHoverCell?.(null)}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={() => setDragState(null)}
+          onPointerLeave={() => {
+            if (!dragState) {
+              setNearDraggable(false);
+              onHoverCell?.(null);
+            }
+          }}
         />
 
         {/* Floating crosshair readout */}
-        {hoveredCell && hoveredVal !== null && (
+        {displayCell && hoveredVal !== null && (
           <div className="pointer-events-none absolute top-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-[#121317]/90 border border-white/[0.08] backdrop-blur-md shadow-lg flex items-center gap-2 text-[11px] font-mono tabular-nums">
-            <span className="w-2 h-2 rounded-full bg-[#0a84ff] shadow-[0_0_8px_rgba(10,132,255,0.8)]" />
+            <span
+              className={`w-2 h-2 rounded-full ${
+                dragState
+                  ? 'bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.85)]'
+                  : 'bg-[#0a84ff] shadow-[0_0_8px_rgba(10,132,255,0.8)]'
+              }`}
+            />
             <span className="text-zinc-400">
-              {yLabels[hoveredCell.r] ?? hoveredCell.r} × {xLabels[hoveredCell.c] ?? hoveredCell.c}
+              {yLabels[displayCell.r] ?? displayCell.r} × {xLabels[displayCell.c] ?? displayCell.c}
             </span>
             <span className="text-zinc-100 font-semibold">
               {formatNum(hoveredVal, decimals)}
