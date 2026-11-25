@@ -681,6 +681,7 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
   const [matchTargetName, setMatchTargetName] = useState<string>(binName);
   const [matchTargetBytes, setMatchTargetBytes] = useState<Uint8Array | null>(null);
   const [libStatus, setLibStatus] = useState<string | null>(null);
+  const [libStatusTone, setLibStatusTone] = useState<'ok' | 'warn'>('ok');
   const matchBinRef = useRef<HTMLInputElement | null>(null);
 
   const selectedRecipe = useMemo(
@@ -1011,6 +1012,7 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
       saveReferenceLibrary(next);
       return next;
     });
+    setLibStatusTone('ok');
     setLibStatus(`Indexed "${binName}" (${activeIdentity.ecuFamily}, CRC32 0x${fp.crc32Hex}).`);
   }, [bin, binName, activeIdentity, xdf]);
 
@@ -1533,7 +1535,13 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
           </div>
 
           {libStatus && (
-            <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/25 px-4 py-2 text-xs text-emerald-300">
+            <div
+              className={`rounded-xl px-4 py-2 text-xs border ${
+                libStatusTone === 'warn'
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                  : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+              }`}
+            >
               {libStatus}
             </div>
           )}
@@ -1652,6 +1660,13 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => {
+                            if (!entry.xdfXml) {
+                              setLibStatusTone('warn');
+                              setLibStatus(
+                                `Re-index "${entry.name}" with an XDF loaded to restore its definition (no XDF XML was embedded).`,
+                              );
+                              return;
+                            }
                             if (onLoadReferenceXdf) {
                               onLoadReferenceXdf({
                                 id: entry.id,
@@ -1660,11 +1675,8 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
                                 xdfXml: entry.xdfXml,
                               });
                             }
-                            setLibStatus(
-                              entry.xdfXml
-                                ? `Loaded XDF "${entry.xdfTitle}" from reference "${entry.name}".`
-                                : `Reference "${entry.name}" (${entry.xdfTitle}) has no embedded XDF XML — re-index with XDF loaded.`,
-                            );
+                            setLibStatusTone('ok');
+                            setLibStatus(`Loaded XDF "${entry.xdfTitle}" from reference "${entry.name}".`);
                           }}
                           className="px-2.5 py-1.5 rounded-lg bg-[#0a84ff]/15 hover:bg-[#0a84ff]/25 border border-[#0a84ff]/35 text-[11px] font-medium text-[#5ac8fa] transition-colors cursor-pointer"
                         >
@@ -1674,6 +1686,13 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
                           type="button"
                           onClick={() => {
                             const cached = refBinCacheRef.current.get(entry.id);
+                            if (!cached) {
+                              setLibStatusTone('warn');
+                              setLibStatus(
+                                'Re-import this BIN to compare bytes (only metadata is persisted across restarts)',
+                              );
+                              return;
+                            }
                             if (onCompareReferenceBin) {
                               onCompareReferenceBin({
                                 id: entry.id,
@@ -1681,11 +1700,8 @@ export const RecipesPluginsView: React.FC<RecipesPluginsViewProps> = ({
                                 bytes: cached,
                               });
                             }
-                            setLibStatus(
-                              cached
-                                ? `Set "${entry.name}" as comparison BIN.`
-                                : `Indexed fingerprint "${entry.name}" selected for comparison (re-index in this session to attach raw bytes).`,
-                            );
+                            setLibStatusTone('ok');
+                            setLibStatus(`Set "${entry.name}" as comparison BIN.`);
                           }}
                           className="px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] font-medium text-zinc-200 transition-colors cursor-pointer"
                         >

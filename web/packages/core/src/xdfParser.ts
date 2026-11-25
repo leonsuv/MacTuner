@@ -78,28 +78,44 @@ function extractBlocks(xml: string, tag: string): Array<{ attrs: Record<string, 
   return out;
 }
 
+interface XdfDefaults {
+  bits: number;
+  signed: boolean;
+  lsbFirst: boolean;
+  isFloat: boolean;
+}
+
+const DEFAULT_XDF_DEFAULTS: XdfDefaults = {
+  bits: 8,
+  signed: false,
+  lsbFirst: false,
+  isFloat: false,
+};
+
 function parseEmbeddedData(
   xml: string,
   baseOffset: number,
   defaultRows: number,
   defaultCols: number,
+  defaults: XdfDefaults = DEFAULT_XDF_DEFAULTS,
 ): DataLayout | null {
   const m = xml.match(/<EMBEDDEDDATA\b([^>]*)\/?>/i);
   if (!m) return null;
   const a = parseAttrs(m[1]);
   const rawAddr = parseIntAttr(a.mmedaddress, -1);
   if (rawAddr < 0) return null;
-  const flags = parseIntAttr(a.mmedtypeflags, 0);
-  const bits = Math.max(8, parseIntAttr(a.mmedelementsizebits, 8));
+  const hasTypeFlags = a.mmedtypeflags !== undefined;
+  const flags = hasTypeFlags ? parseIntAttr(a.mmedtypeflags, 0) : 0;
+  const bits = Math.max(8, parseIntAttr(a.mmedelementsizebits, defaults.bits));
   const rows = Math.max(1, parseIntAttr(a.mmedrowcount, defaultRows));
   const cols = Math.max(1, parseIntAttr(a.mmedcolcount, defaultCols));
   return {
     address: rawAddr + baseOffset,
     bits,
-    signed: (flags & 0x01) !== 0,
-    lsbFirst: (flags & 0x02) !== 0,
-    columnMajor: (flags & 0x04) !== 0,
-    isFloat: (flags & 0x10000) !== 0,
+    signed: hasTypeFlags ? (flags & 0x01) !== 0 : defaults.signed,
+    lsbFirst: hasTypeFlags ? (flags & 0x02) !== 0 : defaults.lsbFirst,
+    columnMajor: hasTypeFlags ? (flags & 0x04) !== 0 : false,
+    isFloat: hasTypeFlags ? (flags & 0x10000) !== 0 : defaults.isFloat,
     rows,
     cols,
   };
@@ -134,6 +150,24 @@ export function parseXDF(xmlText: string): XDFDefinition {
     const off = parseIntAttr(ba.offset, 0);
     const sub = parseIntAttr(ba.subtract, 0);
     baseOffset = sub ? -off : off;
+  }
+
+  const defaults: XdfDefaults = { ...DEFAULT_XDF_DEFAULTS };
+  const defaultsMatch = header.match(/<DEFAULTS\b([^>]*)\/?>/i);
+  if (defaultsMatch) {
+    const da = parseAttrs(defaultsMatch[1]);
+    if (da.datasizeinbits !== undefined) {
+      defaults.bits = Math.max(8, parseIntAttr(da.datasizeinbits, defaults.bits));
+    }
+    if (da.signed !== undefined) {
+      defaults.signed = parseIntAttr(da.signed, 0) !== 0;
+    }
+    if (da.lsbfirst !== undefined) {
+      defaults.lsbFirst = parseIntAttr(da.lsbfirst, 0) !== 0;
+    }
+    if (da.float !== undefined) {
+      defaults.isFloat = parseIntAttr(da.float, 0) !== 0;
+    }
   }
 
   const categories: Record<number, string> = {};
@@ -177,7 +211,7 @@ export function parseXDF(xmlText: string): XDFDefinition {
       if (!axBlock) return { source: { kind: 'none' }, count: 1, scaling: IDENTITY_SCALING };
       const count = Math.max(1, parseIntAttr(extractTagText(axBlock.body, 'indexcount'), 1));
       const scaling = parseScalingFromBlock(axBlock.body);
-      const embedded = parseEmbeddedData(axBlock.body, baseOffset, 1, count);
+      const embedded = parseEmbeddedData(axBlock.body, baseOffset, 1, count, defaults);
       if (embedded) {
         return { source: { kind: 'data', layout: { ...embedded, rows: 1, cols: count } }, count, scaling };
       }
@@ -200,7 +234,7 @@ export function parseXDF(xmlText: string): XDFDefinition {
     const zBlock = axisById.z;
     if (!zBlock) continue;
 
-    const zLayout = parseEmbeddedData(zBlock.body, baseOffset, yAxis.count, xAxis.count);
+    const zLayout = parseEmbeddedData(zBlock.body, baseOffset, yAxis.count, xAxis.count, defaults);
     if (!zLayout) continue;
 
     items.push({
@@ -216,7 +250,7 @@ export function parseXDF(xmlText: string): XDFDefinition {
 
   // Parse XDFCONSTANT
   for (const con of extractBlocks(xmlText, 'XDFCONSTANT')) {
-    const layout = parseEmbeddedData(con.body, baseOffset, 1, 1);
+    const layout = parseEmbeddedData(con.body, baseOffset, 1, 1, defaults);
     if (!layout) continue;
     items.push({
       id: nextId++,
@@ -231,15 +265,18 @@ export function parseXDF(xmlText: string): XDFDefinition {
 
   // Parse XDFFLAG
   for (const flg of extractBlocks(xmlText, 'XDFFLAG')) {
-    const layout = parseEmbeddedData(flg.body, baseOffset, 1, 1);
+    const layout = parseEmbeddedData(flg.body, baseOffset, 1, 1, defaults);
     if (!layout) continue;
     const mask = parseIntAttr(extractTagText(flg.body, 'mask'), 1);
+    const flagAttr = flg.attrs.flags ?? extractTagText(flg.body, 'flags');
+    const flagBits = parseIntAttr(flagAttr, 0);
+    const invert = Boolean(flagBits & 0x1);
     items.push({
       id: nextId++,
       title: extractTagText(flg.body, 'title') || `Flag ${nextId + 1}`,
       description: extractTagText(flg.body, 'description'),
       categories: parseCategoryRefs(flg.body),
-      itemKind: { kind: 'flag', mask, invert: false },
+      itemKind: { kind: 'flag', mask, invert },
       data: { ...layout, rows: 1, cols: 1 },
       scaling: IDENTITY_SCALING,
     });
@@ -366,7 +403,7 @@ export function serializeXDF(def: XDFDefinition): string {
       lines.push(`    <MATH equation="${escapeXml(item.scaling.equation)}"><VAR id="X" /></MATH>`);
       lines.push('  </XDFCONSTANT>');
     } else if (item.itemKind.kind === 'flag') {
-      lines.push('  <XDFFLAG>');
+      lines.push(item.itemKind.invert ? '  <XDFFLAG flags="0x1">' : '  <XDFFLAG>');
       lines.push(`    <title>${escapeXml(item.title)}</title>`);
       if (item.description) lines.push(`    <description>${escapeXml(item.description)}</description>`);
       lines.push(

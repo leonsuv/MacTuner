@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
@@ -92,6 +92,16 @@ const ALL_FLASH_PRESETS: readonly FlashToolPreset[] = [
   'CMDFlash / WinOLS',
   'MPPS',
 ] as const;
+
+const FLASH_PRESET_SHORT_LABELS: Record<FlashToolPreset, string> = {
+  'KESSv2 / KESS3': 'KESS',
+  Autotuner: 'Autotuner',
+  Flex: 'Flex',
+  'KTAG / Bench (2 MB padded)': 'KTAG 2MB',
+  PCMFlash: 'PCMFlash',
+  'CMDFlash / WinOLS': 'CMDFlash',
+  MPPS: 'MPPS',
+};
 
 type FlashSubTab = 'preflight' | 'diagnostics' | 'snapshots' | 'history' | 'report';
 
@@ -355,8 +365,28 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
   const [targetCvnInput, setTargetCvnInput] = useState<string>(baselineCvnHex);
 
   // ECU Checksum Profile Selector state (11 ECU/TCU families)
-  const [localProfileId, setLocalProfileId] = useState<string>('bosch-med17');
-  const activeProfileId = selectedProfileId ?? localProfileId;
+  const detectedProfileId = useMemo(() => {
+    const id = detectChecksumPlugin(bytes).id;
+    return id === 'simos18' ? 'simos-18' : id;
+  }, [bytes]);
+  const [localProfileId, setLocalProfileId] = useState<string>(detectedProfileId);
+  const prevDetectedProfileRef = useRef<string>(detectedProfileId);
+  useEffect(() => {
+    if (prevDetectedProfileRef.current !== detectedProfileId) {
+      prevDetectedProfileRef.current = detectedProfileId;
+      setLocalProfileId(detectedProfileId);
+    }
+  }, [detectedProfileId]);
+  const normalizedPropProfile =
+    selectedProfileId && selectedProfileId !== 'auto'
+      ? selectedProfileId === 'simos18'
+        ? 'simos-18'
+        : selectedProfileId
+      : undefined;
+  const activeProfileId =
+    normalizedPropProfile && ECU_CHECKSUM_PROFILES.some((p) => p.id === normalizedPropProfile)
+      ? normalizedPropProfile
+      : localProfileId;
   const activeProfile = useMemo(
     () => ECU_CHECKSUM_PROFILES.find((p) => p.id === activeProfileId) ?? ECU_CHECKSUM_PROFILES[0],
     [activeProfileId],
@@ -705,15 +735,9 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
   };
 
   const handleAutoFixFinding = (f: DiagnosticFinding) => {
-    if (onAutoFixDiagnostic) {
-      onAutoFixDiagnostic(f);
-      return;
-    }
-    if (!xdf || f.itemId === undefined || !onReplaceBytes) return;
-    const item = xdf.items.find((it) => it.id === f.itemId);
-    if (!item) return;
+    const item = xdf && f.itemId !== undefined ? xdf.items.find((it) => it.id === f.itemId) : undefined;
 
-    if (f.category === 'Forgotten Twin' && f.address !== undefined) {
+    if (item && onReplaceBytes && f.category === 'Forgotten Twin' && f.address !== undefined) {
       const [srcLo, srcHi] = layoutByteRange(item.data);
       const len = srcHi - srcLo;
       if (len > 0 && f.address + len <= bytes.length) {
@@ -721,11 +745,11 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
         next.set(bytes.slice(srcLo, srcHi), f.address);
         onReplaceBytes(next, `Auto-Fix Forgotten Twin @ ${formatHex(f.address)}`);
         setUtilityNotice(`Synced forgotten twin at ${formatHex(f.address)}.`);
+        return;
       }
-      return;
     }
 
-    if (f.category === 'Outlier Spike' && item.itemKind.kind === 'table') {
+    if (item && onReplaceBytes && f.category === 'Outlier Spike' && item.itemKind.kind === 'table') {
       const l = item.data;
       const next = new Uint8Array(bytes);
       let fixed = 0;
@@ -763,7 +787,12 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
       if (fixed > 0) {
         onReplaceBytes(next, `Auto-Fix ${fixed} Outlier Spike(s) in ${item.title}`);
         setUtilityNotice(`Smoothed ${fixed} outlier spike cell(s) in ${item.title}.`);
+        return;
       }
+    }
+
+    if (onAutoFixDiagnostic) {
+      onAutoFixDiagnostic(f);
     }
   };
 
@@ -1220,12 +1249,12 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                   value={targetCvnInput}
                   onChange={(e) => setTargetCvnInput(e.target.value)}
                   placeholder="Target CVN"
-                  className="w-24 px-1.5 py-0.5 rounded bg-[#0c0d10] border border-white/[0.08] font-mono text-[10.5px] text-zinc-200 focus:outline-none focus:border-[#0a84ff]"
+                  className="min-w-0 flex-1 w-20 px-1.5 py-0.5 rounded bg-[#0c0d10] border border-white/[0.08] font-mono text-[10.5px] text-zinc-200 focus:outline-none focus:border-[#0a84ff]"
                 />
                 <button
                   type="button"
                   onClick={handleFixCvnInPlace}
-                  className="px-2 py-0.5 rounded bg-[#0a84ff]/20 hover:bg-[#0a84ff]/35 border border-[#0a84ff]/40 text-[10px] font-semibold text-[#5ac8fa] cursor-pointer"
+                  className="px-2 py-0.5 rounded bg-[#0a84ff]/20 hover:bg-[#0a84ff]/35 border border-[#0a84ff]/40 text-[10px] font-semibold text-[#5ac8fa] whitespace-nowrap shrink-0 cursor-pointer"
                   title="In-place GF(2) CVN recovery"
                 >
                   Fix CVN In-Place
@@ -1341,9 +1370,9 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                     <tr className="border-b border-white/[0.065] bg-white/[0.02] text-[10.5px] uppercase tracking-wider text-zinc-500">
                       <th className="py-2.5 px-3.5 font-semibold">Block</th>
                       <th className="py-2.5 px-3.5 font-semibold">Algo</th>
-                      <th className="py-2.5 px-3.5 font-semibold">Address Range</th>
-                      <th className="py-2.5 px-3.5 font-semibold">Expected / Actual</th>
-                      <th className="py-2.5 px-3.5 font-semibold text-right">Status</th>
+                      <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">Address Range</th>
+                      <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">Expected / Actual</th>
+                      <th className="py-2.5 px-3.5 font-semibold text-right whitespace-nowrap">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/[0.05] text-xs">
@@ -1353,12 +1382,12 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                         <td className="py-2.5 px-3.5 font-mono text-[11px] text-zinc-400">
                           {blk.algorithm}
                         </td>
-                        <td className="py-2.5 px-3.5 font-mono tabular-nums text-zinc-300">
+                        <td className="py-2.5 px-3.5 font-mono tabular-nums text-zinc-300 whitespace-nowrap">
                           {formatHex(blk.start)}–{formatHex(blk.end)}
                         </td>
-                        <td className="py-2.5 px-3.5 font-mono tabular-nums text-[11px]">
-                          <div className="text-emerald-400">Exp: {blk.expectedHex}</div>
-                          <div className={blk.valid ? 'text-zinc-400' : 'text-rose-400'}>
+                        <td className="py-2.5 px-3.5 font-mono tabular-nums text-[11px] whitespace-nowrap">
+                          <div className="text-emerald-400 whitespace-nowrap">Exp: {blk.expectedHex}</div>
+                          <div className={`whitespace-nowrap ${blk.valid ? 'text-zinc-400' : 'text-rose-400'}`}>
                             Act: {blk.actualHex}
                           </div>
                         </td>
@@ -1551,20 +1580,20 @@ export const FlashPreflightView: React.FC<FlashPreflightViewProps> = ({
                   <label className="block text-[11px] text-zinc-400 mb-1.5">
                     Target Flasher Preset
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  <div className="flex flex-wrap gap-1.5">
                     {ALL_FLASH_PRESETS.map((p) => (
                       <button
                         key={p}
                         type="button"
                         onClick={() => setPreset(p)}
-                        className={`py-1.5 px-2 rounded-lg text-[10.5px] font-medium border transition-all cursor-pointer truncate ${
+                        className={`py-1.5 px-2.5 rounded-lg text-[10.5px] font-medium border transition-all cursor-pointer whitespace-nowrap ${
                           preset === p
                             ? 'bg-[#0a84ff]/20 border-[#0a84ff]/55 text-white'
                             : 'bg-[#0c0d10] border-white/[0.07] text-zinc-400 hover:text-zinc-200'
                         }`}
                         title={p}
                       >
-                        {p}
+                        {FLASH_PRESET_SHORT_LABELS[p]}
                       </button>
                     ))}
                   </div>

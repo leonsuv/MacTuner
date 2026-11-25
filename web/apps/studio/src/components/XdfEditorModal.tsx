@@ -39,7 +39,7 @@ export interface XdfEditorModalProps {
   open: boolean;
   item: XDFItem | null;
   bin: Uint8Array;
-  categories: Record<number, string>;
+  categories?: Record<number, string>;
   onSave: (updatedItem: XDFItem) => void;
   onCreateNew?: (item?: XDFItem) => void;
   onDelete?: (id: number) => void;
@@ -228,12 +228,18 @@ export const XdfEditorModal: React.FC<XdfEditorModalProps> = ({
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  const effectiveCategories = useMemo(() => {
+    if (xdfCategories && Object.keys(xdfCategories).length > 0) return xdfCategories;
+    if (categories && Object.keys(categories).length > 0) return categories;
+    return xdfCategories ?? categories ?? {};
+  }, [xdfCategories, categories]);
+
   const mergedCategories = useMemo(
     () => ({
-      ...(xdfCategories ?? categories),
+      ...effectiveCategories,
       ...extraCategories,
     }),
-    [xdfCategories, categories, extraCategories],
+    [effectiveCategories, extraCategories],
   );
 
   const resetToBlank = () => {

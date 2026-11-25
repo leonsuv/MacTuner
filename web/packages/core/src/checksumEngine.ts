@@ -1876,6 +1876,20 @@ function resolvePluginId(bin: Uint8Array, pluginId?: string): ChecksumPluginId {
   ) {
     return 'bmw-ms4x';
   }
+  const headUpper = head.toUpperCase();
+  if (
+    headUpper.includes('MED17') ||
+    headUpper.includes('EDC17') ||
+    headUpper.includes('ME17.') ||
+    headUpper.includes('TC1766') ||
+    headUpper.includes('TC1767') ||
+    headUpper.includes('TC1796') ||
+    headUpper.includes('TC1797') ||
+    headUpper.includes('TC1782') ||
+    headUpper.includes('TC1793')
+  ) {
+    return 'bosch-med17';
+  }
   if (bin.length === 524_288 || bin.length === 1_048_576) return 'bosch-me7';
   return 'crc32-footer';
 }

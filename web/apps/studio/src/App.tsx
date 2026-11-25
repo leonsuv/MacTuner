@@ -31,14 +31,19 @@ import {
 } from 'lucide-react';
 import {
   BinCodec,
+  alignDefinition,
   applyPatches,
   candidateToXDFItem,
+  cellKey,
   countChangedBytes,
   countChangedCells,
   createMed17DemoBundle,
   detectChecksumPlugin,
   diffClusters,
   exportDefinition,
+  exportIntelHex,
+  exportSRecord,
+  extractEmbeddedWinOLSBin,
   findTwinMaps,
   fixChecksums,
   identifyECU,
@@ -52,8 +57,11 @@ import {
   scalingValue,
   scanMaps,
   serializeProject,
+  smartMergeDefinitions,
+  splitHiLo,
   verifyChecksums,
   type Cell,
+  type DefinitionAlignmentResult,
   type DefinitionExportFormat,
   type DiagnosticFinding,
   type HeatmapPalette,
@@ -92,6 +100,7 @@ import { PreSaveReviewModal } from './components/PreSaveReviewModal';
 import { CommandPalette, type LayoutMode, type PaletteSection } from './components/CommandPalette';
 import { BottomDrawer } from './components/BottomDrawer';
 import { UpdateModal } from './components/UpdateModal';
+import { WebMenuBar } from './components/WebMenuBar';
 import type { DatalogPoint3D } from './components/Surface3DCanvas';
 import type { HexWordFormat } from './components/Waveform2D';
 import { APP_VERSION, checkForUpdates, type UpdateInfo } from './lib/updater';
@@ -170,6 +179,7 @@ function toUiCandidate(c: CoreMapCandidate, bin: Uint8Array, cmp: Uint8Array | n
     cols: c.cols,
     bits: c.bits,
     signed: c.signed,
+    isFloat: c.isFloat,
     lsbFirst: c.lsbFirst,
     confidence: c.confidence,
     patternLabel: c.shortBadge,
@@ -183,6 +193,7 @@ function toUiCandidate(c: CoreMapCandidate, bin: Uint8Array, cmp: Uint8Array | n
 }
 
 function fromUiCandidate(c: UiMapCandidate): CoreMapCandidate {
+  const isFloat = Boolean(c.isFloat || c.bits === 32);
   return {
     id: c.id,
     address: c.address,
@@ -190,7 +201,7 @@ function fromUiCandidate(c: UiMapCandidate): CoreMapCandidate {
     cols: c.cols,
     bits: c.bits,
     signed: c.signed,
-    isFloat: false,
+    isFloat,
     lsbFirst: c.lsbFirst,
     xAxisAddress: c.xAxisAddress,
     yAxisAddress: c.yAxisAddress,
@@ -206,7 +217,7 @@ function fromUiCandidate(c: UiMapCandidate): CoreMapCandidate {
       signed: c.signed,
       lsbFirst: c.lsbFirst,
       columnMajor: false,
-      isFloat: false,
+      isFloat,
       rows: c.rows,
       cols: c.cols,
     },
@@ -288,7 +299,21 @@ export default function App() {
   );
 
   const [jumpAddress, setJumpAddress] = useState<number | null>(0x24024);
+  const [hexCols, setHexCols] = useState<number>(8);
+  const [hexJumpNonce, setHexJumpNonce] = useState<number>(0);
   const [selectedRange, setSelectedRange] = useState<[number, number] | null>(null);
+  const [pendingCompareSlot, setPendingCompareSlot] = useState<{
+    id: string;
+    name: string;
+    bytes: Uint8Array;
+  } | null>(null);
+  const [customUiCandidates, setCustomUiCandidates] = useState<UiMapCandidate[] | null>(null);
+  const [autoAlignBanner, setAutoAlignBanner] = useState<{
+    result: DefinitionAlignmentResult;
+    shiftedCount: number;
+    dominantDelta: number;
+  } | null>(null);
+  const [autoAlignConfidenceByItemId, setAutoAlignConfidenceByItemId] = useState<Record<number, number>>({});
   const [markers, setMarkers] = useState<HexMarker[]>([
     { id: 'm1', address: 0x20044, label: 'Target Boost Pressure (LDRXN)', color: '#2589ff' },
     { id: 'm2', address: 0x24024, label: 'Stage 1 Detected Diff Map', color: '#f59e0b' },
@@ -319,25 +344,7 @@ export default function App() {
   const [locale, setLocale] = useState<LocaleCode>(() => getInitialLocale());
   const [themeId, setThemeId] = useState<AppThemeId>(() => getInitialTheme());
 
-  const [datalogOverlay, setDatalogOverlay] = useState<{
-    enabled: boolean;
-    frameIndex: number;
-    xChannel: string;
-    yChannel: string;
-    xValue?: number;
-    yValue?: number;
-    hits: Record<string, number>;
-    activeCell: Cell | null;
-    points3d: DatalogPoint3D[];
-  }>({
-    enabled: false,
-    frameIndex: 0,
-    xChannel: 'RPM',
-    yChannel: 'Load',
-    hits: {},
-    activeCell: null,
-    points3d: [],
-  });
+  const [rawDatalogOverlay, setRawDatalogOverlay] = useState<DatalogOverlayState | null>(null);
 
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
@@ -354,7 +361,9 @@ export default function App() {
   const [xdfModalDraft, setXdfModalDraft] = useState<Partial<XDFItem> | null>(null);
   const [exportDefMenuOpen, setExportDefMenuOpen] = useState(false);
   const [exportReviewOpen, setExportReviewOpen] = useState(false);
-  const [checksumProfileId, setChecksumProfileId] = useState<string>('bosch-me7');
+  const [checksumProfileId, setChecksumProfileId] = useState<string>(
+    () => detectChecksumPlugin(initialDemo.stage1Bin).id,
+  );
 
   const t = useCallback((key: string) => translate(locale, key), [locale]);
 
@@ -370,6 +379,7 @@ export default function App() {
   const exportDefRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const compareInputRef = useRef<HTMLInputElement>(null);
+  const smartMergeInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -439,9 +449,13 @@ export default function App() {
     );
   }, [bin, coveredRanges, dismissedCandidateKeys, candidateScanNonce]);
 
+  useEffect(() => {
+    setCustomUiCandidates(null);
+  }, [bin, candidateScanNonce]);
+
   const uiCandidates = useMemo(
-    () => coreCandidates.map((c) => toUiCandidate(c, bin, compareBin)),
-    [coreCandidates, bin, compareBin],
+    () => customUiCandidates ?? coreCandidates.map((c) => toUiCandidate(c, bin, compareBin)),
+    [customUiCandidates, coreCandidates, bin, compareBin],
   );
 
   const changedItemIds = useMemo(() => {
@@ -514,6 +528,110 @@ export default function App() {
     () => xdf?.items.find((i) => i.id === selectedItemId) ?? xdf?.items[0] ?? null,
     [xdf, selectedItemId],
   );
+
+  // Project live datalog samples & active frame onto the selected map's X/Y axis breakpoints
+  const datalogOverlay = useMemo<{
+    enabled: boolean;
+    frameIndex: number;
+    xChannel: string;
+    yChannel: string;
+    xValue?: number;
+    yValue?: number;
+    hits: Record<string, number>;
+    activeCell: Cell | null;
+    points3d: DatalogPoint3D[];
+  }>(() => {
+    if (!rawDatalogOverlay || !rawDatalogOverlay.enabled) {
+      return {
+        enabled: false,
+        frameIndex: rawDatalogOverlay?.frameIndex ?? 0,
+        xChannel: rawDatalogOverlay?.xChannel ?? 'RPM',
+        yChannel: rawDatalogOverlay?.yChannel ?? 'Load',
+        xValue: rawDatalogOverlay?.xValue,
+        yValue: rawDatalogOverlay?.yValue,
+        hits: {},
+        activeCell: null,
+        points3d: [],
+      };
+    }
+
+    const hits: Record<string, number> = {};
+    let activeCell: Cell | null = null;
+    const points3d: DatalogPoint3D[] = [];
+
+    if (selectedItem && selectedItem.itemKind.kind === 'table') {
+      const rows = Math.max(1, selectedItem.data.rows);
+      const cols = Math.max(1, selectedItem.data.cols);
+      const xVals = BinCodec.axisValues(selectedItem.itemKind.x, cols, bin);
+      const yVals = BinCodec.axisValues(selectedItem.itemKind.y, rows, bin);
+
+      const nearestIdx = (axis: number[], val: number): number => {
+        if (axis.length <= 1) return 0;
+        let best = 0;
+        let bestDist = Math.abs(axis[0] - val);
+        for (let i = 1; i < axis.length; i++) {
+          const d = Math.abs(axis[i] - val);
+          if (d < bestDist) {
+            bestDist = d;
+            best = i;
+          }
+        }
+        return best;
+      };
+
+      const cellMap = new Map<string, { r: number; c: number; count: number; zSum: number; zCount: number }>();
+      const samples = rawDatalogOverlay.samples ?? [];
+      for (const s of samples) {
+        if (!Number.isFinite(s.x) || !Number.isFinite(s.y)) continue;
+        const c = nearestIdx(xVals, s.x);
+        const r = nearestIdx(yVals, s.y);
+        const k = cellKey({ r, c });
+        hits[k] = (hits[k] ?? 0) + 1;
+        const entry = cellMap.get(k) ?? { r, c, count: 0, zSum: 0, zCount: 0 };
+        entry.count++;
+        if (s.z !== undefined && Number.isFinite(s.z)) {
+          entry.zSum += s.z;
+          entry.zCount++;
+        }
+        cellMap.set(k, entry);
+      }
+
+      if (
+        rawDatalogOverlay.xValue !== undefined &&
+        rawDatalogOverlay.yValue !== undefined &&
+        Number.isFinite(rawDatalogOverlay.xValue) &&
+        Number.isFinite(rawDatalogOverlay.yValue)
+      ) {
+        activeCell = {
+          r: nearestIdx(yVals, rawDatalogOverlay.yValue),
+          c: nearestIdx(xVals, rawDatalogOverlay.xValue),
+        };
+      }
+
+      for (const entry of cellMap.values()) {
+        const rawCell = BinCodec.raw(selectedItem.data, { r: entry.r, c: entry.c }, bin);
+        const mapVal = rawCell !== null ? scalingValue(selectedItem.scaling, rawCell) : 0;
+        points3d.push({
+          r: entry.r,
+          c: entry.c,
+          value: entry.zCount > 0 ? entry.zSum / entry.zCount : mapVal,
+          hits: entry.count,
+        });
+      }
+    }
+
+    return {
+      enabled: rawDatalogOverlay.enabled,
+      frameIndex: rawDatalogOverlay.frameIndex,
+      xChannel: rawDatalogOverlay.xChannel,
+      yChannel: rawDatalogOverlay.yChannel,
+      xValue: rawDatalogOverlay.xValue,
+      yValue: rawDatalogOverlay.yValue,
+      hits,
+      activeCell,
+      points3d,
+    };
+  }, [rawDatalogOverlay, selectedItem, bin]);
 
   const pinnedItem = useMemo(
     () => (pinnedItemId !== null ? xdf?.items.find((i) => i.id === pinnedItemId) ?? null : null),
@@ -671,22 +789,26 @@ export default function App() {
     [selectedItemId, showToast],
   );
 
-  const handleAddCategory = useCallback((name: string) => {
-    let createdId = 0;
-    setXdf((prev) => {
-      const base: XDFDefinition = prev ?? {
-        title: 'MacTuner Definition',
-        description: '',
-        baseOffset: 0,
-        categories: {},
-        items: [],
-      };
-      const existingIds = Object.keys(base.categories).map(Number).filter(Number.isFinite);
-      createdId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
-      return { ...base, categories: { ...base.categories, [createdId]: name } };
-    });
-    return createdId;
-  }, []);
+  const handleAddCategory = useCallback(
+    (name: string) => {
+      const existingIds = Object.keys(xdf?.categories ?? {})
+        .map(Number)
+        .filter(Number.isFinite);
+      const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+      setXdf((prev) => {
+        const base: XDFDefinition = prev ?? {
+          title: 'MacTuner Definition',
+          description: '',
+          baseOffset: 0,
+          categories: {},
+          items: [],
+        };
+        return { ...base, categories: { ...base.categories, [nextId]: name } };
+      });
+      return nextId;
+    },
+    [xdf?.categories],
+  );
 
   const handleApplyPatches = useCallback(
     (patches: Patch[], label: string) => {
@@ -699,19 +821,27 @@ export default function App() {
     [updateActiveBinBytes, showToast],
   );
 
-  // Mirror edits to pinned map when mirrorPinnedEdits is enabled and layouts match
+  // Mirror edits symmetrically between active & pinned maps when mirrorPinnedEdits is enabled and layouts match
   const handleApplyPatchesWithMirror = useCallback(
     (patches: Patch[], label: string, sourceItem?: XDFItem) => {
+      const targetItem =
+        sourceItem && pinnedItem && selectedItem
+          ? sourceItem.id === pinnedItem.id
+            ? selectedItem
+            : sourceItem.id === selectedItem.id
+              ? pinnedItem
+              : null
+          : null;
       if (
         mirrorPinnedEdits &&
         sourceItem &&
-        pinnedItem &&
-        pinnedItem.id !== sourceItem.id &&
-        sourceItem.data.rows === pinnedItem.data.rows &&
-        sourceItem.data.cols === pinnedItem.data.cols &&
-        sourceItem.data.bits === pinnedItem.data.bits
+        targetItem &&
+        targetItem.id !== sourceItem.id &&
+        sourceItem.data.rows === targetItem.data.rows &&
+        sourceItem.data.cols === targetItem.data.cols &&
+        sourceItem.data.bits === targetItem.data.bits
       ) {
-        const deltaAddr = pinnedItem.data.address - sourceItem.data.address;
+        const deltaAddr = targetItem.data.address - sourceItem.data.address;
         const [srcStart, srcEnd] = layoutByteRange(sourceItem.data);
         const mirrored: Patch[] = [];
         for (const p of patches) {
@@ -726,12 +856,12 @@ export default function App() {
             }
           }
         }
-        handleApplyPatches([...patches, ...mirrored], `${label} (+ mirrored to ${pinnedItem.title})`);
+        handleApplyPatches([...patches, ...mirrored], `${label} (+ mirrored to ${targetItem.title})`);
         return;
       }
       handleApplyPatches(patches, label);
     },
-    [mirrorPinnedEdits, pinnedItem, bin, handleApplyPatches],
+    [mirrorPinnedEdits, pinnedItem, selectedItem, bin, handleApplyPatches],
   );
 
   const replaceBytesWithHistory = useCallback(
@@ -928,12 +1058,28 @@ export default function App() {
           if (lower.endsWith('.mtproj')) {
             const text = await file.text();
             const proj = parseProject(text);
-            const mainId = `bin-${Date.now()}`;
-            const nextDocs: OpenBinDocument[] = [{ id: mainId, name: proj.binName, bytes: proj.bin }];
+            let nextDocs: OpenBinDocument[] = [];
+            let mainId = `bin-${Date.now()}`;
             let cmpId: string | null = null;
-            if (proj.compareBin) {
-              cmpId = `bin-cmp-${Date.now()}`;
-              nextDocs.push({ id: cmpId, name: proj.compareName ?? 'Comparison.bin', bytes: proj.compareBin });
+            if (proj.openBins && proj.openBins.length > 0) {
+              nextDocs = proj.openBins.map((b) => ({ id: b.id, name: b.name, bytes: b.bytes }));
+              const activeDoc = proj.openBins.find((b) => b.isActive) ?? proj.openBins[0];
+              mainId = activeDoc.id;
+              if (proj.compareBin) {
+                const matchCmp = nextDocs.find((d) => d.id !== mainId && d.name === proj.compareName);
+                if (matchCmp) {
+                  cmpId = matchCmp.id;
+                } else {
+                  cmpId = `bin-cmp-${Date.now()}`;
+                  nextDocs.push({ id: cmpId, name: proj.compareName ?? 'Comparison.bin', bytes: proj.compareBin });
+                }
+              }
+            } else {
+              nextDocs = [{ id: mainId, name: proj.binName, bytes: proj.bin }];
+              if (proj.compareBin) {
+                cmpId = `bin-cmp-${Date.now()}`;
+                nextDocs.push({ id: cmpId, name: proj.compareName ?? 'Comparison.bin', bytes: proj.compareBin });
+              }
             }
             setOpenBins(nextDocs);
             setActiveBinId(mainId);
@@ -943,9 +1089,39 @@ export default function App() {
             if (proj.xdfName) setXdfName(proj.xdfName);
             if (proj.markers) setMarkers(proj.markers);
             if (proj.lockedItemIds) setLockedItemIds(new Set(proj.lockedItemIds));
-            if (proj.selectedProfileId) setChecksumProfileId(proj.selectedProfileId);
+            if (proj.selectedProfileId) {
+              setChecksumProfileId(proj.selectedProfileId);
+            } else {
+              setChecksumProfileId(detectChecksumPlugin(proj.bin).id);
+            }
+            if (proj.snapshots) {
+              setSnapshots(proj.snapshots);
+            }
+            if (proj.favorites) {
+              setFavorites(new Set(proj.favorites.map(String)));
+            }
+            if (proj.safeRanges) {
+              const restoredRanges: Record<string, { min?: number; max?: number }> = {};
+              for (const [k, v] of Object.entries(proj.safeRanges)) {
+                restoredRanges[String(k)] = v;
+              }
+              setSafeRanges(restoredRanges);
+            }
+            if (proj.dismissedCandidateKeys) {
+              setDismissedCandidateKeys(new Set(proj.dismissedCandidateKeys));
+            }
+            if (proj.historyEntries && proj.historyEntries.length > 0) {
+              setUndoStack(
+                proj.historyEntries.map((h) => ({
+                  patches: [],
+                  label: h.label,
+                  timestamp: h.timestamp,
+                })),
+              );
+            } else {
+              setUndoStack([]);
+            }
             setSelectedItemId(proj.xdf?.items[0]?.id ?? null);
-            setUndoStack([]);
             setRedoStack([]);
             showToast(`Opened project: ${file.name}`);
           } else if (lower.endsWith('.ols') || lower.endsWith('.kp')) {
@@ -954,7 +1130,26 @@ export default function App() {
             setXdf(parsed);
             setXdfName(file.name);
             setSelectedItemId(parsed.items[0]?.id ?? null);
-            showToast(`Loaded WinOLS definition: ${file.name} (${parsed.items.length} items)`);
+            let extractedMsg = '';
+            if (lower.endsWith('.ols')) {
+              const candidateSizes = [bin.length, 0x200000, 0x100000, 0x80000, 0x400000, 0x40000, 0x20000];
+              for (const sz of candidateSizes) {
+                const embedded = extractEmbeddedWinOLSBin(rawBuf, parsed, sz);
+                if (embedded) {
+                  const embId = `bin-ols-${Date.now()}`;
+                  const embName = `${stripExt(file.name)}.bin`;
+                  setOpenBins((prev) => [...prev, { id: embId, name: embName, bytes: embedded }]);
+                  setActiveBinId(embId);
+                  setOpenedSnapshot(embedded.slice());
+                  setUndoStack([]);
+                  setRedoStack([]);
+                  setChecksumProfileId(detectChecksumPlugin(embedded).id);
+                  extractedMsg = ` + extracted ${Math.round(embedded.length / 1024)} KB BIN`;
+                  break;
+                }
+              }
+            }
+            showToast(`Loaded WinOLS definition: ${file.name} (${parsed.items.length} items${extractedMsg})`);
           } else if (
             lower.endsWith('.xdf') ||
             lower.endsWith('.xml') ||
@@ -998,8 +1193,98 @@ export default function App() {
         }
       }
     },
-    [showToast],
+    [bin.length, showToast],
   );
+
+  const handleSmartMergeFiles = useCallback(
+    async (files: FileList | File[]) => {
+      const file = Array.from(files)[0];
+      if (!file) return;
+      try {
+        const lower = file.name.toLowerCase();
+        const incoming =
+          lower.endsWith('.ols') || lower.endsWith('.kp')
+            ? importBinaryDefinition(file.name, new Uint8Array(await file.arrayBuffer()))
+            : importDefinition(file.name, await file.text());
+        if (!xdf) {
+          setXdf(incoming);
+          setXdfName(file.name);
+          setSelectedItemId(incoming.items[0]?.id ?? null);
+          showToast(`Loaded definition: ${file.name} (${incoming.items.length} items)`);
+          return;
+        }
+        const merged = smartMergeDefinitions(xdf, incoming);
+        setXdf(merged.document);
+        showToast(
+          `Smart-merged ${file.name}: ${merged.updatedCount} updated, ${merged.addedCount} added, ${merged.preservedCount} preserved`,
+        );
+      } catch (err) {
+        showToast(err instanceof Error ? `Smart-Merge failed: ${err.message}` : 'Smart-Merge failed');
+      }
+    },
+    [xdf, showToast],
+  );
+
+  const handleRunAutoAlign = useCallback(() => {
+    if (!xdf) {
+      showToast('Load a definition (XDF/A2L/OLS) before running Auto-Align');
+      return;
+    }
+    const sourceBin = compareBin ?? openedSnapshot;
+    const res = alignDefinition(xdf, sourceBin, bin);
+    const confByItem: Record<number, number> = {};
+    const deltaCounts = new Map<number, number>();
+    let shiftedCount = 0;
+    for (const [idStr, info] of Object.entries(res.infoByItemId)) {
+      const id = Number(idStr);
+      confByItem[id] = info.percent / 100;
+      if (info.delta !== 0 && info.percent > 0) {
+        shiftedCount++;
+        deltaCounts.set(info.delta, (deltaCounts.get(info.delta) ?? 0) + 1);
+      }
+    }
+    setAutoAlignConfidenceByItemId(confByItem);
+    let dominantDelta = 0;
+    let bestCount = 0;
+    for (const [d, cnt] of deltaCounts.entries()) {
+      if (cnt > bestCount) {
+        bestCount = cnt;
+        dominantDelta = d;
+      }
+    }
+    if (shiftedCount > 0) {
+      setAutoAlignBanner({ result: res, shiftedCount, dominantDelta });
+      showToast(
+        `Auto-Align found ${shiftedCount} shifted map(s) (${res.summary.highCount} high confidence)`,
+      );
+    } else {
+      setAutoAlignBanner(null);
+      showToast(
+        `Auto-Align complete: definition already aligned (${res.summary.highCount}/${res.summary.total} high confidence)`,
+      );
+    }
+  }, [xdf, compareBin, openedSnapshot, bin, showToast]);
+
+  const handleLoadDemoWorkspace = useCallback(() => {
+    const demo = createMed17DemoBundle();
+    setOpenBins([
+      { id: 'bin-stage1', name: demo.stage1Name, bytes: demo.stage1Bin },
+      { id: 'bin-stock', name: demo.stockName, bytes: demo.stockBin },
+    ]);
+    setActiveBinId('bin-stage1');
+    setCompareBinId('bin-stock');
+    setOpenedSnapshot(demo.stage1Bin.slice());
+    setXdf(demo.xdf);
+    setXdfName(demo.xdfName);
+    setSelectedItemId(demo.xdf.items[0]?.id ?? null);
+    setIdeTabs(demo.xdf.items.slice(0, 3).map((it) => it.id));
+    setChecksumProfileId(detectChecksumPlugin(demo.stage1Bin).id);
+    setUndoStack([]);
+    setRedoStack([]);
+    setAutoAlignBanner(null);
+    setAutoAlignConfidenceByItemId({});
+    showToast('Loaded MED17.5 Demo Workspace');
+  }, [showToast]);
 
   const handleExportDefinition = useCallback(
     (format: DefinitionExportFormat, ext: string) => {
@@ -1032,6 +1317,11 @@ export default function App() {
   );
 
   const handleSaveProject = useCallback(() => {
+    const safeRangesNum: Record<number, { min?: number; max?: number }> = {};
+    for (const [k, v] of Object.entries(safeRanges)) {
+      const n = Number(k);
+      if (Number.isFinite(n)) safeRangesNum[n] = v;
+    }
     const json = serializeProject({
       binName,
       bin,
@@ -1042,6 +1332,22 @@ export default function App() {
       markers,
       lockedItemIds: Array.from(lockedItemIds),
       selectedProfileId: checksumProfileId,
+      snapshots,
+      favorites: Array.from(favorites).map(Number).filter(Number.isFinite),
+      safeRanges: safeRangesNum,
+      historyEntries: undoStack.map((entry, idx) => ({
+        id: `h-${idx}-${entry.timestamp}`,
+        label: entry.label,
+        timestamp: entry.timestamp,
+        changedBytes: entry.patches.reduce((sum, p) => sum + p.next.length, 0),
+      })),
+      openBins: openBins.map((b) => ({
+        id: b.id,
+        name: b.name,
+        bytes: b.bytes,
+        isActive: b.id === activeBinId,
+      })),
+      dismissedCandidateKeys: Array.from(dismissedCandidateKeys),
     });
     const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1051,7 +1357,25 @@ export default function App() {
     a.click();
     URL.revokeObjectURL(url);
     showToast(`Saved project ${a.download}`);
-  }, [binName, bin, compareName, compareBin, xdfName, xdf, markers, lockedItemIds, checksumProfileId, showToast]);
+  }, [
+    binName,
+    bin,
+    compareName,
+    compareBin,
+    xdfName,
+    xdf,
+    markers,
+    lockedItemIds,
+    checksumProfileId,
+    snapshots,
+    favorites,
+    safeRanges,
+    undoStack,
+    openBins,
+    activeBinId,
+    dismissedCandidateKeys,
+    showToast,
+  ]);
 
   const handleDownloadBin = useCallback(() => {
     const outName = binName.toLowerCase().endsWith('.bin') ? binName : `${stripExt(binName)}_tuned.bin`;
@@ -1066,10 +1390,52 @@ export default function App() {
     showToast(`Exported ${outName} (${Math.round(bin.length / 1024)} KB)`);
   }, [bin, binName, showToast]);
 
+  const handleExportIntelHex = useCallback(() => {
+    const hexText = exportIntelHex(bin);
+    const blob = new Blob([hexText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${stripExt(binName || 'MacTuner')}.hex`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`Exported Intel HEX: ${a.download}`);
+  }, [bin, binName, showToast]);
+
+  const handleExportSRecord = useCallback(() => {
+    const srecText = exportSRecord(bin);
+    const blob = new Blob([srecText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${stripExt(binName || 'MacTuner')}.s19`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`Exported Motorola S-Record: ${a.download}`);
+  }, [bin, binName, showToast]);
+
+  const handleSplitHiLo = useCallback(() => {
+    const { hi, lo } = splitHiLo(bin);
+    const base = stripExt(binName || 'MacTuner');
+    const triggerDownload = (bytes: Uint8Array, name: string) => {
+      const blob = new Blob([bytes.slice().buffer], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+    triggerDownload(hi, `${base}_HI.bin`);
+    window.setTimeout(() => triggerDownload(lo, `${base}_LO.bin`), 150);
+    showToast(`Exported HI (${Math.round(hi.length / 1024)} KB) & LO (${Math.round(lo.length / 1024)} KB) EPROM halves`);
+  }, [bin, binName, showToast]);
+
   const handleJumpToHex = useCallback((address: number) => {
     setSection('workspace');
     setWorkbenchMode('hex');
     setJumpAddress(address);
+    setHexJumpNonce((n) => n + 1);
   }, []);
 
   const handleFindTwins = useCallback(
@@ -1101,15 +1467,7 @@ export default function App() {
   );
 
   const handleDatalogOverlayChange = useCallback((overlay: DatalogOverlayState) => {
-    setDatalogOverlay((prev) => ({
-      ...prev,
-      enabled: overlay.enabled,
-      frameIndex: overlay.frameIndex,
-      xChannel: overlay.xChannel,
-      yChannel: overlay.yChannel,
-      xValue: overlay.xValue,
-      yValue: overlay.yValue,
-    }));
+    setRawDatalogOverlay(overlay);
   }, []);
 
   // Global Keyboard Shortcuts
@@ -1123,6 +1481,26 @@ export default function App() {
       if (mod && key === 'k') {
         e.preventDefault();
         setPaletteOpen((v) => !v);
+        return;
+      }
+      if (mod && !e.shiftKey && !e.altKey && key === 's') {
+        e.preventDefault();
+        setExportReviewOpen(true);
+        return;
+      }
+      if (mod && e.shiftKey && key === 's') {
+        e.preventDefault();
+        handleSaveProject();
+        return;
+      }
+      if (mod && !e.shiftKey && !e.altKey && key === 'o') {
+        e.preventDefault();
+        fileInputRef.current?.click();
+        return;
+      }
+      if (mod && e.shiftKey && key === 'o') {
+        e.preventDefault();
+        compareInputRef.current?.click();
         return;
       }
       if (mod && e.altKey && key === 'i') {
@@ -1180,6 +1558,7 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
+    handleSaveProject,
     handleUndo,
     handleRedo,
     handleCycleChangedMap,
@@ -1303,32 +1682,105 @@ export default function App() {
           e.target.value = '';
         }}
       />
+      <input
+        ref={smartMergeInputRef}
+        type="file"
+        accept=".xdf,.xml,.a2l,.csv,.ols,.kp"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) void handleSmartMergeFiles(e.target.files);
+          e.target.value = '';
+        }}
+      />
+
+      {/* Web-only Apple Pro Menu Bar (auto-hidden on Tauri Desktop) */}
+      <WebMenuBar
+        version={APP_VERSION}
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
+        hasCompareBin={Boolean(compareBin)}
+        hasDefinition={Boolean(xdf)}
+        hasSelectedItem={Boolean(selectedItem)}
+        layoutMode={layoutMode}
+        heatmapPalette={heatmapPalette}
+        unitSystem={unitSystem}
+        bottomDrawerOpen={bottomDrawerOpen}
+        inspectorOpen={section === 'workspace' && !inspectorCollapsed}
+        onAbout={() => showToast(`MacTuner Studio v${APP_VERSION} — ECU & TCU Calibration Workbench`)}
+        onCheckUpdates={() => {
+          setUpdateModalOpen(true);
+          void runUpdateCheck();
+        }}
+        onLoadDemo={handleLoadDemoWorkspace}
+        onOpenBin={() => fileInputRef.current?.click()}
+        onOpenCompareBin={() => compareInputRef.current?.click()}
+        onOpenDefinition={() => fileInputRef.current?.click()}
+        onSmartMergeDefinition={() => smartMergeInputRef.current?.click()}
+        onOpenProject={() => fileInputRef.current?.click()}
+        onSaveProject={handleSaveProject}
+        onExportBin={() => setExportReviewOpen(true)}
+        onExportIntelHex={handleExportIntelHex}
+        onExportSRecord={handleExportSRecord}
+        onExportDefinition={handleExportDefinition}
+        onPrint={() => window.print()}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onSwapBins={handleSwapBins}
+        onToggleFavorite={handleToggleFavoriteSelected}
+        onToggleLock={handleToggleLockSelected}
+        onSplitHiLo={handleSplitHiLo}
+        onSwitchSection={(sec, mode) => {
+          setSection(sec);
+          if (mode) setWorkbenchMode(mode);
+        }}
+        onToggleBottomDrawer={() => setBottomDrawerOpen((v) => !v)}
+        onToggleInspector={() => {
+          if (section !== 'workspace') {
+            setSection('workspace');
+            setInspectorCollapsed(false);
+          } else {
+            setInspectorCollapsed((v) => !v);
+          }
+        }}
+        onSetLayoutMode={(m) => {
+          setLayoutMode(m);
+          if (m === 'ide') setBottomDrawerOpen(true);
+        }}
+        onSetHeatmapPalette={handleHeatmapPaletteChange}
+        onSetUnitSystem={setUnitSystem}
+        onNextChangedMap={() => handleCycleChangedMap(1)}
+        onPrevChangedMap={() => handleCycleChangedMap(-1)}
+        onFixChecksums={handleFixChecksums}
+        onQuickSnapshot={handleQuickSnapshot}
+        onAutoAlign={handleRunAutoAlign}
+        onOpenCommandPalette={() => setPaletteOpen(true)}
+      />
 
       {/* Top Native-Style Title & Workbench Bar */}
-      <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-white/[0.065] bg-[#131418]/95 px-3.5 backdrop-blur-xl">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-b from-[#2b95ff] to-[#0066dc] shadow-[0_2px_10px_rgba(10,132,255,0.35),inset_0_1px_0_rgba(255,255,255,0.28)]">
+      <header className="flex h-11 shrink-0 items-center justify-between gap-1.5 border-b border-white/[0.065] bg-[#131418]/95 px-2.5 backdrop-blur-xl">
+        <div className="flex items-center gap-2 min-w-0 shrink">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-b from-[#2b95ff] to-[#0066dc] shadow-[0_2px_10px_rgba(10,132,255,0.35),inset_0_1px_0_rgba(255,255,255,0.28)]">
             <Cpu className="h-3.5 w-3.5 text-white" />
           </div>
           <div className="min-w-0 leading-tight">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-[13px] font-semibold tracking-[-0.01em] text-white max-w-[160px]">
+            <div className="flex items-center gap-1.5">
+              <span className="truncate text-[12px] font-semibold tracking-[-0.01em] text-white max-w-[130px] xl:max-w-[160px]">
                 {binName}
               </span>
               {undoStack.length > 0 && (
-                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9.5px] font-medium text-amber-300 shrink-0">
+                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-medium text-amber-300 shrink-0">
                   edited
                 </span>
               )}
             </div>
-            <div className="truncate text-[10.5px] text-zinc-400">
+            <div className="truncate text-[10px] text-zinc-400">
               {ecuIdentity.ecuFamily} · MacTuner
             </div>
           </div>
         </div>
 
-        {/* Center Apple Pro Segmented Navigation */}
-        <nav className="flex items-center gap-0.5 rounded-full border border-white/[0.07] bg-white/[0.035] p-0.5 overflow-x-auto">
+        {/* Center Apple Pro Segmented Navigation (all 8 tabs visible at 1280x800 with zero clipping) */}
+        <nav className="flex items-center gap-0.5 rounded-full border border-white/[0.07] bg-white/[0.035] p-0.5 shrink-0">
           {navItems.map((n) => {
             const active = section === n.id;
             return (
@@ -1336,7 +1788,7 @@ export default function App() {
                 key={n.id}
                 type="button"
                 onClick={() => setSection(n.id)}
-                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-all shrink-0 cursor-pointer ${
+                className={`flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium transition-all shrink-0 cursor-pointer ${
                   active
                     ? 'bg-[#0a84ff] text-white shadow-[0_1px_8px_rgba(10,132,255,0.4)]'
                     : 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100'
@@ -1355,7 +1807,7 @@ export default function App() {
             type="button"
             onClick={() => setPaletteOpen(true)}
             title="Command Palette (⌘K)"
-            className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2 py-1.5 text-[11.5px] text-zinc-300 hover:bg-white/[0.09] hover:text-white transition cursor-pointer"
+            className="flex items-center gap-1 rounded-lg bg-white/[0.05] px-1.5 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.09] hover:text-white transition cursor-pointer"
           >
             <Search className="h-3.5 w-3.5 text-zinc-400" />
             <kbd className="font-mono text-[10px] text-zinc-400 hidden 2xl:inline">⌘K</kbd>
@@ -1364,10 +1816,10 @@ export default function App() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             title="Open BIN, XDF, A2L, CSV, WinOLS (.ols / .kp), .mtproj"
-            className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-[11.5px] text-zinc-200 hover:bg-white/[0.09] transition cursor-pointer"
+            className="flex items-center gap-1 rounded-lg bg-white/[0.05] px-2 py-1.5 text-[11px] text-zinc-200 hover:bg-white/[0.09] transition cursor-pointer"
           >
             <FolderOpen className="h-3.5 w-3.5 text-zinc-400" />
-            <span className="hidden xl:inline">Open</span>
+            <span className="hidden 2xl:inline">Open</span>
           </button>
           <button
             type="button"
@@ -1394,14 +1846,14 @@ export default function App() {
               type="button"
               onClick={() => setExportDefMenuOpen((v) => !v)}
               title="Export Definition (.xdf, .a2l, .csv, .kp, .xml)"
-              className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium transition cursor-pointer ${
+              className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition cursor-pointer ${
                 exportDefMenuOpen
                   ? 'bg-white/[0.12] text-white'
                   : 'bg-white/[0.05] text-zinc-200 hover:bg-white/[0.09]'
               }`}
             >
               <Download className="h-3.5 w-3.5 text-zinc-400" />
-              <span className="hidden xl:inline">Export Def</span>
+              <span className="hidden 2xl:inline">Export Def</span>
               <ChevronDown className="h-3 w-3 opacity-60" />
             </button>
             {exportDefMenuOpen && (
@@ -1428,11 +1880,11 @@ export default function App() {
           <button
             type="button"
             onClick={() => setExportReviewOpen(true)}
-            title="Review changes & export .bin (⇧⌘E)"
-            className="flex items-center gap-1.5 rounded-lg bg-[#0a84ff] px-2.5 py-1.5 text-[11.5px] font-semibold text-white hover:bg-[#1e8fff] shadow-[0_1px_8px_rgba(10,132,255,0.35)] transition cursor-pointer"
+            title="Review changes & export .bin (⌘S)"
+            className="flex items-center gap-1 rounded-lg bg-[#0a84ff] px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1e8fff] shadow-[0_1px_8px_rgba(10,132,255,0.35)] transition cursor-pointer"
           >
             <FileDown className="h-3.5 w-3.5" />
-            <span className="hidden xl:inline">Export BIN</span>
+            <span className="hidden xl:inline">Export</span>
           </button>
 
           {/* Right Inspector Toggle */}
@@ -1457,6 +1909,52 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {/* Auto-Align Banner when non-zero shift is detected */}
+      {autoAlignBanner && (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-sky-500/25 bg-sky-500/10 px-3.5 py-1.5 text-[11.5px] text-sky-200">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+            <span className="truncate">
+              Auto-Align detected{' '}
+              <strong className="font-semibold text-white">{autoAlignBanner.shiftedCount} shifted map(s)</strong>
+              {autoAlignBanner.dominantDelta !== 0 && (
+                <>
+                  {' '}
+                  (dominant offset{' '}
+                  <code className="rounded bg-black/30 px-1 py-0.5 font-mono text-[10.5px] text-sky-300">
+                    {autoAlignBanner.dominantDelta >= 0 ? '+' : '-'}0x
+                    {Math.abs(autoAlignBanner.dominantDelta).toString(16).toUpperCase()}
+                  </code>
+                  )
+                </>
+              )}{' '}
+              · {autoAlignBanner.result.summary.highCount} high / {autoAlignBanner.result.summary.mediumCount} med
+              confidence
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setXdf(autoAlignBanner.result.alignedDefinition);
+                setAutoAlignBanner(null);
+                showToast(`Applied Auto-Align shift to ${autoAlignBanner.shiftedCount} map(s)`);
+              }}
+              className="rounded-md bg-[#0a84ff] px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-[#1e8fff] transition cursor-pointer"
+            >
+              Apply Shift
+            </button>
+            <button
+              type="button"
+              onClick={() => setAutoAlignBanner(null)}
+              className="rounded-md bg-white/[0.07] px-2 py-0.5 text-[11px] text-zinc-300 hover:bg-white/[0.12] hover:text-white transition cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area: Sidebar + Multi-BIN Document Bar + Viewport + BottomDrawer (+ Optional Inspector) */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -1500,6 +1998,7 @@ export default function App() {
             onTogglePin={handleTogglePinItem}
             outOfSafeRangeItemIds={outOfSafeRangeItemIds}
             diagnosticWarningItemIds={diagnosticWarningItemIds}
+            autoAlignConfidenceByItemId={autoAlignConfidenceByItemId}
             translationMode={translationMode}
             outsideOfXdfBytes={outsideOfXdfBytes}
             onClickOutsideOfXdf={() => {
@@ -1585,6 +2084,7 @@ export default function App() {
                         setOpenedSnapshot(doc.bytes.slice());
                         setUndoStack([]);
                         setRedoStack([]);
+                        setChecksumProfileId(detectChecksumPlugin(doc.bytes).id);
                       }}
                       title="Click to activate as Left (L) BIN"
                       className="flex items-center gap-1 cursor-pointer"
@@ -1710,6 +2210,9 @@ export default function App() {
                       definition={xdf}
                       candidates={coreCandidates}
                       jumpAddress={jumpAddress}
+                      jumpNonce={hexJumpNonce}
+                      cols={hexCols}
+                      onColsChange={setHexCols}
                       selectedRange={selectedRange}
                       onSelectRange={setSelectedRange}
                       onAddCandidateToXdf={handleAddCoreCandidate}
@@ -1723,7 +2226,8 @@ export default function App() {
                         const [start, end] = range;
                         const { bits, lsbFirst, isFloat } = wordFormatToLayout(format);
                         const elemBytes = bits / 8;
-                        const totalElems = Math.max(1, Math.floor((end - start + 1) / elemBytes));
+                        const byteLen = Math.max(1, end - start);
+                        const totalElems = Math.max(1, Math.floor(byteLen / elemBytes));
                         const safeCols = Math.max(1, Math.min(cols, totalElems));
                         const rows = Math.max(1, Math.floor(totalElems / safeCols));
                         handleOpenXdfEditor(null, {
@@ -1806,10 +2310,13 @@ export default function App() {
                           })
                         }
                         isPinned={pinnedItemId === selectedItem.id}
+                        splitPinnedActive={Boolean(pinnedItemId)}
                         onTogglePin={() => handleTogglePinItem(selectedItem)}
                         mirrorPinnedEdits={mirrorPinnedEdits}
                         onToggleMirrorPinned={() => setMirrorPinnedEdits((v) => !v)}
                         openBins={openBins}
+                        activeBinId={activeBinId}
+                        unitSystem={unitSystem}
                         onCopyMapFrom={(src) => handleCopyMapFromSource(selectedItem, src)}
                         datalogHits={datalogOverlay.hits}
                         datalogActiveCell={datalogOverlay.activeCell}
@@ -1838,7 +2345,9 @@ export default function App() {
                             item={pinnedItem}
                             bin={bin}
                             compareBin={compareBin}
-                            onApplyPatches={handleApplyPatches}
+                            onApplyPatches={(patches, label) =>
+                              handleApplyPatchesWithMirror(patches, label, pinnedItem)
+                            }
                             onJumpToHex={handleJumpToHex}
                             onResetMap={handleResetMap}
                             categoryName={
@@ -1856,10 +2365,13 @@ export default function App() {
                             onToggleFavorite={() => handleToggleFavoriteItem(pinnedItem)}
                             safeRange={safeRanges[String(pinnedItem.id)]}
                             isPinned
+                            splitPinnedActive={Boolean(pinnedItemId)}
                             onTogglePin={() => setPinnedItemId(null)}
                             mirrorPinnedEdits={mirrorPinnedEdits}
                             onToggleMirrorPinned={() => setMirrorPinnedEdits((v) => !v)}
                             openBins={openBins}
+                            activeBinId={activeBinId}
+                            unitSystem={unitSystem}
                             onCopyMapFrom={(src) => handleCopyMapFromSource(pinnedItem, src)}
                           />
                         </div>
@@ -1914,10 +2426,16 @@ export default function App() {
                       ]);
                       setActiveBinId(bId);
                       setCompareBinId(cId);
+                      setOpenedSnapshot(baseBytes.slice());
+                      setUndoStack([]);
+                      setRedoStack([]);
+                      setChecksumProfileId(detectChecksumPlugin(baseBytes).id);
                       handleJumpToHex(addr);
                     }}
                     onPortTune={() => setSection('discovery')}
                     onSwitchSection={(sec) => setSection(sec as TopSection)}
+                    externalSlotToAdd={pendingCompareSlot}
+                    onExternalSlotConsumed={() => setPendingCompareSlot(null)}
                   />
                 </div>
 
@@ -1927,6 +2445,7 @@ export default function App() {
                     baselineBytes={compareBin}
                     xdf={xdf}
                     candidates={uiCandidates}
+                    onCandidatesChange={setCustomUiCandidates}
                     onShowInHex={handleJumpToHex}
                     onAddCandidateToXdf={(cand) => handleAddCoreCandidate(fromUiCandidate(cand), true)}
                     onOpenXdfModal={(item) => handleOpenXdfEditor(null, item)}
@@ -2020,8 +2539,9 @@ export default function App() {
                       showToast(`Comparing against snapshot: ${snap.name}`);
                     }}
                     onAddSnapshotToMultiCompare={(snap) => {
+                      setPendingCompareSlot({ id: snap.id, name: snap.name, bytes: snap.bytes });
                       setSection('compare');
-                      showToast(`Snapshot "${snap.name}" available in Multi-Compare`);
+                      showToast(`Added snapshot "${snap.name}" to Multi-Compare`);
                     }}
                     onUpdateHistoryNote={(index, note) => {
                       setUndoStack((prev) =>
@@ -2048,6 +2568,7 @@ export default function App() {
                 onResetMap={handleResetMap}
                 invalidChecksumCount={checksumReport.invalidCount}
                 checksumPluginName={checksumReport.pluginName}
+                selectedProfileId={checksumProfileId}
                 onFixChecksums={handleFixChecksums}
                 onOpenDatalogView={() => setSection('datalog')}
                 onOpenFlashView={() => setSection('flash')}
@@ -2074,7 +2595,7 @@ export default function App() {
                 onToggleCollapse={() => setInspectorCollapsed((v) => !v)}
                 isLocked={isSelectedLocked}
                 onToggleLock={handleToggleLockSelected}
-                unitSystem={unitSystem === 'imperial' ? 'imperial' : 'metric'}
+                unitSystem={unitSystem}
                 onUnitSystemChange={(sys) => setUnitSystem(sys)}
                 translationMode={translationMode}
                 onTranslationModeChange={setTranslationMode}
@@ -2101,6 +2622,9 @@ export default function App() {
                   if (found) {
                     setActiveBinId(found.id);
                     setOpenedSnapshot(found.bytes.slice());
+                    setUndoStack([]);
+                    setRedoStack([]);
+                    setChecksumProfileId(detectChecksumPlugin(found.bytes).id);
                   }
                 }}
               />
@@ -2109,27 +2633,23 @@ export default function App() {
         </div>
       </div>
 
-      {/* Bottom Status Bar */}
-      <footer className="flex h-7 shrink-0 items-center justify-between border-t border-white/[0.06] bg-[#101115] px-3 text-[11px] text-zinc-400 gap-2 overflow-x-auto">
-        <div className="flex items-center gap-2 font-mono shrink-0">
-          <span className="font-semibold text-slate-200">{ecuIdentity.ecuFamily}</span>
+      {/* Bottom Status Bar (compact single-line at 1280x800, Checksum pill always visible) */}
+      <footer className="flex h-7 shrink-0 items-center justify-between border-t border-white/[0.06] bg-[#101115] px-2.5 text-[10.5px] text-zinc-400 gap-1.5 whitespace-nowrap overflow-hidden">
+        <div className="flex items-center gap-1.5 font-mono shrink-0 min-w-0">
+          <span className="font-semibold text-slate-200 truncate max-w-[140px]">{ecuIdentity.ecuFamily}</span>
           <span>·</span>
           <span>{ecuIdentity.fileSizeKB} KB</span>
           {ecuIdentity.softwareNumber && (
-            <>
-              <span>·</span>
-              <span>SW {ecuIdentity.softwareNumber}</span>
-            </>
+            <span className="hidden xl:inline">· SW {ecuIdentity.softwareNumber}</span>
           )}
-          <span>·</span>
-          <span>{ecuIdentity.architecture}</span>
+          <span className="hidden 2xl:inline">· {ecuIdentity.architecture}</span>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 whitespace-nowrap">
           {/* Compare Quick-Switcher */}
           {openBins.length > 1 && (
             <label
-              className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer"
+              className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0"
               title="Quick-switch Comparison BIN (R)"
             >
               <ArrowLeftRight className="h-3 w-3 text-amber-400 shrink-0" />
@@ -2137,7 +2657,7 @@ export default function App() {
                 value={compareBinId ?? ''}
                 onChange={(e) => setCompareBinId(e.target.value || null)}
                 aria-label="Compare BIN"
-                className="bg-transparent text-[10px] text-zinc-300 outline-none cursor-pointer max-w-[110px]"
+                className="bg-transparent text-[10px] text-zinc-300 outline-none cursor-pointer truncate max-w-[110px]"
               >
                 <option value="" className="bg-[#17181d] text-zinc-100">
                   No Compare
@@ -2155,7 +2675,7 @@ export default function App() {
 
           {/* Global Unit System Selector */}
           <label
-            className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer"
+            className="flex items-center gap-0.5 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0"
             title="Global Unit System"
           >
             <Scale className="h-3 w-3 shrink-0" />
@@ -2165,15 +2685,15 @@ export default function App() {
               aria-label="Unit System"
               className="bg-transparent text-[10px] text-zinc-300 outline-none cursor-pointer"
             >
-              <option value="original" className="bg-[#17181d] text-zinc-100">Original</option>
+              <option value="original" className="bg-[#17181d] text-zinc-100">Orig</option>
               <option value="metric" className="bg-[#17181d] text-zinc-100">Metric</option>
-              <option value="imperial" className="bg-[#17181d] text-zinc-100">Imperial</option>
+              <option value="imperial" className="bg-[#17181d] text-zinc-100">Imp</option>
             </select>
           </label>
 
           {/* Scientific Heatmap Palette Selector */}
           <label
-            className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer"
+            className="flex items-center gap-0.5 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0"
             title="Scientific Heatmap Palette"
           >
             <Palette className="h-3 w-3 shrink-0 text-sky-400" />
@@ -2193,7 +2713,7 @@ export default function App() {
 
           {/* Layout Mode Switcher */}
           <label
-            className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer"
+            className="flex items-center gap-0.5 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0"
             title="Workspace Layout Mode"
           >
             <LayoutGrid className="h-3 w-3 shrink-0" />
@@ -2218,27 +2738,27 @@ export default function App() {
             type="button"
             onClick={() => setBottomDrawerOpen((v) => !v)}
             title="Toggle Bottom Drawer (⇧⌘Y)"
-            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition cursor-pointer ${
+            className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium transition cursor-pointer shrink-0 ${
               bottomDrawerOpen
                 ? 'bg-[#0a84ff]/20 text-sky-300'
                 : 'text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100'
             }`}
           >
             <PanelBottom className="h-3 w-3" />
-            <span className="hidden xl:inline">Drawer</span>
+            <span className="hidden 2xl:inline">Drawer</span>
           </button>
 
           <button
             type="button"
             onClick={handleSaveProject}
             title="Save full workspace archive (.mtproj)"
-            className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer"
+            className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0"
           >
             <Save className="h-3 w-3" />
             <span className="hidden 2xl:inline">.mtproj</span>
           </button>
 
-          <label className="flex items-center gap-1 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer" title="Switch Theme">
+          <label className="hidden xl:flex items-center gap-1 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0" title="Switch Theme">
             <select
               value={themeId}
               onChange={(e) => setThemeId(e.target.value as AppThemeId)}
@@ -2253,7 +2773,7 @@ export default function App() {
             </select>
           </label>
 
-          <label className="flex items-center gap-1 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer" title="Switch Language">
+          <label className="hidden xl:flex items-center gap-1 rounded-full px-1 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer shrink-0" title="Switch Language">
             <Globe className="h-3 w-3 shrink-0" />
             <select
               value={locale}
@@ -2276,7 +2796,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setUpdateModalOpen(true)}
-            className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-medium transition cursor-pointer ${
+            className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-medium transition cursor-pointer shrink-0 ${
               updateInfo?.available
                 ? 'bg-[#0a84ff]/20 text-sky-300 hover:bg-[#0a84ff]/30'
                 : 'text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200'
@@ -2292,16 +2812,16 @@ export default function App() {
               type="button"
               onClick={() => handleCycleChangedMap(1)}
               title="Jump to next changed map (⌥⌘↓)"
-              className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300 hover:bg-amber-500/25 transition cursor-pointer"
+              className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 hover:bg-amber-500/25 transition cursor-pointer shrink-0"
             >
-              {changedItemIds.size} maps changed
+              {changedItemIds.size} chg
             </button>
           )}
 
           <button
             type="button"
             onClick={() => setSection('flash')}
-            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold transition cursor-pointer ${
+            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold transition cursor-pointer shrink-0 ${
               checksumReport.invalidCount === 0
                 ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
                 : 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25'
@@ -2309,12 +2829,12 @@ export default function App() {
           >
             {checksumReport.invalidCount === 0 ? (
               <>
-                <CheckCircle2 className="h-3 w-3" />
+                <CheckCircle2 className="h-3 w-3 shrink-0" />
                 Checksum OK
               </>
             ) : (
               <>
-                <ShieldAlert className="h-3 w-3" />
+                <ShieldAlert className="h-3 w-3 shrink-0" />
                 Checksum Invalid ({checksumReport.invalidCount})
               </>
             )}
@@ -2355,6 +2875,7 @@ export default function App() {
           );
         }}
         onSetHexColumns={(cols) => {
+          setHexCols(cols);
           setSection('workspace');
           setWorkbenchMode('hex');
           showToast(`Hex-Diff column width set to ${cols}`);
@@ -2396,6 +2917,7 @@ export default function App() {
         initialDraft={xdfModalDraft}
         bin={bin}
         categories={xdf?.categories ?? {}}
+        xdfCategories={xdf?.categories ?? {}}
         onSave={handleSaveXdfItem}
         onCreateNew={(item) => {
           if (item) handleSaveXdfItem(item);

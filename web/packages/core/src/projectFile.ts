@@ -8,6 +8,51 @@ export interface ProjectMarker {
   color?: string;
 }
 
+export interface SerializedProjectSnapshot {
+  id: string;
+  name: string;
+  createdAt: number;
+  changedBytes: number;
+  bytesBase64: string;
+  note?: string;
+}
+
+export interface ProjectSnapshot {
+  id: string;
+  name: string;
+  createdAt: number;
+  changedBytes: number;
+  bytes: Uint8Array;
+  note?: string;
+}
+
+export interface ProjectSafeRange {
+  min?: number;
+  max?: number;
+}
+
+export interface ProjectHistoryEntry {
+  id: string;
+  label: string;
+  timestamp: number;
+  changedBytes?: number;
+  itemId?: number;
+}
+
+export interface SerializedProjectOpenBin {
+  id: string;
+  name: string;
+  bytesBase64: string;
+  isActive?: boolean;
+}
+
+export interface ProjectOpenBin {
+  id: string;
+  name: string;
+  bytes: Uint8Array;
+  isActive?: boolean;
+}
+
 export interface MacTunerProject {
   version: 1;
   savedAt: string;
@@ -20,6 +65,13 @@ export interface MacTunerProject {
   markers?: ProjectMarker[];
   lockedItemIds?: number[];
   selectedProfileId?: string;
+  snapshots?: SerializedProjectSnapshot[];
+  favorites?: number[];
+  safeRanges?: Record<number, ProjectSafeRange>;
+  mapNotes?: Record<number, string>;
+  historyEntries?: ProjectHistoryEntry[];
+  openBins?: SerializedProjectOpenBin[];
+  dismissedCandidateKeys?: string[];
 }
 
 function uint8ToBase64(bytes: Uint8Array): string {
@@ -48,6 +100,13 @@ export interface ProjectPayload {
   markers?: ProjectMarker[];
   lockedItemIds?: number[];
   selectedProfileId?: string;
+  snapshots?: ProjectSnapshot[];
+  favorites?: number[];
+  safeRanges?: Record<number, ProjectSafeRange>;
+  mapNotes?: Record<number, string>;
+  historyEntries?: ProjectHistoryEntry[];
+  openBins?: ProjectOpenBin[];
+  dismissedCandidateKeys?: string[];
 }
 
 /**
@@ -66,6 +125,35 @@ export function serializeProject(payload: ProjectPayload): string {
     markers: payload.markers ?? [],
     lockedItemIds: payload.lockedItemIds ?? [],
     selectedProfileId: payload.selectedProfileId,
+    ...(payload.snapshots !== undefined
+      ? {
+          snapshots: payload.snapshots.map((s) => ({
+            id: s.id,
+            name: s.name,
+            createdAt: s.createdAt,
+            changedBytes: s.changedBytes,
+            bytesBase64: uint8ToBase64(s.bytes),
+            ...(s.note !== undefined ? { note: s.note } : {}),
+          })),
+        }
+      : {}),
+    ...(payload.favorites !== undefined ? { favorites: [...payload.favorites] } : {}),
+    ...(payload.safeRanges !== undefined ? { safeRanges: { ...payload.safeRanges } } : {}),
+    ...(payload.mapNotes !== undefined ? { mapNotes: { ...payload.mapNotes } } : {}),
+    ...(payload.historyEntries !== undefined ? { historyEntries: [...payload.historyEntries] } : {}),
+    ...(payload.openBins !== undefined
+      ? {
+          openBins: payload.openBins.map((b) => ({
+            id: b.id,
+            name: b.name,
+            bytesBase64: uint8ToBase64(b.bytes),
+            ...(b.isActive !== undefined ? { isActive: b.isActive } : {}),
+          })),
+        }
+      : {}),
+    ...(payload.dismissedCandidateKeys !== undefined
+      ? { dismissedCandidateKeys: [...payload.dismissedCandidateKeys] }
+      : {}),
   };
   return JSON.stringify(doc, null, 2);
 }
@@ -88,5 +176,38 @@ export function parseProject(jsonText: string): ProjectPayload {
     markers: Array.isArray(raw.markers) ? raw.markers : [],
     lockedItemIds: Array.isArray(raw.lockedItemIds) ? raw.lockedItemIds : [],
     selectedProfileId: raw.selectedProfileId,
+    ...(Array.isArray(raw.snapshots)
+      ? {
+          snapshots: raw.snapshots
+            .filter((s) => s && typeof s.bytesBase64 === 'string')
+            .map((s) => ({
+              id: s.id,
+              name: s.name,
+              createdAt: s.createdAt,
+              changedBytes: s.changedBytes,
+              bytes: base64ToUint8(s.bytesBase64),
+              ...(s.note !== undefined ? { note: s.note } : {}),
+            })),
+        }
+      : {}),
+    ...(Array.isArray(raw.favorites) ? { favorites: raw.favorites } : {}),
+    ...(raw.safeRanges && typeof raw.safeRanges === 'object' ? { safeRanges: raw.safeRanges } : {}),
+    ...(raw.mapNotes && typeof raw.mapNotes === 'object' ? { mapNotes: raw.mapNotes } : {}),
+    ...(Array.isArray(raw.historyEntries) ? { historyEntries: raw.historyEntries } : {}),
+    ...(Array.isArray(raw.openBins)
+      ? {
+          openBins: raw.openBins
+            .filter((b) => b && typeof b.bytesBase64 === 'string')
+            .map((b) => ({
+              id: b.id,
+              name: b.name,
+              bytes: base64ToUint8(b.bytesBase64),
+              ...(b.isActive !== undefined ? { isActive: b.isActive } : {}),
+            })),
+        }
+      : {}),
+    ...(Array.isArray(raw.dismissedCandidateKeys)
+      ? { dismissedCandidateKeys: raw.dismissedCandidateKeys }
+      : {}),
   };
 }

@@ -11,18 +11,29 @@ import {
   createDtcXdfFlag,
   createMed17DemoBundle,
   createScaling,
+  detectChecksumPlugin,
   exportDefinition,
+  exportIntelHex,
   exportRomRaiderXml,
+  exportSRecord,
   extractMtPatch,
   fillAverage,
   findSyncBlocks,
   flattenRange,
+  mergeHiLo,
+  parseBinaryFile,
   parsePflashPartitions,
+  parseProject,
   parseXDF,
   rescaleAxis,
   rescaleTableAxis,
+  scanBinForMaps,
   scanDtcs,
+  scanMaps,
+  serializeProject,
   serializeXDF,
+  smartMergeDefinitions,
+  splitHiLo,
   toggleDtc,
   verifyChecksums,
 } from '../src';
@@ -228,5 +239,232 @@ describe('@mactuner/core — Swift Parity Engines', () => {
     const parts = parsePflashPartitions(demo.stockBin);
     expect(parts.length).toBeGreaterThan(0);
     expect(parts.every((p) => p.end > p.start)).toBe(true);
+  });
+
+  it('detects bosch-med17 for MED17.5 demo binary and TC1766/TC1767 binaries instead of bosch-me7', () => {
+    const demo = createMed17DemoBundle();
+    expect(detectChecksumPlugin(demo.stockBin).id).toBe('bosch-med17');
+    expect(detectChecksumPlugin(demo.stage1Bin).id).toBe('bosch-med17');
+
+    const tc1767Bin = new Uint8Array(524_288).fill(0xff);
+    new TextEncoder().encodeInto('Infineon TC1767 TriCore', tc1767Bin.subarray(0x200));
+    expect(detectChecksumPlugin(tc1767Bin).id).toBe('bosch-med17');
+
+    // Pure ME7 binary without MED17/TC17 markers still detects bosch-me7
+    const me7Bin = new Uint8Array(524_288).fill(0xff);
+    new TextEncoder().encodeInto('Bosch ME7.5 1.8T', me7Bin.subarray(0x200));
+    expect(detectChecksumPlugin(me7Bin).id).toBe('bosch-me7');
+  });
+
+  it('parses XDFFLAG invert bit and inherits <DEFAULTS> attributes when omitted on <EMBEDDEDDATA>', () => {
+    const xml = `
+      <XDFFORMAT version="1.70">
+        <XDFHEADER>
+          <deftitle>Defaults & Flag Invert</deftitle>
+          <DEFAULTS datasizeinbits="16" signed="1" lsbfirst="1" float="0" />
+        </XDFHEADER>
+        <XDFCONSTANT>
+          <title>Inherited Constant</title>
+          <EMBEDDEDDATA mmedaddress="0x100" />
+        </XDFCONSTANT>
+        <XDFCONSTANT>
+          <title>Explicit Override</title>
+          <EMBEDDEDDATA mmedaddress="0x120" mmedtypeflags="0x00" mmedelementsizebits="8" />
+        </XDFCONSTANT>
+        <XDFFLAG flags="0x1">
+          <title>Inverted Switch</title>
+          <EMBEDDEDDATA mmedaddress="0x200" mmedelementsizebits="8" mmedtypeflags="0x00" />
+          <mask>0x04</mask>
+        </XDFFLAG>
+        <XDFFLAG flags="0x0">
+          <title>Normal Switch</title>
+          <EMBEDDEDDATA mmedaddress="0x201" mmedelementsizebits="8" mmedtypeflags="0x00" />
+          <mask>0x01</mask>
+        </XDFFLAG>
+      </XDFFORMAT>
+    `;
+    const parsed = parseXDF(xml);
+    expect(parsed.items).toHaveLength(4);
+
+    // Inherited from <DEFAULTS>
+    expect(parsed.items[0].data.bits).toBe(16);
+    expect(parsed.items[0].data.signed).toBe(true);
+    expect(parsed.items[0].data.lsbFirst).toBe(true);
+    expect(parsed.items[0].data.isFloat).toBe(false);
+
+    // Explicitly overridden
+    expect(parsed.items[1].data.bits).toBe(8);
+    expect(parsed.items[1].data.signed).toBe(false);
+    expect(parsed.items[1].data.lsbFirst).toBe(false);
+
+    // XDFFLAG invert bit
+    expect(parsed.items[2].itemKind).toEqual({ kind: 'flag', mask: 4, invert: true });
+    expect(parsed.items[3].itemKind).toEqual({ kind: 'flag', mask: 1, invert: false });
+
+    // Round-trip preserves invert: true
+    const rt = parseXDF(serializeXDF(parsed));
+    expect(rt.items[2].itemKind).toEqual({ kind: 'flag', mask: 4, invert: true });
+    expect(rt.items[3].itemKind).toEqual({ kind: 'flag', mask: 1, invert: false });
+  });
+
+  it('scans IEEE-754 Float32 LE and BE 2D maps when bits=32 / isFloat=true', () => {
+    const buildFloatBin = (lsbFirst: boolean) => {
+      const bin = new Uint8Array(2048).fill(0xff);
+      const view = new DataView(bin.buffer);
+      const base = 0x100;
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          const val = 0.85 + r * 0.02 + c * 0.015;
+          view.setFloat32(base + (r * 8 + c) * 4, val, lsbFirst);
+        }
+      }
+      return bin;
+    };
+
+    const leCands = scanBinForMaps(buildFloatBin(true), [], { bits: 32, isFloat: true, lsbFirst: true });
+    expect(leCands.length).toBeGreaterThan(0);
+    expect(leCands[0].isFloat).toBe(true);
+    expect(leCands[0].bits).toBe(32);
+    expect(leCands[0].address).toBe(0x100);
+    expect(leCands[0].layout.isFloat).toBe(true);
+
+    const beCands = scanMaps(buildFloatBin(false), [], { bits: 32, lsbFirst: false });
+    expect(beCands.length).toBeGreaterThan(0);
+    expect(beCands[0].isFloat).toBe(true);
+    expect(beCands[0].bits).toBe(32);
+    expect(beCands[0].lsbFirst).toBe(false);
+    expect(beCands[0].address).toBe(0x100);
+  });
+
+  it('serializes and restores extended MacTunerProject fields while remaining backwards compatible', () => {
+    const demo = createMed17DemoBundle();
+    const snapBytes = new Uint8Array([1, 2, 3, 4]);
+    const extraBin = new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd]);
+    const json = serializeProject({
+      binName: demo.stage1Name,
+      bin: demo.stage1Bin.slice(0, 64),
+      xdfName: demo.xdfName,
+      xdf: demo.xdf,
+      snapshots: [
+        { id: 's1', name: 'Baseline', createdAt: 1700000000, changedBytes: 12, bytes: snapBytes, note: 'Pre-tune' },
+      ],
+      favorites: [0, 2],
+      safeRanges: { 0: { min: 1000, max: 2500 } },
+      mapNotes: { 0: 'Do not exceed 2.4 bar' },
+      historyEntries: [{ id: 'h1', label: 'Boost +10%', timestamp: 1700000100, changedBytes: 32, itemId: 0 }],
+      openBins: [{ id: 'b1', name: 'Alt.bin', bytes: extraBin, isActive: false }],
+      dismissedCandidateKeys: ['pattern-1000-8x8'],
+    });
+    const restored = parseProject(json);
+    expect(restored.snapshots).toHaveLength(1);
+    expect(Array.from(restored.snapshots![0].bytes)).toEqual([1, 2, 3, 4]);
+    expect(restored.snapshots![0].note).toBe('Pre-tune');
+    expect(restored.favorites).toEqual([0, 2]);
+    expect(restored.safeRanges).toEqual({ 0: { min: 1000, max: 2500 } });
+    expect(restored.mapNotes).toEqual({ 0: 'Do not exceed 2.4 bar' });
+    expect(restored.historyEntries).toHaveLength(1);
+    expect(restored.openBins).toHaveLength(1);
+    expect(Array.from(restored.openBins![0].bytes)).toEqual([0xaa, 0xbb, 0xcc, 0xdd]);
+    expect(restored.dismissedCandidateKeys).toEqual(['pattern-1000-8x8']);
+  });
+
+  it('smartMergeDefinitions updates addresses & axis addresses while preserving user customizations', () => {
+    const { xdf } = createMed17DemoBundle();
+    // User customized item 0 (custom scaling, description, safeRange) and added a custom map
+    const existing: XDFDefinition = {
+      ...xdf,
+      items: [
+        {
+          ...xdf.items[0],
+          description: 'My custom boost note',
+          scaling: createScaling('X * 0.001', 'bar', 2, 1),
+          safeRange: { min: 0.9, max: 2.3 },
+        },
+        xdf.items[5], // Rev Limiter (not in incoming -> preserved)
+      ],
+    };
+    // Incoming has updated addresses for item 0 + a brand new map
+    const incoming: XDFDefinition = {
+      ...xdf,
+      items: [
+        {
+          ...xdf.items[0],
+          description: 'OEM description',
+          data: { ...xdf.items[0].data, address: 0x30100 },
+          itemKind:
+            xdf.items[0].itemKind.kind === 'table' &&
+            xdf.items[0].itemKind.x.source.kind === 'data' &&
+            xdf.items[0].itemKind.y.source.kind === 'data'
+              ? {
+                  kind: 'table',
+                  x: {
+                    ...xdf.items[0].itemKind.x,
+                    source: { kind: 'data', layout: { ...xdf.items[0].itemKind.x.source.layout, address: 0x30040 } },
+                  },
+                  y: {
+                    ...xdf.items[0].itemKind.y,
+                    source: { kind: 'data', layout: { ...xdf.items[0].itemKind.y.source.layout, address: 0x30080 } },
+                  },
+                }
+              : xdf.items[0].itemKind,
+        },
+        xdf.items[3], // Target Lambda (new -> added)
+      ],
+    };
+
+    const merged = smartMergeDefinitions(existing, incoming);
+    expect(merged.updatedCount).toBe(1);
+    expect(merged.preservedCount).toBe(1);
+    expect(merged.addedCount).toBe(1);
+    expect(merged.document.items).toHaveLength(3);
+
+    const boost = merged.document.items[0];
+    expect(boost.data.address).toBe(0x30100);
+    expect(boost.description).toBe('My custom boost note');
+    expect(boost.scaling.units).toBe('bar');
+    expect(boost.safeRange).toEqual({ min: 0.9, max: 2.3 });
+    if (boost.itemKind.kind === 'table' && boost.itemKind.x.source.kind === 'data') {
+      expect(boost.itemKind.x.source.layout.address).toBe(0x30040);
+    }
+  });
+
+  it('round-trips Intel HEX, Motorola S-Record, and splitHiLo/mergeHiLo byte-for-byte', () => {
+    const sample = new Uint8Array(70_000); // > 64 KB to exercise Extended Linear Address & S2 records
+    for (let i = 0; i < sample.length; i++) sample[i] = (i * 73 + 19) & 0xff;
+
+    const ihex = exportIntelHex(sample);
+    expect(ihex).toContain(':020000040001F9');
+    expect(ihex.endsWith(':00000001FF')).toBe(true);
+    const parsedHex = parseBinaryFile('dump.hex', new TextEncoder().encode(ihex));
+    expect(parsedHex.length).toBe(sample.length);
+    expect(parsedHex[0]).toBe(sample[0]);
+    expect(parsedHex[65536]).toBe(sample[65536]);
+    expect(parsedHex[sample.length - 1]).toBe(sample[sample.length - 1]);
+
+    const srec = exportSRecord(sample);
+    expect(srec.startsWith('S0')).toBe(true);
+    expect(srec).toContain('\nS2');
+    expect(srec.endsWith('S804000000FB')).toBe(true);
+    const parsedSrec = parseBinaryFile('dump.srec', new TextEncoder().encode(srec));
+    expect(parsedSrec.length).toBe(sample.length);
+    expect(parsedSrec[65536]).toBe(sample[65536]);
+    expect(parsedSrec[sample.length - 1]).toBe(sample[sample.length - 1]);
+
+    const raw = new Uint8Array([0x10, 0x20, 0x30, 0x40, 0x50]);
+    const { hi, lo } = splitHiLo(raw);
+    expect(Array.from(hi)).toEqual([0x10, 0x30, 0x50]);
+    expect(Array.from(lo)).toEqual([0x20, 0x40]);
+    expect(Array.from(mergeHiLo(hi, lo))).toEqual(Array.from(raw));
+  });
+
+  it('scanDtcs handles MED17 demo binaries and empty/tiny buffers cleanly without throwing', () => {
+    const demo = createMed17DemoBundle();
+    expect(() => scanDtcs(new Uint8Array(0))).not.toThrow();
+    expect(() => scanDtcs(new Uint8Array(64))).not.toThrow();
+    const stockRes = scanDtcs(demo.stockBin);
+    const stage1Res = scanDtcs(demo.stage1Bin);
+    expect(Array.isArray(stockRes.entries)).toBe(true);
+    expect(Array.isArray(stage1Res.entries)).toBe(true);
+    expect(stockRes.familyHint).toContain('MED17');
   });
 });

@@ -38,6 +38,7 @@ export interface DatalogOverlayState {
   yChannel: string;
   xValue?: number;
   yValue?: number;
+  samples?: { x: number; y: number; z?: number }[];
 }
 
 export interface DatalogViewProps {
@@ -709,6 +710,27 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
     return () => window.clearInterval(id);
   }, [isPlaying, session.timestamps.length, session.sampleRateHz]);
 
+  const overlaySamples = useMemo(() => {
+    const xCh = session.channels.find((c) => c.key === overlayXChannel);
+    const yCh = session.channels.find((c) => c.key === overlayYChannel);
+    if (!xCh || !yCh) return [];
+    const zCh =
+      session.channels.find((c) => c.key === scatterZKey) ??
+      session.channels.find((c) => c.key !== overlayXChannel && c.key !== overlayYChannel);
+    const n = Math.min(xCh.values.length, yCh.values.length);
+    if (n === 0) return [];
+    const step = Math.max(1, Math.ceil(n / 2000));
+    const pts: { x: number; y: number; z?: number }[] = [];
+    for (let i = 0; i < n; i += step) {
+      const x = xCh.values[i];
+      const y = yCh.values[i];
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const z = zCh?.values[i];
+      pts.push(z !== undefined && Number.isFinite(z) ? { x, y, z } : { x, y });
+    }
+    return pts;
+  }, [session.channels, overlayXChannel, overlayYChannel, scatterZKey]);
+
   // Emit overlay updates when frame/channels/toggle change
   useEffect(() => {
     if (!onDatalogOverlayChange) return;
@@ -722,8 +744,18 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
       yChannel: overlayYChannel,
       xValue: xCh?.values[idx],
       yValue: yCh?.values[idx],
+      samples: overlaySamples,
     });
-  }, [overlayEnabled, hoverIdx, playbackIdx, overlayXChannel, overlayYChannel, session.channels, onDatalogOverlayChange]);
+  }, [
+    overlayEnabled,
+    hoverIdx,
+    playbackIdx,
+    overlayXChannel,
+    overlayYChannel,
+    session.channels,
+    overlaySamples,
+    onDatalogOverlayChange,
+  ]);
 
   // Live OBD-II 20 Hz Simulated Stream timer
   useEffect(() => {
@@ -1663,11 +1695,13 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
       className="h-full flex flex-col bg-[#0c0d10] text-zinc-100 overflow-hidden"
       onDragOver={(e) => {
         e.preventDefault();
+        e.stopPropagation();
         setIsDragging(true);
       }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={(e) => {
         e.preventDefault();
+        e.stopPropagation();
         setIsDragging(false);
         const file = e.dataTransfer.files?.[0];
         if (file) loadCsvFile(file);
@@ -2285,7 +2319,7 @@ export const DatalogView: React.FC<DatalogViewProps> = ({
                   type="text"
                   value={enetIp}
                   onChange={(e) => setEnetIp(e.target.value)}
-                  className="w-32 px-2.5 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.08] font-mono text-xs text-zinc-100"
+                  className="w-40 min-w-[152px] px-2.5 py-1.5 rounded-lg bg-[#0c0d10] border border-white/[0.08] font-mono text-xs text-zinc-100"
                   placeholder="ENET IP"
                 />
                 <button

@@ -911,14 +911,14 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
   return (
     <div className="flex flex-col h-full min-h-[240px] rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden select-none">
       {/* Clean Airy Header */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/[0.065] overflow-x-auto">
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 px-2.5 py-1.5 border-b border-white/[0.065]">
+        <div className="flex items-center gap-1.5 min-w-0 shrink-0">
           <Box className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
           <span className="text-xs font-semibold tracking-[-0.01em] text-zinc-100 whitespace-nowrap shrink-0">
             3D Surface
           </span>
           {pointDrag ? (
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[10.5px] font-mono font-semibold tabular-nums text-amber-300 truncate">
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[10px] font-mono font-semibold tabular-nums text-amber-300 truncate">
               {yLabels[pointDrag.cell.r] ?? pointDrag.cell.r} × {xLabels[pointDrag.cell.c] ?? pointDrag.cell.c} →{' '}
               {formatNum(pointDrag.liveVal, decimals)}
               {units ? ` ${units}` : ''}
@@ -928,12 +928,12 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
               </span>
             </span>
           ) : isLocked ? (
-            <span className="inline-flex items-center gap-1 text-[10.5px] text-amber-400/80 shrink-0">
+            <span className="inline-flex items-center gap-1 text-[10px] text-amber-400/80 shrink-0">
               <Lock className="w-3 h-3" />
               Locked
             </span>
           ) : (
-            <span className="text-[10.5px] text-zinc-500 hidden 2xl:inline truncate">
+            <span className="text-[10px] text-zinc-500 hidden 2xl:inline truncate">
               {editMode && canEdit
                 ? 'Drag vertex · Shift = fine'
                 : canEdit
@@ -943,13 +943,13 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex flex-wrap items-center gap-1 min-w-0">
           {/* Camera Zoom - / + & Presets (X / Y / Top) */}
-          <div className="inline-flex items-center rounded-md bg-white/[0.045] p-0.5">
+          <div className="inline-flex items-center rounded-md bg-white/[0.045] p-0.5 shrink-0">
             <button
               type="button"
               onClick={zoomOut}
-              className="p-1 rounded text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
+              className="px-1 py-0.5 rounded text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
               title="Zoom Out"
             >
               <ZoomOut className="w-3 h-3" />
@@ -957,7 +957,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             <button
               type="button"
               onClick={zoomIn}
-              className="p-1 rounded text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
+              className="px-1 py-0.5 rounded text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
               title="Zoom In"
             >
               <ZoomIn className="w-3 h-3" />
@@ -966,7 +966,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             <button
               type="button"
               onClick={setCameraFrontX}
-              className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
+              className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
               title="Frontal View (X Axis)"
             >
               X
@@ -974,7 +974,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             <button
               type="button"
               onClick={setCameraSideY}
-              className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
+              className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
               title="Side View (Y Axis)"
             >
               Y
@@ -982,7 +982,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             <button
               type="button"
               onClick={setCameraTop}
-              className="px-1.5 py-0.5 rounded text-[10.5px] font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
+              className="px-1.5 py-0.5 rounded text-[10px] font-medium text-zinc-400 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
               title="Top-Down View"
             >
               Top
@@ -993,7 +993,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             <button
               type="button"
               onClick={() => setEditMode((v) => !v)}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium whitespace-nowrap transition-all cursor-pointer ${
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium whitespace-nowrap transition-all cursor-pointer ${
                 editMode
                   ? 'bg-[#0a84ff] text-white shadow-[0_1px_6px_rgba(10,132,255,0.4)]'
                   : 'bg-white/[0.045] text-zinc-300 hover:bg-white/[0.09] hover:text-white'
@@ -1009,7 +1009,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             <button
               type="button"
               onClick={() => setShowMeasurementCloud((v) => !v)}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 showMeasurementCloud
                   ? 'bg-emerald-500/15 text-emerald-300'
                   : 'bg-white/[0.045] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200'
@@ -1025,7 +1025,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
             <button
               type="button"
               onClick={() => setShowCompare((v) => !v)}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 showCompare
                   ? 'bg-amber-500/15 text-amber-300'
                   : 'bg-white/[0.045] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200'
@@ -1040,7 +1040,7 @@ export const Surface3DCanvas: React.FC<Surface3DCanvasProps> = ({
           <button
             type="button"
             onClick={setCameraReset}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-white/[0.045] text-zinc-300 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium whitespace-nowrap bg-white/[0.045] text-zinc-300 hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
             title="Reset 3D camera"
           >
             <RotateCcw className="w-3 h-3" />

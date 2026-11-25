@@ -26,6 +26,7 @@ export interface ScanMapsOptions {
   bits?: number;
   signed?: boolean;
   lsbFirst?: boolean;
+  isFloat?: boolean;
 }
 
 function readU16(bin: Uint8Array, off: number, lsb: boolean): number {
@@ -37,7 +38,31 @@ function readS16(bin: Uint8Array, off: number, lsb: boolean): number {
   return u >= 0x8000 ? u - 0x10000 : u;
 }
 
-function readVal(bin: Uint8Array, off: number, bits: number, signed: boolean, lsb: boolean): number {
+function readU32(bin: Uint8Array, off: number, lsb: boolean): number {
+  const view = new DataView(bin.buffer, bin.byteOffset + off, 4);
+  return view.getUint32(0, lsb);
+}
+
+function readS32(bin: Uint8Array, off: number, lsb: boolean): number {
+  const view = new DataView(bin.buffer, bin.byteOffset + off, 4);
+  return view.getInt32(0, lsb);
+}
+
+function readF32(bin: Uint8Array, off: number, lsb: boolean): number {
+  const view = new DataView(bin.buffer, bin.byteOffset + off, 4);
+  return view.getFloat32(0, lsb);
+}
+
+function readVal(
+  bin: Uint8Array,
+  off: number,
+  bits: number,
+  signed: boolean,
+  lsb: boolean,
+  isFloat = false,
+): number {
+  if (bits === 32 && isFloat) return readF32(bin, off, lsb);
+  if (bits === 32) return signed ? readS32(bin, off, lsb) : readU32(bin, off, lsb);
   if (bits === 8) {
     const b = bin[off];
     return signed && b >= 0x80 ? b - 0x100 : b;
@@ -109,6 +134,7 @@ function evaluateSurface(
   bits: number,
   signed: boolean,
   lsb: boolean,
+  isFloat = false,
 ): { ok: boolean; smoothness: number; span: number } {
   const eb = Math.max(1, Math.floor(bits / 8));
   const count = rows * cols;
@@ -123,19 +149,31 @@ function evaluateSurface(
 
   for (let i = 0; i < count; i++) {
     const off = addr + i * eb;
-    const v = readVal(bin, off, bits, signed, lsb);
-    vals[i] = v;
-    if (v < minV) minV = v;
-    if (v > maxV) maxV = v;
-    if (eb === 2 && ((bin[off] === 0xff && bin[off + 1] === 0xff) || (bin[off] === 0x00 && bin[off + 1] === 0x00))) {
+    const v = readVal(bin, off, bits, signed, lsb, isFloat);
+    if (isFloat) {
+      if (!Number.isFinite(v) || Math.abs(v) > 1e7 || (v !== 0 && Math.abs(v) < 1e-6)) {
+        return { ok: false, smoothness: 0, span: 0 };
+      }
+      if (v === 0) padBytes++;
+    } else if (
+      eb === 2 &&
+      ((bin[off] === 0xff && bin[off + 1] === 0xff) || (bin[off] === 0x00 && bin[off + 1] === 0x00))
+    ) {
       padBytes++;
     } else if (eb === 1 && (bin[off] === 0xff || bin[off] === 0x00)) {
       padBytes++;
+    } else if (eb === 4) {
+      const u = readU32(bin, off, lsb);
+      if (u === 0xffffffff || u === 0x00000000) padBytes++;
     }
+    vals[i] = v;
+    if (v < minV) minV = v;
+    if (v > maxV) maxV = v;
   }
 
   const span = maxV - minV;
-  if (span < 4 || padBytes > count * 0.7) {
+  const minSpan = isFloat ? 1e-3 : 4;
+  if (!Number.isFinite(span) || span < minSpan || padBytes > count * 0.7) {
     return { ok: false, smoothness: 0, span: 0 };
   }
 
@@ -201,172 +239,184 @@ export function scanMaps(
   const n = bin.length;
   if (n < 64) return [];
 
-  const bits = opts?.bits ?? 16;
-  const signed = opts?.signed ?? false;
+  const isFloat = opts?.isFloat ?? (opts?.bits === 32);
+  const bits = isFloat ? 32 : (opts?.bits ?? 16);
+  const signed = isFloat ? true : (opts?.signed ?? false);
   const lsbFirst = opts?.lsbFirst ?? true;
   const occ = new RangeOccupancy(coveredRanges);
   const results: MapCandidate[] = [];
 
-  // Pass 1A: Bosch 16-bit Paired 2D Header: [rows, cols, yAxis(rows), xAxis(cols), data(rows*cols)]
-  for (let off = 0; off + 40 <= n; off += 2) {
-    const rows = readU16(bin, off, lsbFirst);
-    const cols = readU16(bin, off + 2, lsbFirst);
-    if (rows < 4 || rows > 32 || cols < 4 || cols > 32) continue;
+  // Pass 1A & 1B: Bosch 16-bit Axis-Header Maps (skip when scanning specifically for Float32)
+  if (!isFloat) {
+    // Pass 1A: Bosch 16-bit Paired 2D Header: [rows, cols, yAxis(rows), xAxis(cols), data(rows*cols)]
+    for (let off = 0; off + 40 <= n; off += 2) {
+      const rows = readU16(bin, off, lsbFirst);
+      const cols = readU16(bin, off + 2, lsbFirst);
+      if (rows < 4 || rows > 32 || cols < 4 || cols > 32) continue;
 
-    const yAxisAddr = off + 4;
-    const xAxisAddr = yAxisAddr + rows * 2;
-    const dataAddr = xAxisAddr + cols * 2;
-    const dataEnd = dataAddr + rows * cols * 2;
-    if (dataEnd > n) continue;
-    if (occ.isOccupied(off, dataEnd)) continue;
+      const yAxisAddr = off + 4;
+      const xAxisAddr = yAxisAddr + rows * 2;
+      const dataAddr = xAxisAddr + cols * 2;
+      const dataEnd = dataAddr + rows * cols * 2;
+      if (dataEnd > n) continue;
+      if (occ.isOccupied(off, dataEnd)) continue;
 
-    const yAxis = checkMonotonicAxis16(bin, yAxisAddr, rows, lsbFirst);
-    if (!yAxis.ok) continue;
-    const xAxis = checkMonotonicAxis16(bin, xAxisAddr, cols, lsbFirst);
-    if (!xAxis.ok) continue;
+      const yAxis = checkMonotonicAxis16(bin, yAxisAddr, rows, lsbFirst);
+      if (!yAxis.ok) continue;
+      const xAxis = checkMonotonicAxis16(bin, xAxisAddr, cols, lsbFirst);
+      if (!xAxis.ok) continue;
 
-    let surf = evaluateSurface(bin, dataAddr, rows, cols, 16, signed, lsbFirst);
-    let detectedSigned = signed;
-    if (!surf.ok && !signed) {
-      const signedSurf = evaluateSurface(bin, dataAddr, rows, cols, 16, true, lsbFirst);
-      if (signedSurf.ok) {
-        surf = signedSurf;
-        detectedSigned = true;
+      let surf = evaluateSurface(bin, dataAddr, rows, cols, 16, signed, lsbFirst, false);
+      let detectedSigned = signed;
+      if (!surf.ok && !signed) {
+        const signedSurf = evaluateSurface(bin, dataAddr, rows, cols, 16, true, lsbFirst, false);
+        if (signedSurf.ok) {
+          surf = signedSurf;
+          detectedSigned = true;
+        }
       }
+      if (!surf.ok) continue;
+
+      const rpmDetected = xAxis.rpmLike || yAxis.rpmLike;
+      const rawConf = 0.91 + Math.min(0.03, surf.smoothness * 0.03) + (rpmDetected ? 0.02 : 0);
+      const confidence = Math.round(Math.min(0.96, rawConf) * 1000) / 1000;
+
+      const layout: DataLayout = {
+        address: dataAddr,
+        bits: 16,
+        signed: detectedSigned,
+        lsbFirst,
+        columnMajor: false,
+        isFloat: false,
+        rows,
+        cols,
+      };
+
+      results.push({
+        id: `bosch-paired-${dataAddr.toString(16)}`,
+        address: dataAddr,
+        rows,
+        cols,
+        bits: 16,
+        signed: detectedSigned,
+        isFloat: false,
+        lsbFirst,
+        xAxisAddress: xAxisAddr,
+        yAxisAddress: yAxisAddr,
+        axisBits: 16,
+        confidence,
+        evidence: 'Header Proof',
+        shortBadge: `Bosch ${rows}×${cols} + Axes`,
+        reason: `Bosch 16-bit paired header @ 0x${off.toString(16).toUpperCase()} (${rows}×${cols})${rpmDetected ? ' · RPM axis' : ''}`,
+        rpmAxisDetected: rpmDetected,
+        layout,
+      });
+
+      occ.mark(off, dataEnd);
+      off = dataEnd - 2;
     }
-    if (!surf.ok) continue;
 
-    const rpmDetected = xAxis.rpmLike || yAxis.rpmLike;
-    const rawConf = 0.91 + Math.min(0.03, surf.smoothness * 0.03) + (rpmDetected ? 0.02 : 0);
-    const confidence = Math.round(Math.min(0.96, rawConf) * 1000) / 1000;
+    // Pass 1B: Bosch 16-bit Interleaved 2D Header: [cols, xAxis(cols), rows, yAxis(rows), data(rows*cols)]
+    for (let off = 0; off + 40 <= n; off += 2) {
+      const n1 = readU16(bin, off, lsbFirst);
+      if (n1 < 4 || n1 > 32) continue;
 
-    const layout: DataLayout = {
-      address: dataAddr,
-      bits: 16,
-      signed: detectedSigned,
-      lsbFirst,
-      columnMajor: false,
-      isFloat: false,
-      rows,
-      cols,
-    };
+      const ax1Addr = off + 2;
+      const n2Off = ax1Addr + n1 * 2;
+      if (n2Off + 2 >= n) continue;
 
-    results.push({
-      id: `bosch-paired-${dataAddr.toString(16)}`,
-      address: dataAddr,
-      rows,
-      cols,
-      bits: 16,
-      signed: detectedSigned,
-      isFloat: false,
-      lsbFirst,
-      xAxisAddress: xAxisAddr,
-      yAxisAddress: yAxisAddr,
-      axisBits: 16,
-      confidence,
-      evidence: 'Header Proof',
-      shortBadge: `Bosch ${rows}×${cols} + Axes`,
-      reason: `Bosch 16-bit paired header @ 0x${off.toString(16).toUpperCase()} (${rows}×${cols})${rpmDetected ? ' · RPM axis' : ''}`,
-      rpmAxisDetected: rpmDetected,
-      layout,
-    });
+      const n2 = readU16(bin, n2Off, lsbFirst);
+      if (n2 < 4 || n2 > 32) continue;
 
-    occ.mark(off, dataEnd);
-    off = dataEnd - 2;
+      const ax2Addr = n2Off + 2;
+      const dataAddr = ax2Addr + n2 * 2;
+      const dataEnd = dataAddr + n1 * n2 * 2;
+      if (dataEnd > n) continue;
+      if (occ.isOccupied(off, dataEnd)) continue;
+
+      const ax1 = checkMonotonicAxis16(bin, ax1Addr, n1, lsbFirst);
+      if (!ax1.ok) continue;
+      const ax2 = checkMonotonicAxis16(bin, ax2Addr, n2, lsbFirst);
+      if (!ax2.ok) continue;
+
+      const cols = n1;
+      const rows = n2;
+      let surf = evaluateSurface(bin, dataAddr, rows, cols, 16, signed, lsbFirst, false);
+      let detectedSigned = signed;
+      if (!surf.ok && !signed) {
+        const signedSurf = evaluateSurface(bin, dataAddr, rows, cols, 16, true, lsbFirst, false);
+        if (signedSurf.ok) {
+          surf = signedSurf;
+          detectedSigned = true;
+        }
+      }
+      if (!surf.ok) continue;
+
+      const rpmDetected = ax1.rpmLike || ax2.rpmLike;
+      const rawConf = 0.91 + Math.min(0.03, surf.smoothness * 0.03) + (rpmDetected ? 0.02 : 0);
+      const confidence = Math.round(Math.min(0.96, rawConf) * 1000) / 1000;
+
+      const layout: DataLayout = {
+        address: dataAddr,
+        bits: 16,
+        signed: detectedSigned,
+        lsbFirst,
+        columnMajor: false,
+        isFloat: false,
+        rows,
+        cols,
+      };
+
+      results.push({
+        id: `bosch-interleaved-${dataAddr.toString(16)}`,
+        address: dataAddr,
+        rows,
+        cols,
+        bits: 16,
+        signed: detectedSigned,
+        isFloat: false,
+        lsbFirst,
+        xAxisAddress: ax1Addr,
+        yAxisAddress: ax2Addr,
+        axisBits: 16,
+        confidence,
+        evidence: 'Header Proof',
+        shortBadge: `Bosch ${rows}×${cols} + Axes`,
+        reason: `Bosch 16-bit interleaved header @ 0x${off.toString(16).toUpperCase()} (${rows}×${cols})${rpmDetected ? ' · RPM axis' : ''}`,
+        rpmAxisDetected: rpmDetected,
+        layout,
+      });
+
+      occ.mark(off, dataEnd);
+      off = dataEnd - 2;
+    }
   }
 
-  // Pass 1B: Bosch 16-bit Interleaved 2D Header: [cols, xAxis(cols), rows, yAxis(rows), data(rows*cols)]
-  for (let off = 0; off + 40 <= n; off += 2) {
-    const n1 = readU16(bin, off, lsbFirst);
-    if (n1 < 4 || n1 > 32) continue;
-
-    const ax1Addr = off + 2;
-    const n2Off = ax1Addr + n1 * 2;
-    if (n2Off + 2 >= n) continue;
-
-    const n2 = readU16(bin, n2Off, lsbFirst);
-    if (n2 < 4 || n2 > 32) continue;
-
-    const ax2Addr = n2Off + 2;
-    const dataAddr = ax2Addr + n2 * 2;
-    const dataEnd = dataAddr + n1 * n2 * 2;
-    if (dataEnd > n) continue;
-    if (occ.isOccupied(off, dataEnd)) continue;
-
-    const ax1 = checkMonotonicAxis16(bin, ax1Addr, n1, lsbFirst);
-    if (!ax1.ok) continue;
-    const ax2 = checkMonotonicAxis16(bin, ax2Addr, n2, lsbFirst);
-    if (!ax2.ok) continue;
-
-    const cols = n1;
-    const rows = n2;
-    let surf = evaluateSurface(bin, dataAddr, rows, cols, 16, signed, lsbFirst);
-    let detectedSigned = signed;
-    if (!surf.ok && !signed) {
-      const signedSurf = evaluateSurface(bin, dataAddr, rows, cols, 16, true, lsbFirst);
-      if (signedSurf.ok) {
-        surf = signedSurf;
-        detectedSigned = true;
-      }
-    }
-    if (!surf.ok) continue;
-
-    const rpmDetected = ax1.rpmLike || ax2.rpmLike;
-    const rawConf = 0.91 + Math.min(0.03, surf.smoothness * 0.03) + (rpmDetected ? 0.02 : 0);
-    const confidence = Math.round(Math.min(0.96, rawConf) * 1000) / 1000;
-
-    const layout: DataLayout = {
-      address: dataAddr,
-      bits: 16,
-      signed: detectedSigned,
-      lsbFirst,
-      columnMajor: false,
-      isFloat: false,
-      rows,
-      cols,
-    };
-
-    results.push({
-      id: `bosch-interleaved-${dataAddr.toString(16)}`,
-      address: dataAddr,
-      rows,
-      cols,
-      bits: 16,
-      signed: detectedSigned,
-      isFloat: false,
-      lsbFirst,
-      xAxisAddress: ax1Addr,
-      yAxisAddress: ax2Addr,
-      axisBits: 16,
-      confidence,
-      evidence: 'Header Proof',
-      shortBadge: `Bosch ${rows}×${cols} + Axes`,
-      reason: `Bosch 16-bit interleaved header @ 0x${off.toString(16).toUpperCase()} (${rows}×${cols})${rpmDetected ? ' · RPM axis' : ''}`,
-      rpmAxisDetected: rpmDetected,
-      layout,
-    });
-
-    occ.mark(off, dataEnd);
-    off = dataEnd - 2;
-  }
-
-  // Pass 2: Headerless smooth 2D calibration surfaces (Data Pattern)
+  // Pass 2: Headerless smooth 2D calibration surfaces (Data Pattern — supports 8/16/32-bit int & IEEE-754 Float32)
   const eb = Math.max(1, Math.floor(bits / 8));
-  const dims: Array<[number, number]> = [
-    [16, 16],
-    [12, 12],
-    [8, 8],
-  ];
-  const step = Math.max(eb * 4, 16);
+  const dims: Array<[number, number]> = isFloat
+    ? [
+        [16, 16],
+        [12, 12],
+        [8, 8],
+        [6, 6],
+      ]
+    : [
+        [16, 16],
+        [12, 12],
+        [8, 8],
+      ];
+  const minCells = isFloat ? 36 : 64;
+  const step = isFloat ? 4 : Math.max(eb * 4, 16);
   let patternCount = 0;
 
-  for (let off = 0; off + 64 * eb <= n && patternCount < 40; off += step) {
+  for (let off = 0; off + minCells * eb <= n && patternCount < 40; off += step) {
     for (const [rows, cols] of dims) {
       const byteLen = rows * cols * eb;
       if (off + byteLen > n) continue;
       if (occ.isOccupied(off, off + byteLen)) continue;
 
-      const surf = evaluateSurface(bin, off, rows, cols, bits, signed, lsbFirst);
+      const surf = evaluateSurface(bin, off, rows, cols, bits, signed, lsbFirst, isFloat);
       if (!surf.ok || surf.smoothness < 0.72) continue;
 
       const confidence = Math.round((0.58 + surf.smoothness * 0.22) * 1000) / 1000;
@@ -376,25 +426,27 @@ export function scanMaps(
         signed,
         lsbFirst,
         columnMajor: false,
-        isFloat: false,
+        isFloat,
         rows,
         cols,
       };
 
       results.push({
-        id: `pattern-${off.toString(16)}-${rows}x${cols}`,
+        id: `${isFloat ? 'float32' : 'pattern'}-${off.toString(16)}-${rows}x${cols}`,
         address: off,
         rows,
         cols,
         bits,
         signed,
-        isFloat: false,
+        isFloat,
         lsbFirst,
         axisBits: bits,
         confidence,
         evidence: 'Data Pattern',
-        shortBadge: `Surface ${rows}×${cols}`,
-        reason: `Smooth ${bits}-bit 2D data surface (${Math.round(surf.smoothness * 100)}% smoothness)`,
+        shortBadge: isFloat ? `Float32 ${rows}×${cols}` : `Surface ${rows}×${cols}`,
+        reason: isFloat
+          ? `Smooth IEEE-754 Float32 (${lsbFirst ? 'LE' : 'BE'}) 2D surface (${Math.round(surf.smoothness * 100)}% smoothness)`
+          : `Smooth ${bits}-bit 2D data surface (${Math.round(surf.smoothness * 100)}% smoothness)`,
         rpmAxisDetected: false,
         layout,
       });
@@ -408,6 +460,9 @@ export function scanMaps(
   results.sort((a, b) => b.confidence - a.confidence || a.address - b.address);
   return results;
 }
+
+/** Alias for `scanMaps` for callers using the `scanBinForMaps` name. */
+export const scanBinForMaps = scanMaps;
 
 /**
  * Convert a detected `MapCandidate` into an editable `XDFItem`.

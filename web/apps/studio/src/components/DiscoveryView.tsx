@@ -152,18 +152,20 @@ function jewelTileStyle(tRaw: number): React.CSSProperties {
   };
 }
 
+type LocalMapCandidate = MapCandidate & { isFloat?: boolean };
+
 function scanBinForMaps(
   bytes: Uint8Array,
   baseline: Uint8Array | null,
   width: ScanWidth,
   signed: boolean,
   lsbFirst: boolean,
-): MapCandidate[] {
+): LocalMapCandidate[] {
   const isFloat = width === 'f32';
   const bits = width === 'f32' ? 32 : width === '16' ? 16 : 8;
   const elemBytes = bits / 8;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const results: MapCandidate[] = [];
+  const results: LocalMapCandidate[] = [];
   const usedRanges: Array<[number, number]> = [];
 
   const overlaps = (start: number, end: number) =>
@@ -232,6 +234,7 @@ function scanBinForMaps(
         bits: 32,
         signed: true,
         lsbFirst,
+        isFloat: true,
         confidence: Math.min(0.95, 0.72 + smoothness * 0.22),
         patternLabel: `IEEE-754 Float32 ${rows}×${cols}${hasDiff ? ' · Diff' : ''}`,
         hasHeaderProof: false,
@@ -417,11 +420,14 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
   const [scanWidth, setScanWidth] = useState<ScanWidth>('16');
   const [signed, setSigned] = useState(false);
   const [lsbFirst, setLsbFirst] = useState(true);
+  const [localCandidates, setLocalCandidates] = useState<LocalMapCandidate[] | null>(null);
+  const effectiveCandidates: LocalMapCandidate[] = localCandidates ?? candidates;
   const [selectedCandId, setSelectedCandId] = useState<string | null>(candidates[0]?.id ?? null);
   const [hoveredTile, setHoveredTile] = useState<{ r: number; c: number; val: number } | null>(null);
 
   // --- DTC Scanner state (real core dtcEngine) ---
   const [dtcScan, setDtcScan] = useState<DtcScanResult | null>(null);
+  const [dtcScanned, setDtcScanned] = useState(false);
   const [dtcFilter, setDtcFilter] = useState<DtcFilter>('all');
   const [dtcQuery, setDtcQuery] = useState('');
   const [dtcNotice, setDtcNotice] = useState<string | null>(null);
@@ -469,13 +475,13 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
   const batchBinInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedCandidate = useMemo(
-    () => candidates.find((c) => c.id === selectedCandId) ?? candidates[0] ?? null,
-    [candidates, selectedCandId],
+    () => effectiveCandidates.find((c) => c.id === selectedCandId) ?? effectiveCandidates[0] ?? null,
+    [effectiveCandidates, selectedCandId],
   );
 
   const previewMatrix = useMemo(() => {
     if (!selectedCandidate) return null;
-    const isFloat = selectedCandidate.bits === 32;
+    const isFloat = Boolean(selectedCandidate.isFloat) || selectedCandidate.bits === 32;
     const layout: DataLayout = {
       address: selectedCandidate.address,
       bits: selectedCandidate.bits,
@@ -534,26 +540,73 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
   // --- Handlers ---
   const handleScanBin = () => {
     const found = scanBinForMaps(bytes, baselineBytes, scanWidth, signed, lsbFirst);
+    setLocalCandidates(found);
     onCandidatesChange?.(found);
     setSelectedCandId(found[0]?.id ?? null);
   };
 
-  const handleEditInXdf = (cand: MapCandidate) => {
+  const handleEditInXdf = (cand: LocalMapCandidate) => {
+    const withFloat: LocalMapCandidate = { ...cand, isFloat: cand.bits === 32 };
     if (onOpenXdfModal) {
-      onOpenXdfModal(candidateToDraftXdfItem(cand));
+      onOpenXdfModal(candidateToDraftXdfItem(withFloat));
     } else {
-      onAddCandidateToXdf(cand);
+      onAddCandidateToXdf(withFloat);
     }
   };
 
   const handleScanDtcs = () => {
     const res = scanDtcs(bytes);
+    setDtcScanned(true);
     setDtcScan(res);
     setDtcNotice(
       res.entries.length > 0
         ? `Detected ${res.entries.length} DTCs (${res.familyHint}, ${res.endianness}, stride ${res.stride}B${res.p0607Anchored ? ', P0607-anchored' : ''}).`
-        : 'No contiguous Bosch/Siemens DTC table found in this binary.',
+        : 'Scanned BIN — 0 OEM DTC switch tables detected in this binary.',
     );
+  };
+
+  const handleLoadSampleMed17Dtcs = () => {
+    const baseCodeAddr = Math.min(Math.max(0, bytes.length - 64), 0x1a000);
+    const baseSwitchAddr = Math.min(Math.max(0, bytes.length - 32), 0x1a800);
+    const sampleCodes: Array<{ pCode: string; raw: number; cls: number }> = [
+      { pCode: 'P0101', raw: 0x0101, cls: 0x03 },
+      { pCode: 'P0136', raw: 0x0136, cls: 0x02 },
+      { pCode: 'P0141', raw: 0x0141, cls: 0x02 },
+      { pCode: 'P0234', raw: 0x0234, cls: 0x04 },
+      { pCode: 'P0299', raw: 0x0299, cls: 0x04 },
+      { pCode: 'P0420', raw: 0x0420, cls: 0x01 },
+      { pCode: 'P0607', raw: 0x0607, cls: 0x05 },
+      { pCode: 'P2015', raw: 0x2015, cls: 0x03 },
+      { pCode: 'P2270', raw: 0x2270, cls: 0x02 },
+    ];
+    const entries: DtcEntry[] = sampleCodes.map((s, idx) => {
+      const swAddr = Math.min(Math.max(0, bytes.length - 1), baseSwitchAddr + idx);
+      const curVal = bytes.length > swAddr ? bytes[swAddr] : s.cls;
+      return {
+        id: idx + 1,
+        pCode: s.pCode,
+        rawCode: s.raw,
+        codeAddress: Math.min(Math.max(0, bytes.length - 2), baseCodeAddr + idx * 4),
+        switchAddress: swAddr,
+        switchBytes: 1,
+        errorClass: s.cls,
+        currentValue: curVal,
+        isDisabled: curVal === 0,
+        tableIndex: idx,
+        familyHint: 'Bosch MED17 (Sample)',
+      };
+    });
+    setDtcScanned(true);
+    setDtcScan({
+      entries,
+      codeTableAddress: baseCodeAddr,
+      switchTableAddress: baseSwitchAddr,
+      stride: 4,
+      endianness: 'LE',
+      familyHint: 'Bosch MED17 (Sample)',
+      p0607Anchored: true,
+    });
+    setDtcNotice(`Loaded ${entries.length} sample Bosch MED17 DTC entries for interactive preview.`);
   };
 
   const handleToggleDtc = (entry: DtcEntry) => {
@@ -811,7 +864,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
             {(bytes.length / 1024).toFixed(0)} KB
           </span>
           <span className="text-zinc-600">·</span>
-          <span>{candidates.length} candidates</span>
+          <span>{effectiveCandidates.length} candidates</span>
         </div>
       </div>
 
@@ -880,7 +933,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
           {/* Split Body: Candidates Left / Jewel-Tile Heatmap Preview Right */}
           <div className="flex-1 grid grid-cols-12 min-h-0">
             <div className="col-span-5 border-r border-white/[0.065] overflow-y-auto p-3.5 space-y-2 bg-[#0e0f13]">
-              {candidates.length === 0 ? (
+              {effectiveCandidates.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6">
                   <Sparkles className="w-8 h-8 text-zinc-600 mb-2.5" />
                   <p className="text-sm font-medium text-zinc-300">No map candidates scanned</p>
@@ -889,7 +942,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                   </p>
                 </div>
               ) : (
-                candidates.map((cand) => {
+                effectiveCandidates.map((cand) => {
                   const isSel = selectedCandidate?.id === cand.id;
                   const pct = Math.round(cand.confidence * 100);
                   return (
@@ -991,7 +1044,12 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onAddCandidateToXdf(selectedCandidate)}
+                        onClick={() =>
+                          onAddCandidateToXdf({
+                            ...selectedCandidate,
+                            isFloat: selectedCandidate.bits === 32,
+                          } as MapCandidate)
+                        }
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-xs font-semibold text-white shadow-[0_2px_10px_rgba(10,132,255,0.3)] transition-colors cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -1189,7 +1247,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
             </div>
           )}
 
-          {filteredDtcs === null ? (
+          {!dtcScanned && filteredDtcs === null ? (
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-12 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <FileWarning className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
               <h3 className="text-sm font-semibold text-zinc-200">Ready to scan OEM DTC tables</h3>
@@ -1205,14 +1263,41 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
                 <span>Scan DTC Tables</span>
               </button>
             </div>
-          ) : filteredDtcs.length === 0 ? (
-            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-10 text-center">
-              <CheckCircle2 className="w-8 h-8 text-zinc-500 mx-auto mb-2" />
-              <p className="text-sm font-medium text-zinc-200">
-                {dtcScan && dtcScan.entries.length > 0
-                  ? 'No DTCs match the selected filter'
-                  : 'No contiguous Bosch/Siemens DTC tables found'}
-              </p>
+          ) : !filteredDtcs || filteredDtcs.length === 0 ? (
+            <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-10 text-center space-y-3">
+              <CheckCircle2 className="w-8 h-8 text-amber-400/80 mx-auto" />
+              <div>
+                <p className="text-sm font-semibold text-zinc-100">
+                  {dtcScan && dtcScan.entries.length > 0
+                    ? 'No DTCs match the selected filter'
+                    : 'Scanned BIN — 0 OEM DTC switch tables detected'}
+                </p>
+                {(!dtcScan || dtcScan.entries.length === 0) && (
+                  <p className="text-xs text-zinc-400 max-w-md mx-auto mt-1">
+                    No contiguous Bosch/Siemens P-code switch table was found in this binary. Load sample MED17 DTCs to preview live patching, or inspect raw flash in Hex.
+                  </p>
+                )}
+              </div>
+              {(!dtcScan || dtcScan.entries.length === 0) && (
+                <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleLoadSampleMed17Dtcs}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0a84ff] hover:bg-[#1e8fff] text-white text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Load Sample MED17 DTCs</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onShowInHex(0)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-zinc-200 text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    <Binary className="w-3.5 h-3.5 text-[#5ac8fa]" />
+                    <span>Open Hex</span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="rounded-xl bg-[#17181d] border border-white/[0.065] overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
@@ -1665,11 +1750,13 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({
           className="flex-1 overflow-y-auto p-5 space-y-4"
           onDragOver={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             setBatchDragging(true);
           }}
           onDragLeave={() => setBatchDragging(false)}
           onDrop={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             setBatchDragging(false);
             if (e.dataTransfer.files.length > 0) void handleAddBatchBins(e.dataTransfer.files);
           }}

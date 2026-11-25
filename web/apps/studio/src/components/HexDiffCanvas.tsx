@@ -77,6 +77,9 @@ export interface HexDiffCanvasProps {
   onRescanCandidates?: () => void;
   heatmapPalette?: HeatmapPalette;
   onPatchBytes?: (offset: number, next: Uint8Array, label: string) => void;
+  cols?: number;
+  onColsChange?: (cols: number) => void;
+  jumpNonce?: number;
 }
 
 type NumberBase = 'hex' | 'dec' | 'bin';
@@ -1100,12 +1103,39 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
   onRescanCandidates,
   heatmapPalette = 'thermal',
   onPatchBytes,
+  cols: controlledCols,
+  onColsChange,
+  jumpNonce,
 }) => {
   const applyPatch = onPatchBytes ?? onApplyPatch;
 
   // Format, display, view mode & split state
   const [wordFormat, setWordFormat] = useState<HexWordFormat>('u16le');
-  const [colCount, setColCount] = useState<number>(8);
+  const [colCount, setColCount] = useState<number>(() =>
+    controlledCols !== undefined && Number.isFinite(controlledCols)
+      ? Math.max(1, Math.min(32, Math.floor(controlledCols)))
+      : 8,
+  );
+  const colCountRef = useRef<number>(colCount);
+  colCountRef.current = colCount;
+
+  useEffect(() => {
+    if (controlledCols !== undefined && Number.isFinite(controlledCols)) {
+      const clamped = Math.max(1, Math.min(32, Math.floor(controlledCols)));
+      setColCount(clamped);
+    }
+  }, [controlledCols]);
+
+  const updateColCount = useCallback(
+    (nextOrUpdater: number | ((prev: number) => number)) => {
+      const prev = colCountRef.current;
+      const raw = typeof nextOrUpdater === 'function' ? nextOrUpdater(prev) : nextOrUpdater;
+      const clamped = Math.max(1, Math.min(32, Math.floor(raw)));
+      setColCount(clamped);
+      if (clamped !== prev) onColsChange?.(clamped);
+    },
+    [onColsChange],
+  );
   const [byteShift, setByteShift] = useState<number>(0);
   const [numberBase, setNumberBase] = useState<NumberBase>('hex');
   const [isSigned, setIsSigned] = useState<boolean>(false);
@@ -1464,7 +1494,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
     if (jumpAddress !== null && Number.isFinite(jumpAddress)) {
       scrollToAddress(jumpAddress);
     }
-  }, [jumpAddress, scrollToAddress]);
+  }, [jumpAddress, jumpNonce, scrollToAddress]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const st = e.currentTarget.scrollTop;
@@ -1603,7 +1633,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
       if (c.bits === 8) setWordFormat('u8');
       else if (c.bits === 16) setWordFormat(c.lsbFirst ? 'u16le' : 'u16be');
       else if (c.bits === 32) setWordFormat(c.isFloat ? (c.lsbFirst ? 'f32le' : 'f32be') : c.lsbFirst ? 'u32le' : 'u32be');
-      setColCount(nextCols);
+      updateColCount(nextCols);
       const nextRowBytes = nextCols * nextWb;
       setByteShift(c.address % Math.max(1, nextRowBytes));
     }
@@ -1880,9 +1910,13 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
     return { addr, u8, u16le, u16be, binStr, xdfItem: xdfSpan?.item ?? null };
   }, [hover, selectedRange, bin, findXdfAt]);
 
-  // Keyboard shortcuts: M / W cols, [ / ] byte shift, Alt+P toggle potential maps
+  // Keyboard shortcuts: Escape closes popovers, M / W cols, [ / ] byte shift, Alt+P toggle potential maps
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setBookmarksOpen(false);
+        return;
+      }
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (e.altKey && e.code === 'KeyP') {
@@ -1894,10 +1928,10 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
       const k = e.key.toLowerCase();
       if (k === 'm') {
         e.preventDefault();
-        setColCount((c) => Math.max(1, c - 1));
+        updateColCount((c) => Math.max(1, c - 1));
       } else if (k === 'w') {
         e.preventDefault();
-        setColCount((c) => Math.min(32, c + 1));
+        updateColCount((c) => Math.min(32, c + 1));
       } else if (e.key === '[') {
         e.preventDefault();
         setByteShift((s) => (s - 1 + rowBytes) % Math.max(1, rowBytes));
@@ -1908,7 +1942,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [rowBytes]);
+  }, [rowBytes, updateColCount]);
 
   const handleAutoSyncCompare = useCallback(() => {
     if (!compareBin) return;
@@ -2036,7 +2070,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
           >
             <button
               type="button"
-              onClick={() => setColCount((c) => Math.max(1, c - 1))}
+              onClick={() => updateColCount((c) => Math.max(1, c - 1))}
               className="rounded px-1.5 py-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
             >
               −
@@ -2048,14 +2082,14 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
               value={colCount}
               onChange={(e) => {
                 const v = parseInt(e.target.value, 10);
-                if (Number.isFinite(v)) setColCount(Math.max(1, Math.min(32, v)));
+                if (Number.isFinite(v)) updateColCount(Math.max(1, Math.min(32, v)));
               }}
               className="w-7 bg-transparent text-center text-zinc-100 outline-none [appearance:textfield]"
             />
             <span className="pr-1 text-[10px] text-zinc-500">col</span>
             <button
               type="button"
-              onClick={() => setColCount((c) => Math.min(32, c + 1))}
+              onClick={() => updateColCount((c) => Math.min(32, c + 1))}
               className="rounded px-1.5 py-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
             >
               +
@@ -3547,7 +3581,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             else onAddCandidateToXdf(c, true);
           }}
           onOpenXdfItem={(item) => onSelectXdfItem(item.id)}
-          onSetCols={(cols) => setColCount(Math.max(1, Math.min(32, cols)))}
+          onSetCols={(cols) => updateColCount(Math.max(1, Math.min(32, cols)))}
           onIgnoreCandidate={handleIgnoreCandidate}
           heatmapPalette={heatmapPalette}
         />
@@ -3607,7 +3641,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             else onAddCandidateToXdf(c, true);
           }}
           onSetCols={(cols) => {
-            setColCount(Math.max(1, Math.min(32, cols)));
+            updateColCount(Math.max(1, Math.min(32, cols)));
             showToast(`Columns set to ${cols}`);
           }}
           onSelectMapWithAxes={handleSelectMapWithAxes}
@@ -3623,7 +3657,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
           onSetColsToSelectionWidth={() => {
             if (!selectedRange || selectedRange[1] <= selectedRange[0]) return;
             const elems = Math.max(1, Math.min(32, Math.floor((selectedRange[1] - selectedRange[0]) / wordBytes)));
-            setColCount(elems);
+            updateColCount(elems);
             showToast(`Columns set to ${elems}`);
           }}
           onFillCustomByte={() => {

@@ -85,20 +85,20 @@ function detectEndianness(bytes: Uint8Array): { lsb: boolean; familyHint: string
  * 3. Parallel 8-bit Error-Class / Switch Table correlation within ±128 KB
  */
 export function scanDtcs(bytes: Uint8Array): DtcScanResult {
-  const { lsb, familyHint } = detectEndianness(bytes);
-  const endianness: 'LE' | 'BE' = lsb ? 'LE' : 'BE';
-
-  if (bytes.length < 256) {
+  if (!bytes || bytes.length < 256) {
     return {
       entries: [],
       codeTableAddress: -1,
       switchTableAddress: -1,
       stride: 2,
-      endianness,
-      familyHint,
+      endianness: 'LE',
+      familyHint: 'Bosch / TriCore (LE)',
       p0607Anchored: false,
     };
   }
+
+  const { lsb, familyHint } = detectEndianness(bytes);
+  const endianness: 'LE' | 'BE' = lsb ? 'LE' : 'BE';
 
   const minCount = bytes.length >= 4096 ? 30 : 12;
   const minUnique = bytes.length >= 4096 ? 20 : 8;

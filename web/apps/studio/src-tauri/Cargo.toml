@@ -1,6 +1,6 @@
 [package]
 name = "mactuner-desktop"
-version = "4.1.0"
+version = "4.1.1"
 description = "MacTuner — Cross-Platform ECU & TCU Calibration Workbench"
 authors = ["leonsuv <leon.suvorkov@outlook.de>"]
 edition = "2021"

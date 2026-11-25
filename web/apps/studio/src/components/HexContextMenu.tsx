@@ -139,15 +139,19 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
     const el = menuRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const pad = 10;
+    const pad = 12;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    const menuWidth = rect.width;
+    const menuHeight = Math.min(rect.height, vh * 0.8);
     let left = x;
     let top = y;
-    if (left + rect.width + pad > vw) left = Math.max(pad, vw - rect.width - pad);
-    if (top + rect.height + pad > vh) top = Math.max(pad, vh - rect.height - pad);
+    if (left + menuWidth > vw - pad) left = vw - menuWidth - pad;
+    if (top + menuHeight > vh - pad) top = vh - menuHeight - pad;
+    left = Math.max(pad, left);
+    top = Math.max(pad, top);
     setPos({ left, top });
-  }, [x, y]);
+  }, [x, y, candidate, xdfItem, selectedRange]);
 
   useEffect(() => {
     const handlePointerDown = (e: MouseEvent) => {
@@ -179,9 +183,9 @@ export const HexContextMenu: React.FC<HexContextMenuProps> = ({
     <div
       ref={menuRef}
       role="menu"
-      style={{ left: pos.left, top: pos.top, maxHeight: 'calc(100vh - 20px)' }}
+      style={{ left: pos.left, top: pos.top }}
       onContextMenu={(e) => e.preventDefault()}
-      className="glass-popover fixed z-50 w-72 overflow-y-auto select-none rounded-xl p-1.5 text-zinc-100"
+      className="glass-popover fixed z-50 w-72 max-h-[80vh] overflow-y-auto select-none rounded-xl p-1.5 text-zinc-100"
     >
       {/* Header badge */}
       <div className="mb-1 flex items-center justify-between border-b border-white/[0.065] px-2.5 py-1.5">

@@ -140,7 +140,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         group: 'Jump',
         icon: <Binary className="h-4 w-4 text-sky-400" />,
         run: () => {
-          if (onSelectHexRange) onSelectHexRange([start, end]);
+          if (onSelectHexRange) onSelectHexRange([start, end + 1]);
           else onJumpAddress(start);
         },
       });

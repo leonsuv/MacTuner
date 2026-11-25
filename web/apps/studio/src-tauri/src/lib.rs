@@ -75,19 +75,19 @@ pub fn run() {
                 .accelerator("CmdOrCtrl+0")
                 .build(app)?;
             let view_hex = MenuItemBuilder::with_id("view-hex", "Hex Editor")
-                .accelerator("CmdOrCtrl+1")
+                .accelerator("Alt+CmdOrCtrl+1")
                 .build(app)?;
             let view_map = MenuItemBuilder::with_id("view-map", "Map Editor")
-                .accelerator("CmdOrCtrl+2")
+                .accelerator("Alt+CmdOrCtrl+2")
                 .build(app)?;
             let view_compare = MenuItemBuilder::with_id("view-compare", "Multi-File Compare")
-                .accelerator("CmdOrCtrl+3")
+                .accelerator("Alt+CmdOrCtrl+3")
                 .build(app)?;
             let view_memory = MenuItemBuilder::with_id("view-memory", "Memory Map")
-                .accelerator("CmdOrCtrl+4")
+                .accelerator("Alt+CmdOrCtrl+4")
                 .build(app)?;
             let view_flash = MenuItemBuilder::with_id("view-flash", "Flash Preflight & Checksums")
-                .accelerator("CmdOrCtrl+5")
+                .accelerator("Alt+CmdOrCtrl+5")
                 .build(app)?;
             let toggle_bottom_drawer = MenuItemBuilder::with_id("toggle-bottom-drawer", "Toggle Bottom Drawer")
                 .accelerator("Shift+CmdOrCtrl+Y")
@@ -117,9 +117,7 @@ pub fn run() {
 
             let fix_cs = MenuItemBuilder::with_id("fix-checksums", "Fix Checksums").build(app)?;
             let swap_bins = MenuItemBuilder::with_id("swap-bins", "Swap Active & Comparison BIN").build(app)?;
-            let toggle_favorite = MenuItemBuilder::with_id("toggle-favorite", "Toggle Favorite")
-                .accelerator("CmdOrCtrl+D")
-                .build(app)?;
+            let toggle_favorite = MenuItemBuilder::with_id("toggle-favorite", "Toggle Favorite").build(app)?;
             let next_changed_map = MenuItemBuilder::with_id("next-changed-map", "Next Changed Map")
                 .accelerator("Alt+CmdOrCtrl+Down")
                 .build(app)?;

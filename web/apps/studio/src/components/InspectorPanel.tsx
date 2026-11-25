@@ -53,7 +53,7 @@ import {
   verifyChecksums,
 } from '@mactuner/core';
 
-export type UnitSystem = 'metric' | 'imperial';
+export type UnitSystem = 'original' | 'metric' | 'imperial';
 export type TranslationMode = 'original' | 'en' | 'de';
 type InspectorTab = 'notes' | 'preflight' | 'physics' | 'properties';
 
@@ -243,7 +243,7 @@ export function convertUnitValue(
 ): { value: number; unit: string; converted: boolean } {
   const rawUnit = xdfUnit.trim();
   const u = rawUnit.toLowerCase();
-  if (!u) return { value, unit: rawUnit, converted: false };
+  if (!u || system === 'original') return { value, unit: rawUnit, converted: false };
 
   if (system === 'imperial') {
     if (u === '°c' || u === 'c' || u === 'degc' || u === 'celsius') {
@@ -758,7 +758,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           {(
             [
               ['notes', 'Map', StickyNote],
-              ['preflight', 'Check', ShieldCheck],
+              ['preflight', 'Lint', ShieldCheck],
               ['physics', 'Calc', Calculator],
               ['properties', 'ECU', Cpu],
             ] as const
@@ -769,14 +769,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 key={key}
                 type="button"
                 onClick={() => setActiveTab(key)}
-                className={`relative inline-flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[10px] font-medium transition-all cursor-pointer ${
+                className={`relative inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-all cursor-pointer ${
                   active
                     ? 'bg-[#0a84ff] text-white shadow-[0_1px_6px_rgba(10,132,255,0.35)]'
                     : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 <Icon className="w-3 h-3 shrink-0" />
-                <span className="truncate">{label}</span>
+                <span>{label}</span>
                 {key === 'preflight' && preflightBadgeCount > 0 && !active && (
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
                 )}
@@ -906,6 +906,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   <div className="inline-flex rounded-md bg-white/[0.05] p-0.5">
                     {(
                       [
+                        ['original', 'Orig'],
                         ['metric', 'Metric'],
                         ['imperial', 'Imperial'],
                       ] as const

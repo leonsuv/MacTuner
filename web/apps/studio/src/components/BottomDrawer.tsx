@@ -12,10 +12,12 @@ import {
 import {
   BinCodec,
   cellOffset,
+  detectChecksumPlugin,
   elementBytes,
   parsePflashPartitions,
   scalingRawFor,
   scalingValue,
+  verifyChecksums,
   type Cell,
   type HeatmapPalette,
   type Patch,
@@ -51,6 +53,7 @@ export interface BottomDrawerProps {
   onResetMap?: (item: XDFItem) => void;
   invalidChecksumCount: number;
   checksumPluginName?: string;
+  selectedProfileId?: string;
   onFixChecksums: () => void;
   onOpenDatalogView: () => void;
   onOpenFlashView: () => void;
@@ -95,6 +98,7 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
   onResetMap,
   invalidChecksumCount,
   checksumPluginName,
+  selectedProfileId,
   onFixChecksums,
   onOpenDatalogView,
   onOpenFlashView,
@@ -169,6 +173,18 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
 
   const partitions = useMemo(() => parsePflashPartitions(bin), [bin]);
 
+  const preflightChecksum = useMemo(() => {
+    const effectiveProfileId =
+      selectedProfileId && selectedProfileId !== 'auto'
+        ? selectedProfileId
+        : detectChecksumPlugin(bin).id;
+    return verifyChecksums(bin, compareBin ?? undefined, effectiveProfileId);
+  }, [bin, compareBin, selectedProfileId]);
+
+  const effectiveInvalidCount =
+    preflightChecksum.blocks.length > 0 ? preflightChecksum.invalidCount : invalidChecksumCount;
+  const effectivePluginName = preflightChecksum.pluginName || checksumPluginName;
+
   if (!open) return null;
 
   return (
@@ -225,9 +241,9 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
           >
             <HardDrive className="h-3.5 w-3.5" />
             <span>Preflight & Atlas</span>
-            {invalidChecksumCount > 0 && (
+            {effectiveInvalidCount > 0 && (
               <span className="rounded-full bg-rose-500/20 px-1.5 text-[10px] font-mono text-rose-300">
-                {invalidChecksumCount}
+                {effectiveInvalidCount}
               </span>
             )}
           </button>
@@ -331,7 +347,7 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
           <div className="flex h-full flex-col justify-between px-5 py-3 overflow-y-auto gap-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                {invalidChecksumCount === 0 ? (
+                {effectiveInvalidCount === 0 ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-300">
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     All Checksums Valid
@@ -339,16 +355,16 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({
                 ) : (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-3 py-1 text-xs font-semibold text-rose-300">
                     <ShieldAlert className="h-3.5 w-3.5" />
-                    {invalidChecksumCount} Invalid Checksum Block(s)
+                    {effectiveInvalidCount} Invalid Checksum Block(s)
                   </span>
                 )}
-                {checksumPluginName && (
-                  <span className="text-xs text-zinc-400 font-mono">{checksumPluginName}</span>
+                {effectivePluginName && (
+                  <span className="text-xs text-zinc-400 font-mono">{effectivePluginName}</span>
                 )}
               </div>
 
               <div className="flex items-center gap-2">
-                {invalidChecksumCount > 0 && (
+                {effectiveInvalidCount > 0 && (
                   <button
                     type="button"
                     onClick={onFixChecksums}

@@ -42,17 +42,20 @@ import {
   InterpolationMode,
   Patch,
   TableOps,
+  UnitSystem,
   XDFDefinition,
   XDFItem,
   XdfPatchEntry,
   cellKey,
   cellOffset,
   clampRange,
+  displayUnit,
   elementBytes,
   eval1D,
   fillAverage,
   findSyncBlocks,
   flattenRange,
+  getUnitConversion,
   isMonotonic,
   layoutTypeDescription,
   parseCellKey,
@@ -92,11 +95,14 @@ export interface MapEditorViewProps {
   safeRange?: { min?: number; max?: number };
   onUpdateSafeRange?: (range: { min?: number; max?: number } | undefined) => void;
   isPinned?: boolean;
+  splitPinnedActive?: boolean;
   onTogglePin?: () => void;
   mirrorPinnedEdits?: boolean;
   onToggleMirrorPinned?: () => void;
   openBins?: MapEditorOpenBin[];
+  activeBinId?: string;
   onCopyMapFrom?: (source: { kind: 'compare' | 'bin' | 'map'; id?: string | number }) => void;
+  unitSystem?: UnitSystem;
   datalogHits?: Map<string, number> | Record<string, number>;
   datalogActiveCell?: Cell | null;
   datalogPoints?: DatalogPoint3D[];
@@ -186,11 +192,14 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
   safeRange: controlledSafeRange,
   onUpdateSafeRange,
   isPinned = false,
+  splitPinnedActive = false,
   onTogglePin,
   mirrorPinnedEdits = false,
   onToggleMirrorPinned,
   openBins = [],
+  activeBinId,
   onCopyMapFrom,
+  unitSystem = 'original',
   datalogHits,
   datalogActiveCell = null,
   datalogPoints,
@@ -431,6 +440,40 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
     );
   }, [xdf, item, rows, cols]);
 
+  // Filter out currently active BIN from "Copy From → Open BINs"
+  const otherOpenBins = useMemo(
+    () => openBins.filter((ob) => (activeBinId ? ob.id !== activeBinId : ob.bytes !== bin)),
+    [openBins, activeBinId, bin],
+  );
+
+  // Unit system conversion (display-only; binary encoding stays in native XDF units)
+  const unitConv = useMemo(
+    () => getUnitConversion(item.scaling.units, unitSystem),
+    [item.scaling.units, unitSystem],
+  );
+  const activeUnitLabel = useMemo(
+    () => displayUnit(item.scaling.units, unitSystem),
+    [item.scaling.units, unitSystem],
+  );
+  const formatDisplayValue = useCallback(
+    (v: number) => {
+      if (!unitConv) return scalingFormat(item.scaling, v);
+      const dv = unitConv.toDisplay(v);
+      const dec = Math.max(item.scaling.decimals, Math.abs(dv) < 10 ? 2 : 1);
+      return Number.isFinite(dv) ? dv.toFixed(Math.min(4, dec)) : '—';
+    },
+    [unitConv, item.scaling],
+  );
+  const formatDisplayDelta = useCallback(
+    (d: number) => {
+      if (!unitConv) return scalingFormat(item.scaling, d);
+      const dd = d * unitConv.deltaScale;
+      const dec = Math.max(item.scaling.decimals, Math.abs(dd) < 10 ? 2 : 1);
+      return Number.isFinite(dd) ? dd.toFixed(Math.min(4, dec)) : '—';
+    },
+    [unitConv, item.scaling],
+  );
+
   // Datalog hit lookup helper
   const getDatalogHitCount = useCallback(
     (key: string): number => {
@@ -563,6 +606,18 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
     };
   }, [item, bin, compareBin, rows, cols, effectiveSafeRange]);
 
+  const displayValGrid = useMemo(() => {
+    if (!unitConv) return tableData.valGrid;
+    return tableData.valGrid.map((row) => row.map((v) => (v !== null ? unitConv.toDisplay(v) : null)));
+  }, [tableData.valGrid, unitConv]);
+
+  const displayCmpValGrid = useMemo(() => {
+    if (!tableData.cmpValGrid || !unitConv) return tableData.cmpValGrid;
+    return tableData.cmpValGrid.map((row) =>
+      row.map((v) => (v !== null ? unitConv.toDisplay(v) : null)),
+    );
+  }, [tableData.cmpValGrid, unitConv]);
+
   // Close open edit popovers if map becomes locked
   useEffect(() => {
     if (isLocked) {
@@ -615,17 +670,18 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
   const handleEditCell = useCallback(
     (cell: Cell, newValue: number) => {
       if (isLocked || viewMode === 'compare' || !Number.isFinite(newValue)) return;
+      const nativeValue = unitConv ? unitConv.toNative(newValue) : newValue;
       const key = cellKey(cell);
       const yLbl = yLabels[cell.r] ?? String(cell.r);
       const xLbl = xLabels[cell.c] ?? String(cell.c);
-      const formatted = scalingFormat(item.scaling, newValue);
-      commitEngineeringValues(new Map([[key, newValue]]), `Edit [${yLbl} × ${xLbl}] → ${formatted}`);
+      const formatted = scalingFormat(item.scaling, nativeValue);
+      commitEngineeringValues(new Map([[key, nativeValue]]), `Edit [${yLbl} × ${xLbl}] → ${formatted}`);
       setAnchorCell(cell);
       setFocusCell(cell);
       setSelectedKeys(new Set([key]));
       setDirectInput(formatted);
     },
-    [isLocked, viewMode, yLabels, xLabels, item.scaling, commitEngineeringValues],
+    [isLocked, viewMode, unitConv, yLabels, xLabels, item.scaling, commitEngineeringValues],
   );
 
   // Inline axis breakpoint commit
@@ -1284,20 +1340,6 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
         (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
       if (isInput) return;
 
-      // Favorite toggle (Cmd/Ctrl+D)
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd') {
-        e.preventDefault();
-        handleToggleFavorite();
-        return;
-      }
-
-      // Lock toggle (Cmd/Ctrl+L)
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l' && onToggleLock) {
-        e.preventDefault();
-        onToggleLock();
-        return;
-      }
-
       if (kind !== 'table') return;
 
       // Escape: cancel inline typing or clear selection
@@ -1449,8 +1491,6 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
     buildRectSelection,
     tableData.valGrid,
     item.scaling,
-    handleToggleFavorite,
-    onToggleLock,
     selectAll,
     handleCopySelection,
     handlePasteFromClipboard,
@@ -1558,6 +1598,13 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               .padStart(eb * 2, '0')}`
           : '—';
 
+      const rawStepVal = scalingRawStep(item.scaling);
+      const displayStepVal = unitConv ? rawStepVal * unitConv.deltaScale : rawStepVal;
+      const formattedRawStep =
+        Math.abs(displayStepVal) > 0 && Math.abs(displayStepVal) < 1
+          ? Number(displayStepVal.toPrecision(3)).toString()
+          : scalingFormat(item.scaling, displayStepVal);
+
       const applyConstant = (nextVal: number) => {
         if (isLocked || !Number.isFinite(nextVal)) return;
         commitEngineeringValues(
@@ -1580,10 +1627,14 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                       isOor ? 'text-rose-400' : 'text-[#0a84ff]'
                     }`}
                   >
-                    {raw !== null ? scalingDisplay(item.scaling, raw, item.data) : '—'}
-                    {item.scaling.units && (
+                    {raw !== null && val !== null
+                      ? unitConv
+                        ? formatDisplayValue(val)
+                        : scalingDisplay(item.scaling, raw, item.data)
+                      : '—'}
+                    {activeUnitLabel && (
                       <span className="ml-2 text-lg font-medium text-zinc-400">
-                        {item.scaling.units}
+                        {activeUnitLabel}
                       </span>
                     )}
                   </div>
@@ -1597,7 +1648,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                     }`}
                   >
                     {delta > 0 ? '+' : ''}
-                    {scalingFormat(item.scaling, delta)} vs Compare
+                    {formatDisplayDelta(delta)} vs Compare
                   </span>
                 )}
               </div>
@@ -1671,7 +1722,9 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-1">
                 <div className="text-[10px] uppercase tracking-wider text-zinc-500">Compare BIN</div>
                 <div className="text-xs font-mono font-semibold text-zinc-100">
-                  {cmpVal !== null ? `${scalingFormat(item.scaling, cmpVal)} ${item.scaling.units}` : '—'}
+                  {cmpVal !== null
+                    ? `${formatDisplayValue(cmpVal)}${activeUnitLabel ? ` ${activeUnitLabel}` : ''}`
+                    : '—'}
                 </div>
                 <div className="text-[10.5px] font-mono text-zinc-500">
                   {compareBin ? 'Baseline loaded' : 'No compare BIN'}
@@ -1680,7 +1733,8 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               <div className="rounded-xl bg-[#17181d] border border-white/[0.065] p-3 space-y-1">
                 <div className="text-[10px] uppercase tracking-wider text-zinc-500">1 Raw Step</div>
                 <div className="text-xs font-mono font-semibold text-zinc-100">
-                  {scalingFormat(item.scaling, scalingRawStep(item.scaling))} {item.scaling.units}
+                  {formattedRawStep}
+                  {activeUnitLabel ? ` ${activeUnitLabel}` : ''}
                 </div>
                 <div className="text-[10.5px] font-mono text-zinc-500">{layoutTypeDescription(item.data)}</div>
               </div>
@@ -1983,7 +2037,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
       {/* Top Header */}
       <div
         ref={headerRef}
-        className="shrink-0 px-4 py-2.5 border-b border-white/[0.065] bg-[#121317]/90 backdrop-blur-xl space-y-1.5"
+        className="relative z-40 shrink-0 px-4 py-2.5 border-b border-white/[0.065] bg-[#121317]/90 backdrop-blur-xl space-y-1.5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="min-w-0 flex flex-col gap-1">
@@ -2160,10 +2214,10 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               </span>
               <span className="text-zinc-700">·</span>
               <span>{layoutTypeDescription(item.data)}</span>
-              {item.scaling.units && (
+              {activeUnitLabel && (
                 <>
                   <span className="text-zinc-700">·</span>
-                  <span className="text-zinc-300">{item.scaling.units}</span>
+                  <span className="text-zinc-300">{activeUnitLabel}</span>
                 </>
               )}
               {item.scaling.equation && item.scaling.equation !== 'X' && (
@@ -2274,40 +2328,38 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
 
             {/* Pin for Split + Mirror Edits */}
             {onTogglePin && (
-              <>
-                <button
-                  type="button"
-                  onClick={onTogglePin}
-                  className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    isPinned
-                      ? 'bg-[#0a84ff]/20 border border-[#0a84ff]/40 text-sky-300'
-                      : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200'
-                  }`}
-                  title="Pin map for side-by-side split editing"
-                >
-                  <Pin className="w-3.5 h-3.5" />
-                  {isPinned ? 'Pinned' : 'Pin'}
-                </button>
-                {isPinned && onToggleMirrorPinned && (
-                  <button
-                    type="button"
-                    onClick={onToggleMirrorPinned}
-                    className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                      mirrorPinnedEdits
-                        ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
-                        : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300'
-                    }`}
-                    title="Mirror edits live to pinned split map"
-                  >
-                    <Link2 className="w-3.5 h-3.5" />
-                    Mirror Edits
-                  </button>
-                )}
-              </>
+              <button
+                type="button"
+                onClick={onTogglePin}
+                className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  isPinned
+                    ? 'bg-[#0a84ff]/20 border border-[#0a84ff]/40 text-sky-300'
+                    : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200'
+                }`}
+                title="Pin map for side-by-side split editing"
+              >
+                <Pin className="w-3.5 h-3.5" />
+                {isPinned ? 'Pinned' : 'Pin'}
+              </button>
+            )}
+            {(isPinned || splitPinnedActive) && onToggleMirrorPinned && (
+              <button
+                type="button"
+                onClick={onToggleMirrorPinned}
+                className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  mirrorPinnedEdits
+                    ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                    : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300'
+                }`}
+                title="Mirror edits live to pinned split map"
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                Mirror Edits
+              </button>
             )}
 
             {/* Copy From… Dropdown */}
-            {kind === 'table' && (compareBin || openBins.length > 0 || sameDimMaps.length > 0) && (
+            {kind === 'table' && (compareBin || otherOpenBins.length > 0 || sameDimMaps.length > 0) && (
               <div className="relative">
                 <button
                   type="button"
@@ -2325,7 +2377,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                   <ChevronDown className="w-3 h-3 opacity-60" />
                 </button>
                 {openMenu === 'copyFrom' && (
-                  <div className="absolute right-0 top-full mt-1.5 z-40 w-60 rounded-xl glass-popover py-1.5 text-xs">
+                  <div className="absolute right-0 top-full mt-1.5 z-[70] w-60 rounded-xl glass-popover py-1.5 text-xs">
                     {compareBin && (
                       <button
                         type="button"
@@ -2335,12 +2387,12 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                         Comparison BIN (Baseline)
                       </button>
                     )}
-                    {openBins.length > 0 && (
+                    {otherOpenBins.length > 0 && (
                       <>
                         <div className="px-3 pt-1.5 pb-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-zinc-500">
                           Open BINs
                         </div>
-                        {openBins.map((ob) => (
+                        {otherOpenBins.map((ob) => (
                           <button
                             key={ob.id}
                             type="button"
@@ -3196,21 +3248,39 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
               <span>
                 min{' '}
                 <strong className="text-zinc-200 font-semibold">
-                  {stats.min !== null ? scalingFormat(item.scaling, stats.min) : '—'}
+                  {stats.min !== null
+                    ? viewMode === 'deltaPct'
+                      ? scalingFormat(item.scaling, stats.min)
+                      : viewMode === 'delta'
+                        ? formatDisplayDelta(stats.min)
+                        : formatDisplayValue(stats.min)
+                    : '—'}
                   {viewMode === 'deltaPct' && stats.min !== null ? '%' : ''}
                 </strong>
               </span>
               <span>
                 max{' '}
                 <strong className="text-zinc-200 font-semibold">
-                  {stats.max !== null ? scalingFormat(item.scaling, stats.max) : '—'}
+                  {stats.max !== null
+                    ? viewMode === 'deltaPct'
+                      ? scalingFormat(item.scaling, stats.max)
+                      : viewMode === 'delta'
+                        ? formatDisplayDelta(stats.max)
+                        : formatDisplayValue(stats.max)
+                    : '—'}
                   {viewMode === 'deltaPct' && stats.max !== null ? '%' : ''}
                 </strong>
               </span>
               <span>
                 avg{' '}
                 <strong className="text-zinc-100 font-semibold">
-                  {stats.avg !== null ? scalingFormat(item.scaling, stats.avg) : '—'}
+                  {stats.avg !== null
+                    ? viewMode === 'deltaPct'
+                      ? scalingFormat(item.scaling, stats.avg)
+                      : viewMode === 'delta'
+                        ? formatDisplayDelta(stats.avg)
+                        : formatDisplayValue(stats.avg)
+                    : '—'}
                   {viewMode === 'deltaPct' && stats.avg !== null ? '%' : ''}
                 </strong>
               </span>
@@ -3385,7 +3455,9 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
 
                           if (viewMode === 'bin') {
                             if (raw !== null && val !== null) {
-                              displayText = scalingDisplay(item.scaling, raw, item.data);
+                              displayText = unitConv
+                                ? formatDisplayValue(val)
+                                : scalingDisplay(item.scaling, raw, item.data);
                               const span = tableData.maxVal - tableData.minVal;
                               const t = span > 1e-12 ? (val - tableData.minVal) / span : 0.5;
                               const colors = getHeatmapCellColors(t, heatmapPalette);
@@ -3395,7 +3467,9 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                             }
                           } else if (viewMode === 'compare') {
                             if (craw !== null && cval !== null) {
-                              displayText = scalingDisplay(item.scaling, craw, item.data);
+                              displayText = unitConv
+                                ? formatDisplayValue(cval)
+                                : scalingDisplay(item.scaling, craw, item.data);
                               const span = tableData.maxCmp - tableData.minCmp;
                               const t = span > 1e-12 ? (cval - tableData.minCmp) / span : 0.5;
                               const colors = getHeatmapCellColors(t, heatmapPalette);
@@ -3412,7 +3486,7 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                                 bg = '#1a1b20';
                                 isMutedZero = true;
                               } else {
-                                displayText = `${d > 0 ? '+' : ''}${scalingFormat(item.scaling, d)}`;
+                                displayText = `${d > 0 ? '+' : ''}${formatDisplayDelta(d)}`;
                                 bg = deltaTileBg(d, tableData.maxAbsDelta);
                                 isColoredTile = true;
                               }
@@ -3508,14 +3582,14 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 {show3D && (
                   <Surface3DCanvas
                     values={
-                      viewMode === 'compare' && tableData.cmpValGrid
-                        ? tableData.cmpValGrid
-                        : tableData.valGrid
+                      viewMode === 'compare' && displayCmpValGrid
+                        ? displayCmpValGrid
+                        : displayValGrid
                     }
-                    compareValues={viewMode === 'compare' ? tableData.valGrid : tableData.cmpValGrid}
+                    compareValues={viewMode === 'compare' ? displayValGrid : displayCmpValGrid}
                     xLabels={xLabels}
                     yLabels={yLabels}
-                    units={item.scaling.units}
+                    units={activeUnitLabel}
                     decimals={item.scaling.decimals}
                     hoveredCell={hoveredCell}
                     selectedKeys={selectedKeys}
@@ -3538,15 +3612,15 @@ export const MapEditorView: React.FC<MapEditorViewProps> = ({
                 {show2D && (
                   <Curves2DCanvas
                     values={
-                      viewMode === 'compare' && tableData.cmpValGrid
-                        ? tableData.cmpValGrid
-                        : tableData.valGrid
+                      viewMode === 'compare' && displayCmpValGrid
+                        ? displayCmpValGrid
+                        : displayValGrid
                     }
-                    compareValues={viewMode === 'compare' ? tableData.valGrid : tableData.cmpValGrid}
+                    compareValues={viewMode === 'compare' ? displayValGrid : displayCmpValGrid}
                     xLabels={xLabels}
                     yLabels={yLabels}
                     xValues={xValues}
-                    units={item.scaling.units}
+                    units={activeUnitLabel}
                     decimals={item.scaling.decimals}
                     selectedKeys={selectedKeys}
                     hoveredCell={hoveredCell}

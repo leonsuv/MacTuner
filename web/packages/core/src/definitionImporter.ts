@@ -1759,3 +1759,241 @@ export function parseBinaryFile(filename: string, bytes: Uint8Array): Uint8Array
   }
   return new Uint8Array(bytes);
 }
+
+// MARK: - Smart Definition Merge (Preserve User Metadata Across Updated Addresses)
+
+export type XDFDocument = XDFDefinition;
+
+export interface SmartMergeResult {
+  document: XDFDocument;
+  updatedCount: number;
+  addedCount: number;
+  preservedCount: number;
+}
+
+function normalizeMergeTitle(title: string): string {
+  return title.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function cloneAxisWithAddress(existingAxis: Axis, incomingAxis: Axis): Axis {
+  if (incomingAxis.source.kind === 'data') {
+    if (existingAxis.source.kind === 'data') {
+      return {
+        ...existingAxis,
+        count: incomingAxis.count,
+        source: {
+          kind: 'data',
+          layout: {
+            ...existingAxis.source.layout,
+            address: incomingAxis.source.layout.address,
+            rows: incomingAxis.source.layout.rows,
+            cols: incomingAxis.source.layout.cols,
+          },
+        },
+      };
+    }
+    return {
+      ...incomingAxis,
+      source: {
+        kind: 'data',
+        layout: { ...incomingAxis.source.layout },
+      },
+      scaling: existingAxis.scaling.equation !== 'X' || existingAxis.scaling.units ? existingAxis.scaling : incomingAxis.scaling,
+    };
+  }
+  return existingAxis;
+}
+
+/**
+ * Smart-merges an incoming definition into an existing user-edited definition.
+ * Matches items by title, id, or dimensions; updates data & axis addresses from `incoming`
+ * while preserving custom user titles, scalings, descriptions, safeRanges, and notes.
+ */
+export function smartMergeDefinitions(
+  existing: XDFDocument,
+  incoming: XDFDocument,
+): SmartMergeResult {
+  // Merge categories (case-insensitive deduplication by name)
+  const mergedCategories: Record<number, string> = { ...existing.categories };
+  const catNameToId = new Map<string, number>();
+  let nextCatId = 0;
+  for (const [k, name] of Object.entries(mergedCategories)) {
+    const id = Number(k);
+    if (Number.isFinite(id)) {
+      if (id >= nextCatId) nextCatId = id + 1;
+      catNameToId.set(name.trim().toLowerCase(), id);
+    }
+  }
+  const incomingCatMap = new Map<number, number>();
+  for (const [k, name] of Object.entries(incoming.categories)) {
+    const incId = Number(k);
+    if (!Number.isFinite(incId)) continue;
+    const norm = name.trim().toLowerCase();
+    const existingCatId = catNameToId.get(norm);
+    if (existingCatId !== undefined) {
+      incomingCatMap.set(incId, existingCatId);
+    } else {
+      const assigned = nextCatId++;
+      mergedCategories[assigned] = name;
+      catNameToId.set(norm, assigned);
+      incomingCatMap.set(incId, assigned);
+    }
+  }
+
+  const remapCategories = (cats: number[]): number[] =>
+    cats.map((c) => incomingCatMap.get(c) ?? c);
+
+  const matchedExistingIdx = new Set<number>();
+  const mergedByExistingIdx = new Map<number, XDFItem>();
+  const addedItems: XDFItem[] = [];
+  let updatedCount = 0;
+
+  let maxId = -1;
+  for (const it of existing.items) {
+    if (it.id > maxId) maxId = it.id;
+  }
+  let nextItemId = maxId + 1;
+
+  for (const incItem of incoming.items) {
+    const incTitle = normalizeMergeTitle(incItem.title);
+    let matchIdx = -1;
+
+    // Tier 1: exact normalized title + same kind + same dimensions
+    for (let i = 0; i < existing.items.length; i++) {
+      if (matchedExistingIdx.has(i)) continue;
+      const ex = existing.items[i];
+      if (
+        normalizeMergeTitle(ex.title) === incTitle &&
+        ex.itemKind.kind === incItem.itemKind.kind &&
+        ex.data.rows === incItem.data.rows &&
+        ex.data.cols === incItem.data.cols
+      ) {
+        matchIdx = i;
+        break;
+      }
+    }
+
+    // Tier 2: exact normalized title + same kind
+    if (matchIdx === -1) {
+      for (let i = 0; i < existing.items.length; i++) {
+        if (matchedExistingIdx.has(i)) continue;
+        const ex = existing.items[i];
+        if (normalizeMergeTitle(ex.title) === incTitle && ex.itemKind.kind === incItem.itemKind.kind) {
+          matchIdx = i;
+          break;
+        }
+      }
+    }
+
+    // Tier 3: same id + same kind + same dimensions
+    if (matchIdx === -1) {
+      for (let i = 0; i < existing.items.length; i++) {
+        if (matchedExistingIdx.has(i)) continue;
+        const ex = existing.items[i];
+        if (
+          ex.id === incItem.id &&
+          ex.itemKind.kind === incItem.itemKind.kind &&
+          ex.data.rows === incItem.data.rows &&
+          ex.data.cols === incItem.data.cols
+        ) {
+          matchIdx = i;
+          break;
+        }
+      }
+    }
+
+    // Tier 4: same table dimensions + bits + address
+    if (matchIdx === -1 && incItem.itemKind.kind === 'table') {
+      for (let i = 0; i < existing.items.length; i++) {
+        if (matchedExistingIdx.has(i)) continue;
+        const ex = existing.items[i];
+        if (
+          ex.itemKind.kind === 'table' &&
+          ex.data.rows === incItem.data.rows &&
+          ex.data.cols === incItem.data.cols &&
+          ex.data.bits === incItem.data.bits &&
+          ex.data.address === incItem.data.address
+        ) {
+          matchIdx = i;
+          break;
+        }
+      }
+    }
+
+    if (matchIdx !== -1) {
+      matchedExistingIdx.add(matchIdx);
+      const ex = existing.items[matchIdx];
+      let nextKind = ex.itemKind;
+      if (ex.itemKind.kind === 'table' && incItem.itemKind.kind === 'table') {
+        nextKind = {
+          kind: 'table',
+          x: cloneAxisWithAddress(ex.itemKind.x, incItem.itemKind.x),
+          y: cloneAxisWithAddress(ex.itemKind.y, incItem.itemKind.y),
+        };
+      } else if (ex.itemKind.kind === 'patch' && incItem.itemKind.kind === 'patch') {
+        nextKind = {
+          kind: 'patch',
+          entries: incItem.itemKind.entries ? incItem.itemKind.entries.map((e) => ({ ...e })) : ex.itemKind.entries,
+        };
+      }
+
+      const merged: XDFItem = {
+        ...ex,
+        title: ex.title,
+        description: ex.description || incItem.description,
+        categories: ex.categories.length > 0 ? [...ex.categories] : remapCategories(incItem.categories),
+        itemKind: nextKind,
+        data: {
+          ...ex.data,
+          address: incItem.data.address,
+          rows: incItem.data.rows,
+          cols: incItem.data.cols,
+        },
+        scaling: ex.scaling,
+        ...(ex.safeRange !== undefined
+          ? { safeRange: { ...ex.safeRange } }
+          : incItem.safeRange !== undefined
+            ? { safeRange: { ...incItem.safeRange } }
+            : {}),
+        ...(incItem.patchEntries ? { patchEntries: incItem.patchEntries.map((e) => ({ ...e })) } : {}),
+      };
+      mergedByExistingIdx.set(matchIdx, merged);
+      updatedCount++;
+    } else {
+      addedItems.push({
+        ...incItem,
+        id: nextItemId++,
+        categories: remapCategories(incItem.categories),
+        data: { ...incItem.data },
+      });
+    }
+  }
+
+  const finalItems: XDFItem[] = [];
+  let preservedCount = 0;
+  for (let i = 0; i < existing.items.length; i++) {
+    const updated = mergedByExistingIdx.get(i);
+    if (updated) {
+      finalItems.push(updated);
+    } else {
+      finalItems.push({ ...existing.items[i], data: { ...existing.items[i].data } });
+      preservedCount++;
+    }
+  }
+  for (const added of addedItems) {
+    finalItems.push(added);
+  }
+
+  return {
+    document: {
+      title: existing.title || incoming.title,
+      description: existing.description || incoming.description,
+      baseOffset: incoming.baseOffset,
+      categories: mergedCategories,
+      items: finalItems,
+    },
+    updatedCount,
+    addedCount: addedItems.length,
+    preservedCount,
+  };
+}

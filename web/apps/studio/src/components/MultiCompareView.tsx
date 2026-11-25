@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRightLeft,
   ArrowUpRight,
@@ -55,6 +55,8 @@ export interface MultiCompareViewProps {
   ) => void;
   onPortTune?: () => void;
   onSwitchSection?: (section: string) => void;
+  externalSlotToAdd?: { id: string; name: string; bytes: Uint8Array } | null;
+  onExternalSlotConsumed?: () => void;
 }
 
 type CompareDisplayMode = 'values' | 'delta' | 'percent';
@@ -148,6 +150,8 @@ export const MultiCompareView: React.FC<MultiCompareViewProps> = ({
   onOpenPairInHex,
   onPortTune,
   onSwitchSection,
+  externalSlotToAdd = null,
+  onExternalSlotConsumed,
 }) => {
   const [extraSlots, setExtraSlots] = useState<ExtraSlot[]>([]);
   const [snapshotMenuOpen, setSnapshotMenuOpen] = useState<boolean>(false);
@@ -165,6 +169,23 @@ export const MultiCompareView: React.FC<MultiCompareViewProps> = ({
 
   const binInputRef = useRef<HTMLInputElement | null>(null);
   const defInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!externalSlotToAdd) return;
+    setExtraSlots((prev) => {
+      if (prev.some((s) => s.id === externalSlotToAdd.id)) return prev;
+      return [
+        ...prev,
+        {
+          id: externalSlotToAdd.id,
+          name: externalSlotToAdd.name,
+          bytes: externalSlotToAdd.bytes.slice(),
+        },
+      ];
+    });
+    setNotice(`Added "${externalSlotToAdd.name}" to multi-compare.`);
+    onExternalSlotConsumed?.();
+  }, [externalSlotToAdd, onExternalSlotConsumed]);
 
   const slots = useMemo<CompareSlot[]>(() => {
     const out: CompareSlot[] = [];
@@ -415,6 +436,7 @@ export const MultiCompareView: React.FC<MultiCompareViewProps> = ({
       className="h-full flex flex-col bg-[#0c0d10] text-zinc-100 overflow-hidden relative"
       onDragOver={(e) => {
         e.preventDefault();
+        e.stopPropagation();
         setIsDragging(true);
       }}
       onDragLeave={(e) => {
@@ -422,6 +444,7 @@ export const MultiCompareView: React.FC<MultiCompareViewProps> = ({
       }}
       onDrop={(e) => {
         e.preventDefault();
+        e.stopPropagation();
         setIsDragging(false);
         if (e.dataTransfer.files.length > 0) void handleAddBinFiles(e.dataTransfer.files);
       }}

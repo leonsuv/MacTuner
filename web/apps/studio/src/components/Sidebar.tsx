@@ -49,6 +49,7 @@ export interface MapCandidate {
   cols: number;
   bits: number;
   signed: boolean;
+  isFloat?: boolean;
   lsbFirst: boolean;
   confidence: number; // 0..1
   patternLabel?: string;
