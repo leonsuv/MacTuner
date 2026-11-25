@@ -645,6 +645,45 @@ export default function App() {
     [bin, showToast],
   );
 
+  // Native Tauri menu bar event listener (macOS / Windows / Linux)
+  useEffect(() => {
+    const tauriGlobal = (window as unknown as {
+      __TAURI__?: {
+        event?: {
+          listen: (event: string, cb: (ev: { payload: string }) => void) => Promise<() => void>;
+        };
+      };
+    }).__TAURI__;
+    if (!tauriGlobal?.event?.listen) return;
+    let unlisten: (() => void) | undefined;
+    void tauriGlobal.event
+      .listen('mactuner-menu', (ev) => {
+        switch (ev.payload) {
+          case 'check-updates': setUpdateModalOpen(true); void runUpdateCheck(); break;
+          case 'open-file': fileInputRef.current?.click(); break;
+          case 'open-compare': compareInputRef.current?.click(); break;
+          case 'save-project': handleSaveProject(); break;
+          case 'export-bin': setExportReviewOpen(true); break;
+          case 'export-xdf': handleExportDefinition('xdf', 'xdf'); break;
+          case 'edit-undo': handleUndo(); break;
+          case 'edit-redo': handleRedo(); break;
+          case 'view-hex': setSection('workspace'); setWorkbenchMode('hex'); break;
+          case 'view-map': setSection('workspace'); setWorkbenchMode('map'); break;
+          case 'view-compare': setSection('compare'); break;
+          case 'view-memory': setSection('memory'); break;
+          case 'view-flash': setSection('flash'); break;
+          case 'toggle-inspector': setInspectorCollapsed((v) => !v); break;
+          case 'command-palette': setPaletteOpen((v) => !v); break;
+          case 'fix-checksums': handleFixChecksums(); break;
+          case 'swap-bins': handleSwapBins(); break;
+        }
+      })
+      .then((fn) => {
+        unlisten = fn;
+      });
+    return () => unlisten?.();
+  }, [runUpdateCheck, handleSaveProject, handleExportDefinition, handleUndo, handleRedo, handleFixChecksums, handleSwapBins]);
+
   const navItems: Array<{ id: TopSection; label: string; icon: React.ReactNode }> = [
     { id: 'workspace', label: t('Workspace'), icon: <Layers className="h-3.5 w-3.5" /> },
     { id: 'compare', label: t('Compare'), icon: <Columns3 className="h-3.5 w-3.5" /> },

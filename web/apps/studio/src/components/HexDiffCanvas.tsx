@@ -101,10 +101,21 @@ function formatHexAddr(addr: number): string {
   return addr.toString(16).toUpperCase().padStart(6, '0');
 }
 
-function readWordHex(bytes: Uint8Array, offset: number, format: HexWordFormat): string {
-  if (offset >= bytes.length) return '··';
+function readWordHex(
+  bytes: Uint8Array,
+  offset: number,
+  format: HexWordFormat,
+  base: 'hex' | 'dec' = 'hex',
+  signed = false,
+): string {
+  if (offset < 0 || offset >= bytes.length) return '··';
   if (format === 'u8') {
-    return bytes[offset].toString(16).toUpperCase().padStart(2, '0');
+    const raw = bytes[offset];
+    if (base === 'dec') {
+      const v = signed && raw >= 128 ? raw - 256 : raw;
+      return String(v);
+    }
+    return raw.toString(16).toUpperCase().padStart(2, '0');
   }
   if (offset + 1 >= bytes.length) {
     return `${bytes[offset].toString(16).toUpperCase().padStart(2, '0')}··`;
@@ -113,6 +124,10 @@ function readWordHex(bytes: Uint8Array, offset: number, format: HexWordFormat): 
     format === 'u16le'
       ? bytes[offset] | (bytes[offset + 1] << 8)
       : (bytes[offset] << 8) | bytes[offset + 1];
+  if (base === 'dec') {
+    const v = signed && val >= 32768 ? val - 65536 : val;
+    return String(v);
+  }
   return val.toString(16).toUpperCase().padStart(4, '0');
 }
 
@@ -482,7 +497,11 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
   onFindTwins,
 }) => {
   const [wordFormat, setWordFormat] = useState<HexWordFormat>('u16le');
-  const [colCount, setColCount] = useState<ColCount>(8);
+  const [colCount, setColCount] = useState<number>(8);
+  const [byteShift, setByteShift] = useState<number>(0);
+  const [numberBase, setNumberBase] = useState<'hex' | 'dec'>('hex');
+  const [isSigned, setIsSigned] = useState<boolean>(false);
+  const [compareShift, setCompareShift] = useState<number>(0);
   const [diffsOnly, setDiffsOnly] = useState<boolean>(false);
   const [gotoInput, setGotoInput] = useState<string>('');
   const [topRow, setTopRow] = useState<number>(0);
@@ -906,29 +925,60 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
     return { addr, u8, u16le, u16be };
   }, [hover, selectedRange, bin]);
 
+  // WinOLS keyboard shortcuts: M / W adjust column width, [ / ] shift byte offset
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === 'm') {
+        e.preventDefault();
+        setColCount((c) => Math.max(1, c - 1));
+      } else if (k === 'w') {
+        e.preventDefault();
+        setColCount((c) => Math.min(32, c + 1));
+      } else if (e.key === '[') {
+        e.preventDefault();
+        setByteShift((s) => (s - 1 + rowBytes) % Math.max(1, rowBytes));
+      } else if (e.key === ']') {
+        e.preventDefault();
+        setByteShift((s) => (s + 1) % Math.max(1, rowBytes));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [rowBytes]);
+
+  const handleAutoSyncCompare = useCallback(() => {
+    if (!compareBin) return;
+    const res = core.autoAlignCompareOffset(bin, compareBin, windowStartAddress, 32768);
+    setCompareShift(res.offset);
+    showToast(`Auto-Sync: ${res.offset >= 0 ? '+' : ''}${res.offset} B (${Math.round(res.confidence * 100)}%)`);
+  }, [bin, compareBin, windowStartAddress, showToast]);
+
   const hasSelection = selectedRange !== null && selectedRange[1] > selectedRange[0];
-  const cellWidthCls = wordFormat === 'u8' ? 'w-6' : 'w-[42px]';
-  const cellGapCls = colCount === 8 ? 'gap-1.5' : 'gap-1';
+  const cellWidthCls = wordFormat === 'u8' ? (numberBase === 'dec' ? 'w-8' : 'w-6') : (numberBase === 'dec' ? 'w-[48px]' : 'w-[42px]');
+  const cellGapCls = colCount <= 8 ? 'gap-1.5' : 'gap-1';
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-[#0c0d10] text-zinc-100 select-none">
       {/* Top Toolbar */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/[0.065] bg-[#17181d] px-3 py-2">
-        {/* Left group: Word Format + Columns */}
-        <div className="flex items-center gap-2">
+        {/* Left group: Word Format + Base/Signed + Arbitrary Columns + Byte Shift */}
+        <div className="flex flex-wrap items-center gap-1.5">
           <div className="inline-flex rounded-lg border border-white/[0.065] bg-[#101115] p-0.5 text-[11px] font-medium">
             {(
               [
-                ['u8', '8-bit'],
-                ['u16le', '16-bit LoHi'],
-                ['u16be', '16-bit HiLo'],
+                ['u8', '8b'],
+                ['u16le', '16 LoHi'],
+                ['u16be', '16 HiLo'],
               ] as const
             ).map(([fmt, label]) => (
               <button
                 key={fmt}
                 type="button"
                 onClick={() => setWordFormat(fmt)}
-                className={`rounded-[6px] px-2.5 py-1 transition-colors ${
+                className={`rounded-[6px] px-2 py-1 transition-colors cursor-pointer ${
                   wordFormat === fmt
                     ? 'bg-[#0a84ff] text-white shadow-[0_1px_8px_rgba(10,132,255,0.4)]'
                     : 'text-zinc-400 hover:text-zinc-100'
@@ -939,22 +989,106 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
             ))}
           </div>
 
+          {/* Hex / Dec + Signed (±) */}
           <div className="inline-flex rounded-lg border border-white/[0.065] bg-[#101115] p-0.5 font-mono text-[11px]">
-            {([8, 12, 16] as const).map((cols) => (
-              <button
-                key={cols}
-                type="button"
-                onClick={() => setColCount(cols)}
-                className={`rounded-[6px] px-2 py-1 transition-colors ${
-                  colCount === cols
-                    ? 'bg-white/[0.12] text-zinc-100'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                {cols} col
-              </button>
-            ))}
+            <button
+              type="button"
+              onClick={() => setNumberBase((b) => (b === 'hex' ? 'dec' : 'hex'))}
+              title="Toggle Hex / Decimal display"
+              className="rounded-[6px] px-2 py-1 text-zinc-300 hover:bg-white/[0.08] cursor-pointer"
+            >
+              {numberBase === 'hex' ? 'Hex' : 'Dec'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSigned((s) => !s)}
+              title="Toggle Signed (±) / Unsigned"
+              className={`rounded-[6px] px-1.5 py-1 transition-colors cursor-pointer ${
+                isSigned ? 'bg-[#0a84ff]/25 text-sky-200' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              ±
+            </button>
           </div>
+
+          {/* Free Column Count (1–32, WinOLS M / W keys) */}
+          <div
+            className="inline-flex items-center rounded-lg border border-white/[0.065] bg-[#101115] p-0.5 font-mono text-[11px]"
+            title="Columns per row (1–32 · shortcuts M / W)"
+          >
+            <button
+              type="button"
+              onClick={() => setColCount((c) => Math.max(1, c - 1))}
+              className="rounded px-1.5 py-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min={1}
+              max={32}
+              value={colCount}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (Number.isFinite(v)) setColCount(Math.max(1, Math.min(32, v)));
+              }}
+              className="w-8 bg-transparent text-center text-zinc-100 outline-none [appearance:textfield]"
+            />
+            <span className="pr-1 text-[10px] text-zinc-500">col</span>
+            <button
+              type="button"
+              onClick={() => setColCount((c) => Math.min(32, c + 1))}
+              className="rounded px-1.5 py-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
+            >
+              +
+            </button>
+          </div>
+
+          {/* Free Byte Shift (Align columns arbitrarily · shortcuts [ / ]) */}
+          <div
+            className="inline-flex items-center rounded-lg border border-white/[0.065] bg-[#101115] p-0.5 font-mono text-[11px]"
+            title="Shift row start by bytes (shortcuts [ / ] · click value to reset)"
+          >
+            <button
+              type="button"
+              onClick={() => setByteShift((s) => (s - 1 + rowBytes) % Math.max(1, rowBytes))}
+              className="rounded px-1.5 py-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
+            >
+              ◀
+            </button>
+            <button
+              type="button"
+              onClick={() => setByteShift(0)}
+              className={`px-1.5 py-0.5 tabular-nums cursor-pointer ${
+                byteShift !== 0 ? 'text-amber-300 font-semibold' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Click to reset shift to +0"
+            >
+              +{byteShift}B
+            </button>
+            <button
+              type="button"
+              onClick={() => setByteShift((s) => (s + 1) % Math.max(1, rowBytes))}
+              className="rounded px-1.5 py-0.5 text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
+            >
+              ▶
+            </button>
+          </div>
+
+          {compareBin && (
+            <button
+              type="button"
+              onClick={handleAutoSyncCompare}
+              title="Auto-align comparison BIN offset (±32 KB window)"
+              className={`rounded-lg border px-2 py-1 font-mono text-[10.5px] transition-colors cursor-pointer ${
+                compareShift !== 0
+                  ? 'border-amber-500/40 bg-amber-500/15 text-amber-300'
+                  : 'border-white/[0.065] bg-[#101115] text-zinc-400 hover:text-zinc-100'
+              }`}
+            >
+              Sync {compareShift >= 0 ? `+${compareShift}` : compareShift}B
+            </button>
+          )}
         </div>
 
         {/* Right group: Diffs Only + Diff Nav + XREF/Disasm Drawer + Go To */}
@@ -1100,7 +1234,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                     {/* Primary BIN cells */}
                     <div className={`flex items-center ${cellGapCls} overflow-hidden pr-2`}>
                       {Array.from({ length: colCount }, (_, colIdx) => {
-                        const off = address + colIdx * wordBytes;
+                        const off = address + byteShift + colIdx * wordBytes;
                         if (off >= bin.length) {
                           return (
                             <span
@@ -1218,7 +1352,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                             }}
                             className={`inline-flex h-[21px] cursor-pointer items-center justify-center text-[11.5px] transition-colors ${cellWidthCls} ${cellCls}`}
                           >
-                            {readWordHex(bin, off, wordFormat)}
+                            {readWordHex(bin, off, wordFormat, numberBase, isSigned)}
                           </span>
                         );
                       })}
@@ -1228,7 +1362,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                     <div className="flex justify-center">
                       {compareBin &&
                       Array.from({ length: colCount }, (_, i) =>
-                        isWordDiff(bin, compareBin, address + i * wordBytes, wordBytes),
+                        isWordDiff(bin, compareBin, address + byteShift + i * wordBytes, wordBytes),
                       ).some(Boolean) ? (
                         <span className="h-1.5 w-1.5 rounded-full bg-[#0a84ff] shadow-[0_0_8px_rgba(10,132,255,0.9)]" />
                       ) : (
@@ -1240,8 +1374,9 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                     <div className={`flex items-center ${cellGapCls} overflow-hidden px-2`}>
                       {compareBin ? (
                         Array.from({ length: colCount }, (_, colIdx) => {
-                          const off = address + colIdx * wordBytes;
-                          if (off >= compareBin.length) {
+                          const off = address + byteShift + colIdx * wordBytes;
+                          const cmpOff = off + compareShift;
+                          if (cmpOff < 0 || cmpOff >= compareBin.length) {
                             return (
                               <span
                                 key={colIdx}
@@ -1283,7 +1418,7 @@ export const HexDiffCanvas: React.FC<HexDiffCanvasProps> = ({
                                     : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
                               }`}
                             >
-                              {readWordHex(compareBin, off, wordFormat)}
+                              {readWordHex(compareBin, cmpOff, wordFormat, numberBase, isSigned)}
                             </span>
                           );
                         })
