@@ -9,10 +9,13 @@ import {
   Download,
   FileDown,
   FolderOpen,
+  Globe,
   HardDrive,
   Layers,
+  Palette,
   PanelRight,
   Redo2,
+  Save,
   Search,
   ShieldAlert,
   ShieldCheck,
@@ -37,7 +40,9 @@ import {
   isWinOLSBinary,
   layoutByteRange,
   parseBinaryFile,
+  parseProject,
   scanMaps,
+  serializeProject,
   verifyChecksums,
   type DefinitionExportFormat,
   type MapCandidate as CoreMapCandidate,
@@ -60,6 +65,8 @@ import { PreSaveReviewModal } from './components/PreSaveReviewModal';
 import { CommandPalette } from './components/CommandPalette';
 import { UpdateModal } from './components/UpdateModal';
 import { APP_VERSION, checkForUpdates, type UpdateInfo } from './lib/updater';
+import { AVAILABLE_LOCALES, getInitialLocale, saveLocale, translate, type LocaleCode } from './lib/i18n';
+import { THEME_OPTIONS, applyTheme, getInitialTheme, type AppThemeId } from './lib/theme';
 
 type TopSection = 'workspace' | 'compare' | 'discovery' | 'memory' | 'recipes' | 'datalog' | 'flash';
 
@@ -165,13 +172,21 @@ export default function App() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   // v4.1 Pro Studio states
-  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(true);
   const [lockedItemIds, setLockedItemIds] = useState<Set<number>>(() => new Set());
   const [xdfEditorOpen, setXdfEditorOpen] = useState(false);
   const [xdfEditorItem, setXdfEditorItem] = useState<XDFItem | null>(null);
   const [exportDefMenuOpen, setExportDefMenuOpen] = useState(false);
   const [exportReviewOpen, setExportReviewOpen] = useState(false);
   const [checksumProfileId, setChecksumProfileId] = useState<string>('bosch-me7');
+  const [locale, setLocale] = useState<LocaleCode>(() => getInitialLocale());
+  const [themeId, setThemeId] = useState<AppThemeId>(() => getInitialTheme());
+
+  const t = useCallback((key: string) => translate(locale, key), [locale]);
+
+  useEffect(() => {
+    applyTheme(themeId);
+  }, [themeId]);
 
   const exportDefRef = useRef<HTMLDivElement>(null);
 
@@ -475,7 +490,23 @@ export default function App() {
       for (const file of Array.from(files)) {
         const lower = file.name.toLowerCase();
         try {
-          if (lower.endsWith('.ols') || lower.endsWith('.kp')) {
+          if (lower.endsWith('.mtproj')) {
+            const text = await file.text();
+            const proj = parseProject(text);
+            setBin(proj.bin);
+            setBinName(proj.binName);
+            setCompareBin(proj.compareBin ?? null);
+            if (proj.compareName) setCompareName(proj.compareName);
+            setXdf(proj.xdf ?? null);
+            if (proj.xdfName) setXdfName(proj.xdfName);
+            if (proj.markers) setMarkers(proj.markers);
+            if (proj.lockedItemIds) setLockedItemIds(new Set(proj.lockedItemIds));
+            if (proj.selectedProfileId) setChecksumProfileId(proj.selectedProfileId);
+            setSelectedItemId(proj.xdf?.items[0]?.id ?? null);
+            setUndoStack([]);
+            setRedoStack([]);
+            showToast(`Opened project: ${file.name}`);
+          } else if (lower.endsWith('.ols') || lower.endsWith('.kp')) {
             const rawBuf = new Uint8Array(await file.arrayBuffer());
             const parsed = importBinaryDefinition(file.name, rawBuf);
             setXdf(parsed);
@@ -557,6 +588,28 @@ export default function App() {
     [xdf, xdfName, showToast],
   );
 
+  const handleSaveProject = useCallback(() => {
+    const json = serializeProject({
+      binName,
+      bin,
+      compareName: compareBin ? compareName : undefined,
+      compareBin,
+      xdfName: xdf ? xdfName : undefined,
+      xdf,
+      markers,
+      lockedItemIds: Array.from(lockedItemIds),
+      selectedProfileId: checksumProfileId,
+    });
+    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${stripExt(binName || 'MacTuner')}.mtproj`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`Saved project ${a.download}`);
+  }, [binName, bin, compareName, compareBin, xdfName, xdf, markers, lockedItemIds, checksumProfileId, showToast]);
+
   const handleDownloadBin = useCallback(() => {
     const outName = binName.toLowerCase().endsWith('.bin') ? binName : `${stripExt(binName)}_tuned.bin`;
     const blob = new Blob([bin.slice().buffer], { type: 'application/octet-stream' });
@@ -593,13 +646,13 @@ export default function App() {
   );
 
   const navItems: Array<{ id: TopSection; label: string; icon: React.ReactNode }> = [
-    { id: 'workspace', label: 'Workspace', icon: <Layers className="h-3.5 w-3.5" /> },
-    { id: 'compare', label: 'Compare', icon: <Columns3 className="h-3.5 w-3.5" /> },
-    { id: 'discovery', label: 'Discovery', icon: <Search className="h-3.5 w-3.5" /> },
-    { id: 'memory', label: 'Memory', icon: <HardDrive className="h-3.5 w-3.5" /> },
-    { id: 'recipes', label: 'Recipes', icon: <Sparkles className="h-3.5 w-3.5" /> },
-    { id: 'datalog', label: 'Datalog', icon: <Activity className="h-3.5 w-3.5" /> },
-    { id: 'flash', label: 'Flash', icon: <ShieldCheck className="h-3.5 w-3.5" /> },
+    { id: 'workspace', label: t('Workspace'), icon: <Layers className="h-3.5 w-3.5" /> },
+    { id: 'compare', label: t('Compare'), icon: <Columns3 className="h-3.5 w-3.5" /> },
+    { id: 'discovery', label: t('Discovery'), icon: <Search className="h-3.5 w-3.5" /> },
+    { id: 'memory', label: t('Memory'), icon: <HardDrive className="h-3.5 w-3.5" /> },
+    { id: 'recipes', label: t('Recipes'), icon: <Sparkles className="h-3.5 w-3.5" /> },
+    { id: 'datalog', label: t('Datalog'), icon: <Activity className="h-3.5 w-3.5" /> },
+    { id: 'flash', label: t('Flash'), icon: <ShieldCheck className="h-3.5 w-3.5" /> },
   ];
 
   return (
@@ -1045,7 +1098,53 @@ export default function App() {
           <span>{ecuIdentity.architecture}</span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleSaveProject}
+            title="Save full workspace archive (.mtproj)"
+            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer"
+          >
+            <Save className="h-3 w-3" />
+            <span>.mtproj</span>
+          </button>
+
+          <label className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer" title="Switch Theme">
+            <Palette className="h-3 w-3 shrink-0" />
+            <select
+              value={themeId}
+              onChange={(e) => setThemeId(e.target.value as AppThemeId)}
+              aria-label="Theme"
+              className="bg-transparent text-[10px] text-zinc-300 outline-none cursor-pointer"
+            >
+              {THEME_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id} className="bg-[#17181d] text-zinc-100">
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition cursor-pointer" title="Switch Language (25 languages)">
+            <Globe className="h-3 w-3 shrink-0" />
+            <select
+              value={locale}
+              onChange={(e) => {
+                const next = e.target.value as LocaleCode;
+                setLocale(next);
+                saveLocale(next);
+              }}
+              aria-label="Language"
+              className="bg-transparent text-[10px] text-zinc-300 outline-none cursor-pointer"
+            >
+              {AVAILABLE_LOCALES.map((loc) => (
+                <option key={loc.code} value={loc.code} className="bg-[#17181d] text-zinc-100">
+                  {loc.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <button
             type="button"
             onClick={() => setUpdateModalOpen(true)}

@@ -50,6 +50,7 @@ import {
   lookupMapAcronym,
   manualRangePatch,
   parseBinaryFile,
+  parseProject,
   parseRecipeJSON,
   parseXDF,
   rescaleAxisValues,
@@ -58,6 +59,7 @@ import {
   scalingRawFor,
   scalingValue,
   scanMaps,
+  serializeProject,
   serializeRecipeJSON,
   serializeXDF,
   sum16LE,
@@ -726,5 +728,31 @@ describe('@mactuner/core — MapTranslator', () => {
     expect(explained.acronym?.acronym).toBe('KFLBTS');
     expect(explained.glossaryMatches.some((g) => g.term === 'Abgastemperatur')).toBe(true);
     expect(MapTranslator.translate('NMAX', 'original')).toBe('NMAX');
+  });
+});
+
+describe('@mactuner/core — ProjectFile (.mtproj)', () => {
+  it('round-trips a full workspace archive (.mtproj) byte-for-byte', () => {
+    const demo = createMed17DemoBundle();
+    const json = serializeProject({
+      binName: demo.stage1Name,
+      bin: demo.stage1Bin,
+      compareName: demo.stockName,
+      compareBin: demo.stockBin,
+      xdfName: demo.xdfName,
+      xdf: demo.xdf,
+      markers: [{ id: 'm1', address: 0x24024, label: 'Stage 1 Map' }],
+      lockedItemIds: [0],
+      selectedProfileId: 'bosch-me7',
+    });
+    const restored = parseProject(json);
+    expect(restored.binName).toBe(demo.stage1Name);
+    expect(restored.bin.length).toBe(demo.stage1Bin.length);
+    expect(restored.bin[0x24024]).toBe(demo.stage1Bin[0x24024]);
+    expect(restored.compareBin?.length).toBe(demo.stockBin.length);
+    expect(restored.xdf?.items.length).toBe(demo.xdf.items.length);
+    expect(restored.markers?.length).toBe(1);
+    expect(restored.lockedItemIds).toEqual([0]);
+    expect(restored.selectedProfileId).toBe('bosch-me7');
   });
 });

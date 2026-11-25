@@ -18,3 +18,4 @@ export * from './autoAligner';
 export * from './recipeEngine';
 export * from './unitConverter';
 export * from './mapTranslator';
+export * from './projectFile';

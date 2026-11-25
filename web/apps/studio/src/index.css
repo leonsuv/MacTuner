@@ -45,3 +45,24 @@
   border: 1px solid rgba(255, 255, 255, 0.11);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
+
+/* Theme variants */
+:root[data-theme='midnight'] body,
+:root[data-theme='midnight'] #root {
+  background-color: #080d19;
+  filter: hue-rotate(-4deg) saturate(1.08);
+}
+
+:root[data-theme='contrast'] body,
+:root[data-theme='contrast'] #root {
+  background-color: #000000;
+  filter: contrast(1.16);
+}
+
+:root[data-theme='light'] #root {
+  filter: invert(0.92) hue-rotate(180deg);
+}
+
+:root[data-theme='light'] canvas {
+  filter: invert(1) hue-rotate(180deg);
+}
